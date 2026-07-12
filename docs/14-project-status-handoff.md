@@ -46,6 +46,7 @@
 11. V1 只做单一点赞，不做用户标签和私信。
 12. 核心许可证采用 AGPL-3.0-only，并通过第 7(b) 条要求保留 `Powered by NextBuf` 页脚链接。
 13. 官方仓库是 `https://github.com/Xwordsman/nextbuf`，外部贡献采用 DCO 1.1。
+14. 每个完成阶段必须推送官方 `main` 并创建注释版本标签，远程 CI 通过后才形成回滚点。
 
 若有证据需要改变，先更新决策台账并新增或替代 ADR，不能直接修改实现绕过文档。
 
@@ -107,7 +108,7 @@ NOTICE
 
 验证结果：格式、ESLint、TypeScript、3 个 Vitest 测试和 Next.js 生产构建通过；首页、liveness、版本接口、request ID 和页脚署名已通过本地 HTTP 检查。
 
-尚未推送或提交。官方远程已配置为 `https://github.com/Xwordsman/nextbuf.git`。
+`v0.1.0` 已提交并推送官方仓库；版本标签和远程 CI 状态应在交付时再次核对。
 
 ## 7. 实现时的文档优先级
 
