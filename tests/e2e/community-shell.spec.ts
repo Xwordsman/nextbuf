@@ -18,8 +18,15 @@ async function expectNoHorizontalOverflow(page: Page) {
 }
 
 async function openHome(page: Page) {
-  await page.goto("/");
-  await expect(page.getByTestId("community-shell")).toBeVisible();
+  const response = await page.goto("/");
+  const shell = page.getByTestId("community-shell");
+  if ((await shell.count()) === 0) {
+    const body = (await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 500);
+    throw new Error(
+      `Community shell did not render: status=${response?.status()} title=${JSON.stringify(await page.title())} body=${JSON.stringify(body)}`,
+    );
+  }
+  await expect(shell).toBeVisible();
   await expect(page.getByText("共 9 个话题", { exact: true })).toBeVisible();
 }
 
