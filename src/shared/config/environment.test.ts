@@ -85,4 +85,19 @@ describe("environment configuration", () => {
       }),
     ).toThrow("must use https in production");
   });
+
+  it("allows an HTTP loopback origin for standalone production tests", () => {
+    const environment = parseAuthEnvironment({
+      NODE_ENV: "production",
+      APP_URL: "http://127.0.0.1:3000",
+      DATABASE_URL: "postgresql://nextbuf:secret@localhost:5432/nextbuf",
+      REDIS_URL: "redis://localhost:6379/0",
+      AUTH_SECRET: "nextbuf-test-auth-secret-at-least-32-characters",
+      MAIL_PAYLOAD_KEY: "SoxCSq6+35KG9qqH7JHtneowihiWs8hjtqqI37UhPQw=",
+      SMTP_HOST: "localhost",
+      SMTP_FROM: "NextBuf Test <noreply@nextbuf.test>",
+    });
+
+    expect(environment.APP_URL).toBe("http://127.0.0.1:3000");
+  });
 });

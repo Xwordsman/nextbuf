@@ -105,7 +105,7 @@ function createAuthInstance() {
       },
     },
     advanced: {
-      useSecureCookies: environment.NODE_ENV === "production",
+      useSecureCookies: new URL(environment.APP_URL).protocol === "https:",
       cookiePrefix: "nextbuf",
       database: { generateId: "uuid" },
       ipAddress: { trustedProxies: splitList(environment.AUTH_TRUSTED_PROXIES) },

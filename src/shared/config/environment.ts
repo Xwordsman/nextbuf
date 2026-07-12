@@ -7,6 +7,12 @@ const optionalString = z.preprocess(
 );
 const exampleAuthSecret = "replace-with-at-least-32-random-characters";
 const exampleMailPayloadKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+
+function isLoopbackUrl(value: string): boolean {
+  return loopbackHosts.has(new URL(value).hostname);
+}
+
 const base64Key = z.string().refine((value) => {
   try {
     return Buffer.from(value, "base64").byteLength === 32;
@@ -108,11 +114,14 @@ const authEnvironmentSchema = serviceEnvironmentSchema
     }
 
     if (environment.NODE_ENV === "production") {
-      if (new URL(environment.APP_URL).protocol !== "https:") {
+      if (
+        new URL(environment.APP_URL).protocol !== "https:" &&
+        !isLoopbackUrl(environment.APP_URL)
+      ) {
         context.addIssue({
           code: "custom",
           path: ["APP_URL"],
-          message: "must use https in production",
+          message: "must use https in production unless APP_URL is loopback",
         });
       }
       if (environment.AUTH_SECRET === exampleAuthSecret) {
