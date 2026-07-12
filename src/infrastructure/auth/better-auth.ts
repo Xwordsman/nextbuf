@@ -114,7 +114,10 @@ function createAuthInstance() {
       before: createAuthMiddleware(async (context) => {
         if (context.path !== "/sign-up/email") return;
         const expected = registrationHeader(environment.AUTH_SECRET);
-        const actual = context.request?.headers.get("x-nextbuf-registration") ?? null;
+        const actual =
+          context.headers?.get("x-nextbuf-registration") ??
+          context.request?.headers.get("x-nextbuf-registration") ??
+          null;
         if (!headerMatches(expected, actual)) {
           throw new APIError("FORBIDDEN", {
             message: "Registration must use the NextBuf endpoint",
