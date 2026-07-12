@@ -55,11 +55,13 @@ test.describe.serial("identity authentication", () => {
     page,
   }, testInfo) => {
     const email = `identity-e2e-${Date.now()}-${testInfo.retry}@nextbuf.test`;
+    const username = `e2e_${Date.now().toString(36)}_${testInfo.retry}`;
     await page.goto("/account/security");
     await expect(page).toHaveURL(/\/auth\/sign-in\?next=(?:%2F|\/)account(?:%2F|\/)security$/i);
 
     await page.goto("/auth/sign-up");
     await page.getByLabel("昵称").fill("认证测试用户");
+    await page.getByLabel("用户名").fill(username);
     await page.getByLabel("邮箱").fill(email);
     await page.getByLabel("密码", { exact: true }).fill(oldPassword);
     await page.getByLabel("确认密码").fill(oldPassword);
@@ -74,6 +76,15 @@ test.describe.serial("identity authentication", () => {
     await signIn(page, email, oldPassword);
     await expect(page).toHaveURL("/");
     await expect(page.getByRole("button", { name: "账户菜单" })).toBeVisible();
+    await page.getByRole("button", { name: "账户菜单" }).click();
+    await expect(page.getByText(`@${username}`, { exact: true })).toBeVisible();
+    await expect(page.getByText("TL0", { exact: true })).toBeVisible();
+    await page.goto(`/u/${username}`);
+    await expect(page.getByRole("heading", { name: "认证测试用户" })).toBeVisible();
+    await page.goto("/account");
+    await expect(page.getByRole("heading", { name: "账号中心" })).toBeVisible();
+    await expect(page.getByLabel("@username")).toHaveValue(username);
+    await expect(page.getByText(`UID`, { exact: false }).first()).toBeVisible();
 
     const secondContext = await browser.newContext({
       baseURL: "http://127.0.0.1:3000",

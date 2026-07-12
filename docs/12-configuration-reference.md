@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 环境变量的目标合同。`v0.1.0` 必须建立统一配置 Schema，`v0.12.0` 前必须让 `.env.example`、Compose、安装向导、Web、Worker、CLI 与本文完全一致。
 
-> 当前实现状态：截至 `v0.4.0`，`.env.example` 中的应用、数据库、Redis、Worker、Outbox、认证、身份邮件和 GitHub OAuth 变量已经由共享 Zod Schema 实现。存储、搜索、观测、首次安装和生产 Compose 变量仍是后续合同；尚未出现在 `.env.example` 的变量不能视为当前可用功能。
+> 当前实现状态：截至 `v0.5.0`，`.env.example` 中的应用、数据库、Redis、Worker、Outbox、认证、身份邮件、GitHub OAuth 和本地头像存储变量已经由共享 Zod Schema 实现。S3、通用附件、搜索、观测、首次安装和生产 Compose 变量仍是后续合同；尚未出现在 `.env.example` 的变量不能视为当前可用功能。
 
 ## 1. 配置规则
 
@@ -93,7 +93,7 @@ openssl rand -base64 32
 - `AUTH_SECRET` 和 `MAIL_PAYLOAD_KEY` 用途不同，不能复用。
 - 轮换 `AUTH_SECRET` 会使现有 Cookie 和尚未使用的验证/重置链接失效。
 - `MAIL_PAYLOAD_KEY` 丢失会导致待发送邮件正文无法恢复，必须与备份一起安全保存。
-- 通用 Provider `ENCRYPTION_KEY` 与首次安装 `SETUP_TOKEN` 是后续版本合同，`v0.4.0` 尚未实现。
+- 通用 Provider `ENCRYPTION_KEY` 与首次安装 `SETUP_TOKEN` 是后续版本合同，`v0.5.0` 尚未实现。
 
 ## 6. 邮件
 
@@ -110,11 +110,20 @@ openssl rand -base64 32
 
 ## 7. 文件存储
 
+`v0.5.0` 当前可用变量：
+
 | 变量 | 必需 | 默认值 | 适用进程 | 敏感 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| `STORAGE_DRIVER` | 否 | `local` | Web、Worker、doctor | 否 | `local` 或 `s3` |
-| `UPLOAD_DIR` | local 必需 | `/data/uploads` | Web、Worker | 否 | 本地持久化路径 |
-| `MAX_UPLOAD_SIZE_MB` | 否 | `20` | Web、Worker | 否 | 应用层最大上传大小 |
+| `STORAGE_DRIVER` | 否 | `local` | Web | 否 | 当前只接受 `local`；预留 Provider 选择边界 |
+| `STORAGE_LOCAL_PATH` | 否 | `data/uploads` | Web | 否 | 本地持久化根目录，头像实际写入其 `avatars/` 子目录 |
+| `AVATAR_MAX_UPLOAD_BYTES` | 否 | `1048576` | Web | 否 | 裁剪后头像最大字节数；范围 65536 至 5242880 |
+
+头像媒体使用随机不可变键。浏览器当前输出 512×512 WebP，服务端仍独立检查最终大小和 PNG/JPEG/WebP 文件签名。`STORAGE_LOCAL_PATH` 是必须随 PostgreSQL 一起备份的事实数据，不属于 `.next`、`dist` 或可重建缓存。
+
+以下是后续 S3/通用附件合同，`v0.5.0` 尚未进入 `.env.example`，不能视为可用配置：
+
+| 变量 | 必需 | 默认值 | 适用进程 | 敏感 | 说明 |
+| --- | --- | --- | --- | --- | --- |
 | `S3_ENDPOINT` | s3 视情况 | 无 | Web、Worker | 否 | S3 兼容服务地址 |
 | `S3_REGION` | s3 必需 | 无 | Web、Worker | 否 | Region |
 | `S3_BUCKET` | s3 必需 | 无 | Web、Worker | 否 | Bucket |
@@ -122,8 +131,9 @@ openssl rand -base64 32
 | `S3_SECRET_ACCESS_KEY` | s3 必需 | 无 | Web、Worker | 是 | Secret Key |
 | `S3_FORCE_PATH_STYLE` | 否 | `false` | Web、Worker | 否 | 部分兼容服务需要 true |
 | `S3_PUBLIC_BASE_URL` | 否 | 无 | Web | 否 | CDN/公开资源基础地址 |
+| `MAX_UPLOAD_SIZE_MB` | 否 | `20` | Web、Worker | 否 | 后续通用附件的应用层上限，不控制 `v0.5.0` 头像 |
 
-多 Web 实例不允许使用各自独立的本地上传目录，必须共享可靠文件系统或切换 S3。
+多 Web 实例不允许使用各自独立的本地上传目录，必须共享可靠文件系统或在实现并验证 S3 Provider 后切换 S3。不能把 `STORAGE_DRIVER=s3` 提前写入 `v0.5.0` 配置；当前 Schema 会主动拒绝。
 
 ## 8. OAuth
 

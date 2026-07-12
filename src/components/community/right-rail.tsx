@@ -36,12 +36,14 @@ export function RightRail({ account, overview, topics, onlineMembers }: RightRai
               </Avatar>
               <div>
                 <strong>{account.name}</strong>
-                <span>{account.email}</span>
+                <span>
+                  @{account.username} · UID {account.uid}
+                </span>
               </div>
             </div>
             <Button asChild variant="outline" className="rail-account-action">
-              <Link href="/account/security">
-                <ShieldCheck /> 账号安全
+              <Link href="/account">
+                <ShieldCheck /> 账号中心
               </Link>
             </Button>
           </div>

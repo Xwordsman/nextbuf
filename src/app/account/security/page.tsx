@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { SessionManager } from "@/components/auth/session-manager.client";
+import { AccountNav } from "@/components/account/account-nav";
 import { Panel } from "@/components/ui/panel";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { getPrismaClient } from "@/infrastructure/database/client";
@@ -24,6 +25,7 @@ export default async function AccountSecurityPage() {
         <h1>账号安全</h1>
         <p>查看当前登录设备并撤销不再使用的会话。</p>
       </div>
+      <AccountNav active="security" />
       <Panel className="security-panel">
         <SessionManager
           initialSessions={sessions.map((session) => ({

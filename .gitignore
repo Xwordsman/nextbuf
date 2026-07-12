@@ -23,6 +23,7 @@
 /build
 /dist
 /src/generated/prisma
+/data/uploads
 
 # misc
 .DS_Store

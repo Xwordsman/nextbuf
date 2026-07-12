@@ -3,8 +3,8 @@
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
 - 最后更新：2026-07-12
-- 当前完成版本：`v0.4.0`
-- 下一开发版本：`v0.5.0` 用户资料与账号中心
+- 当前完成版本：`v0.5.0`
+- 下一开发版本：`v0.6.0` 节点与主题
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -51,6 +51,20 @@
 - 页头与右栏读取真实会话，只显示昵称、邮箱和验证状态；不伪造 UID、`@username`、TL 或通知。通知和发帖入口指向明确的未开放状态。
 - 增加 CSP、HSTS（生产）、COOP、Referrer Policy、Permissions Policy、X-Frame-Options 和 nosniff。
 
+### `v0.5.0` 用户资料与账号中心
+
+- `users` 增加从独立 PostgreSQL 序列 1000 起分配的不可变 UID、唯一用户名、用户名修改时间和注销申请时间；既有用户迁移为 `user_<UID>`。
+- 新增一对一 `profiles` 和 `username_aliases`；迁移回填既有 Profile，数据库触发器覆盖 Better Auth 邮箱注册、OAuth 和未来受控用户创建入口。
+- 用户名固定为 3-24 位小写 ASCII，以字母开头，只允许字母、数字和非连续内部下划线；包含服务端保留词、30 天修改冷却和永久历史别名。
+- 邮箱注册必须提交用户名；OAuth 新用户由服务端生成合规且可用的随机后缀用户名。
+- `/account` 提供头像、昵称、简介、主页、用户名、隐私、通知占位和 14 天可撤销注销申请；`/account/security` 继续管理密码和会话。
+- 浏览器将头像居中裁剪为 512×512 WebP；服务端限制字节数、检查 PNG/JPEG/WebP 签名，并通过 `STORAGE_LOCAL_PATH` 的随机不可变键读写本地文件。
+- 头像替换在数据库更新失败时清理新文件，成功后清理旧本地头像；媒体路由使用一年 immutable 缓存和 `nosniff`。
+- `/u/[username]` 显示基本身份、公开资料、主页、注册时间和活动统计占位；历史用户名重定向到当前主页，未激活用户不可公开解析。
+- 页头菜单与右栏显示真实昵称、`@username`、UID、头像和 `TL0`，不显示专业标签。
+- 当前 `TL0` 只是初始身份呈现，不是持久化信任计算或授权来源；完整信任系统仍属于 `v0.10.0`。
+- 注销请求重复提交不延长 14 天截止时间；本阶段不立即删除内容、凭证或历史用户名。决策见 [ADR-0009](./adr/0009-public-user-identity-and-avatar-storage.md)。
+
 ## 2. 关键命令
 
 ```text
@@ -71,9 +85,9 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 ## 3. 测试与验证边界
 
-- 本地已通过：Prisma generate/validate、Prettier、ESLint、TypeScript、13 个单元测试、Worker/CLI 构建和 Next.js standalone 生产构建。
-- 身份集成测试共 5 项，连同运行时基础共 8 项：注册边界、scrypt、验证 identifier HMAC、密码重置撤销、重复注册防枚举、邀请码原子使用、加密邮件和 SMTP Worker。
-- Playwright 共 6 项：5 项社区多视口/无障碍测试和 1 项注册、Mailpit 验证、两设备会话、找回密码、旧会话撤销、新密码登录完整旅程。
+- 本地已通过：Prisma generate/validate、Prettier、ESLint、TypeScript、19 个单元测试、Worker/CLI 构建和 Next.js standalone 生产构建。
+- 身份/资料集成测试共 6 项，连同运行时基础共 9 项：除 `v0.4.0` 链路外，增加 UID/Profile、公开激活边界、用户名历史与冷却、头像替换、隐私和注销申请验证。
+- Playwright 共 6 项：5 项社区多视口/无障碍测试和 1 项注册、用户名、Mailpit 验证、用户菜单、公开用户页、账号中心、两设备会话、找回密码、旧会话撤销、新密码登录完整旅程。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
@@ -81,7 +95,8 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 已经持久化：
 
-- 用户 UUID、昵称、邮箱、邮箱验证和账号状态。
+- 用户 UUID、数字 UID、用户名、昵称、邮箱、邮箱验证、账号状态和注销申请时间。
+- Profile 简介、主页与隐私偏好，用户名历史别名和本地头像文件。
 - credential/OAuth 账号、会话和设备元数据。
 - 验证记录、注册邀请码、身份审计、邮件投递与 Outbox。
 
@@ -91,9 +106,9 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 尚未实现：
 
-- UID、`@username`、Profile、头像上传、公开用户页、信任等级和用户活动统计。
+- 持久化信任等级计算、真实用户活动统计和最终注销执行器。
 - 节点/主题/回复写入、点赞、收藏、真实通知、搜索索引、治理和管理后台业务。
-- 对象存储、生产 Dockerfile、生产四容器 Compose、GHCR 镜像、`nextbufctl`、备份恢复和首次安装向导。
+- S3 对象存储、通用附件、生产 Dockerfile、生产四容器 Compose、GHCR 镜像、`nextbufctl`、备份恢复和首次安装向导。
 
 不得把演示社区数据与真实身份数据混合后声称已完成社区业务持久化。不得提前在 v0.5 之外实现主题、通知或信任计算。
 
@@ -110,14 +125,15 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 9. V1 使用 Topic + Post；只做单一点赞，不做用户标签和私信。
 10. AGPL-3.0-only + Section 7(b) 页脚链接；贡献采用 DCO。
 11. 每个完成阶段必须完整测试、更新文档、`git commit -s`、推送 `main`、等待 CI 成功并创建注释标签。
+12. UID/用户名/别名/头像/注销语义遵循 ADR-0009；不得释放历史用户名或把当前固定 `TL0` 误当信任授权。
 
-## 6. 下一步只做 `v0.5.0`
+## 6. 下一步只做 `v0.6.0`
 
-入口：[详细开发计划 v0.5.0](./09-detailed-development-plan.md#v050用户资料与账号中心)
+入口：[详细开发计划 v0.6.0](./09-detailed-development-plan.md#v060节点与主题)
 
-下一阶段实现不可变数字 UID、唯一规范化 `@username`、用户名保留词与历史别名、头像存储接口、公开资料和用户页，并扩展账号中心。开始前必须先决定用户名字符范围、修改冷却期和历史保留期。
+下一阶段建立真实 Node、Topic、Post 和 Revision 数据模型，实现节点浏览、主题创建/编辑/软删除、首页与节点主题流、分页、标题状态和服务端授权骨架。
 
-`v0.5.0` 可以扩展现有 `users` 或新增 `profiles` 等模型，但不能更改 Better Auth 所需字段语义，不能把 UID 当数据库主键或授权凭据，也不能开始节点/主题写入、回复、真实通知或信任计算。
+`v0.6.0` 只做节点与主题及首帖，不提前实现普通回复、点赞、收藏、真实通知、搜索排名、治理后台或信任计算。主题和 position=1 的首帖必须在同一 PostgreSQL 事务中创建；首页演示 ViewModel 只能在真实查询完整替换后删除，不能把演示数据写入数据库。
 
 ## 7. 文档优先级与交接规则
 

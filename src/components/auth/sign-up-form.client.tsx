@@ -35,6 +35,7 @@ export function SignUpForm({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: form.get("name"),
+        username: form.get("username"),
         email: form.get("email"),
         password,
         inviteCode: form.get("inviteCode") || undefined,
@@ -46,6 +47,9 @@ export function SignUpForm({
     if (!response.ok) {
       const messages: Record<string, string> = {
         invalid_registration: "请检查昵称、邮箱和密码。密码至少需要 12 个字符。",
+        invalid_username: "用户名需为 3-24 位小写字母、数字或单下划线，并以字母开头。",
+        reserved_username: "该用户名为系统保留名称，请更换。",
+        username_unavailable: "该用户名已被使用或由历史用户保留。",
         invalid_invite: "邀请码无效、已过期或已达到使用次数。",
         registration_closed: "当前未开放注册。",
         registration_rate_limited: "操作过于频繁，请稍后再试。",
@@ -74,6 +78,19 @@ export function SignUpForm({
             maxLength={40}
             required
           />
+        </div>
+        <div className="form-field">
+          <Label htmlFor="sign-up-username">用户名</Label>
+          <Input
+            id="sign-up-username"
+            name="username"
+            autoComplete="username"
+            minLength={3}
+            maxLength={24}
+            pattern="[a-z](?:[a-z0-9]|_(?!_)){1,22}[a-z0-9]"
+            required
+          />
+          <p className="field-hint">用于 @username 和个人主页链接，注册后 30 天内不可再次修改。</p>
         </div>
         <div className="form-field">
           <Label htmlFor="sign-up-email">邮箱</Label>

@@ -8,20 +8,51 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(uuid()) @db.Uuid
-  name          String    @db.VarChar(80)
-  email         String    @unique(map: "users_email_key") @db.VarChar(320)
-  emailVerified Boolean   @default(false) @map("email_verified")
-  image         String?   @db.Text
-  status        String    @default("pending") @db.VarChar(32)
-  activatedAt   DateTime? @map("activated_at") @db.Timestamptz(6)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sessions      Session[]
-  accounts      Account[]
+  id                  String          @id @default(uuid()) @db.Uuid
+  uid                 Int             @unique(map: "users_uid_key") @default(autoincrement())
+  username            String          @unique(map: "users_username_key") @db.VarChar(24)
+  name                String          @db.VarChar(80)
+  email               String          @unique(map: "users_email_key") @db.VarChar(320)
+  emailVerified       Boolean         @default(false) @map("email_verified")
+  image               String?         @db.Text
+  status              String          @default("pending") @db.VarChar(32)
+  activatedAt         DateTime?       @map("activated_at") @db.Timestamptz(6)
+  usernameChangedAt   DateTime?       @map("username_changed_at") @db.Timestamptz(6)
+  deletionRequestedAt DateTime?       @map("deletion_requested_at") @db.Timestamptz(6)
+  deletionScheduledAt DateTime?       @map("deletion_scheduled_at") @db.Timestamptz(6)
+  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sessions            Session[]
+  accounts            Account[]
+  profile             Profile?
+  usernameAliases     UsernameAlias[]
 
   @@index([status], map: "users_status_idx")
   @@map("users")
+}
+
+model Profile {
+  userId       String   @id @map("user_id") @db.Uuid
+  bio          String   @default("") @db.VarChar(500)
+  website      String?  @db.VarChar(2048)
+  isPublic     Boolean  @default(true) @map("is_public")
+  showActivity Boolean  @default(true) @map("show_activity")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model UsernameAlias {
+  id        String   @id @default(uuid()) @db.Uuid
+  username  String   @unique(map: "username_aliases_username_key") @db.VarChar(24)
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt], map: "username_aliases_user_created_idx")
+  @@map("username_aliases")
 }
 
 model Session {
@@ -74,14 +105,14 @@ model Verification {
 }
 
 model RegistrationInvite {
-  id          String    @id @default(uuid()) @db.Uuid
-  codeHash    String    @unique(map: "registration_invites_code_hash_key") @map("code_hash") @db.Char(64)
-  label       String?   @db.VarChar(120)
-  maxUses     Int       @default(1) @map("max_uses")
-  useCount    Int       @default(0) @map("use_count")
-  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(6)
-  disabledAt  DateTime? @map("disabled_at") @db.Timestamptz(6)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  id         String    @id @default(uuid()) @db.Uuid
+  codeHash   String    @unique(map: "registration_invites_code_hash_key") @map("code_hash") @db.Char(64)
+  label      String?   @db.VarChar(120)
+  maxUses    Int       @default(1) @map("max_uses")
+  useCount   Int       @default(0) @map("use_count")
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz(6)
+  disabledAt DateTime? @map("disabled_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([expiresAt], map: "registration_invites_expires_idx")
   @@map("registration_invites")
@@ -102,19 +133,19 @@ model IdentityAuditEvent {
 }
 
 model EmailDelivery {
-  id           String    @id @default(uuid()) @db.Uuid
-  kind         String    @db.VarChar(80)
-  recipient    String    @db.VarChar(320)
-  subject      String    @db.VarChar(255)
-  ciphertext   String    @db.Text
-  initializationVector String @map("initialization_vector") @db.VarChar(32)
-  authTag      String    @map("auth_tag") @db.VarChar(32)
-  status       String    @default("pending") @db.VarChar(32)
-  attempts     Int       @default(0)
-  lastError    String?   @map("last_error") @db.Text
-  sentAt       DateTime? @map("sent_at") @db.Timestamptz(6)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                   String    @id @default(uuid()) @db.Uuid
+  kind                 String    @db.VarChar(80)
+  recipient            String    @db.VarChar(320)
+  subject              String    @db.VarChar(255)
+  ciphertext           String    @db.Text
+  initializationVector String    @map("initialization_vector") @db.VarChar(32)
+  authTag              String    @map("auth_tag") @db.VarChar(32)
+  status               String    @default("pending") @db.VarChar(32)
+  attempts             Int       @default(0)
+  lastError            String?   @map("last_error") @db.Text
+  sentAt               DateTime? @map("sent_at") @db.Timestamptz(6)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([status, createdAt], map: "email_deliveries_status_created_idx")
   @@map("email_deliveries")

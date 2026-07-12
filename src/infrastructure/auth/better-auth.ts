@@ -6,6 +6,8 @@ import { authRateLimitStorage } from "@/infrastructure/auth/rate-limit";
 import { securePrismaAdapter } from "@/infrastructure/auth/secure-prisma-adapter";
 import { recordIdentityAudit } from "@/modules/identity/audit.server";
 import { sendPasswordResetMessage, sendVerificationMessage } from "@/modules/identity/mail.server";
+import { generateAvailableUsername } from "@/modules/profiles/username.server";
+import { validateUsername } from "@/modules/profiles/username-policy";
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
 
 function splitList(value: string): string[] {
@@ -79,8 +81,13 @@ function createAuthInstance() {
     },
     user: {
       additionalFields: {
+        uid: { type: "number", required: false, input: false },
+        username: { type: "string", required: false, input: true },
         status: { type: "string", required: true, input: false, defaultValue: "pending" },
         activatedAt: { type: "date", required: false, input: false },
+        usernameChangedAt: { type: "date", required: false, input: false },
+        deletionRequestedAt: { type: "date", required: false, input: false },
+        deletionScheduledAt: { type: "date", required: false, input: false },
       },
     },
     session: {
@@ -128,10 +135,23 @@ function createAuthInstance() {
     databaseHooks: {
       user: {
         create: {
-          before: async (user) =>
-            user.emailVerified
-              ? { data: { ...user, status: "active", activatedAt: new Date() } }
-              : undefined,
+          before: async (user) => {
+            const requested =
+              typeof user.username === "string" ? validateUsername(user.username) : null;
+            if (requested && !requested.ok) {
+              throw new APIError("BAD_REQUEST", { message: requested.code });
+            }
+            const username = requested?.ok
+              ? requested.username
+              : await generateAvailableUsername(user.email.split("@", 1)[0] ?? "user");
+            return {
+              data: {
+                ...user,
+                username,
+                ...(user.emailVerified ? { status: "active", activatedAt: new Date() } : {}),
+              },
+            };
+          },
           after: async (user, context) => {
             await recordIdentityAudit({
               eventType: "identity.user.registered",

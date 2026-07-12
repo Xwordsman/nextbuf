@@ -3,11 +3,15 @@ import "server-only";
 import { cache } from "react";
 import { headers } from "next/headers";
 import { getAuth } from "@/infrastructure/auth/better-auth";
+import { getPrismaClient } from "@/infrastructure/database/client";
 import { logger } from "@/infrastructure/observability/logger";
 import { runtimeEnv } from "@/shared/config/runtime-env";
 
 export type CurrentAccountView = {
   name: string;
+  username: string;
+  uid: number;
+  trustLevel: number;
   email: string;
   image: string | null;
   initials: string;
@@ -25,13 +29,17 @@ export const getCurrentAccount = cache(async (): Promise<CurrentAccountView | nu
   try {
     const session = await getAuth().api.getSession({ headers: await headers() });
     if (!session) return null;
+    const user = await getPrismaClient().user.findUniqueOrThrow({ where: { id: session.user.id } });
 
     return {
-      name: session.user.name,
-      email: session.user.email,
-      image: session.user.image ?? null,
-      initials: session.user.name.trim().slice(0, 1).toLocaleUpperCase("zh-CN") || "U",
-      emailVerified: session.user.emailVerified,
+      name: user.name,
+      username: user.username,
+      uid: user.uid,
+      trustLevel: 0,
+      email: user.email,
+      image: user.image,
+      initials: user.name.trim().slice(0, 1).toLocaleUpperCase("zh-CN") || "U",
+      emailVerified: user.emailVerified,
     };
   } catch (error) {
     if (runtimeEnv.NODE_ENV !== "development") throw error;

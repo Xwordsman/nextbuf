@@ -8,12 +8,15 @@ import {
   reserveRegistrationInvite,
 } from "@/modules/identity/invites.server";
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
+import { isUsernameAvailable } from "@/modules/profiles/username.server";
+import { validateUsername } from "@/modules/profiles/username-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const registrationSchema = z.object({
   name: z.string().trim().min(2).max(40),
+  username: z.string().trim().min(3).max(24),
   email: z.email().transform((value) => value.toLowerCase()),
   password: z.string().min(12).max(128),
   inviteCode: z.string().trim().max(200).optional(),
@@ -49,6 +52,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!input.success) return errorResponse("invalid_registration", 400);
 
   const environment = getAuthEnvironment();
+  const username = validateUsername(input.data.username);
+  if (!username.ok) return errorResponse(username.code, 400);
   if (environment.AUTH_REGISTRATION_MODE === "closed") {
     return errorResponse("registration_closed", 403);
   }
@@ -82,10 +87,16 @@ export async function POST(request: Request): Promise<Response> {
     return acceptedResponse();
   }
 
+  if (!(await isUsernameAvailable(username.username))) {
+    if (invite) await releaseRegistrationInvite(invite.id);
+    return errorResponse("username_unavailable", 409);
+  }
+
   try {
     await getAuth().api.signUpEmail({
       body: {
         name: input.data.name,
+        username: username.username,
         email: input.data.email,
         password: input.data.password,
         callbackURL: "/auth/verified",

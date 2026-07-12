@@ -1,7 +1,13 @@
 import type IORedis from "ioredis";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setup } from "@/cli/commands/setup";
+import { POST as updateAvatar } from "@/app/api/account/avatar/route";
 import { POST as register } from "@/app/api/identity/register/route";
+import { PATCH as updateProfile } from "@/app/api/account/profile/route";
+import { PATCH as updatePrivacy } from "@/app/api/account/privacy/route";
+import { PATCH as updateUsername } from "@/app/api/account/username/route";
+import { POST as updateDeletion } from "@/app/api/account/deletion/route";
+import { GET as readAvatar } from "@/app/api/media/avatars/[key]/route";
 import { getAuth, getInternalRegistrationHeader } from "@/infrastructure/auth/better-auth";
 import { disconnectRedisClient, getRedisClient } from "@/infrastructure/cache/redis";
 import { disconnectPrismaClient, getPrismaClient } from "@/infrastructure/database/client";
@@ -13,6 +19,7 @@ import {
   releaseRegistrationInvite,
   reserveRegistrationInvite,
 } from "@/modules/identity/invites.server";
+import { resolvePublicProfile } from "@/modules/profiles/profile.server";
 import { createOutboxWorker } from "@/worker/processors/outbox";
 
 const emailPrefix = "identity-integration+";
@@ -59,9 +66,12 @@ function firstUrl(text: string): string {
 }
 
 async function registerPendingUser(email: string) {
+  const scenario = email.slice(emailPrefix.length, -emailDomain.length).replaceAll("-", "_");
+  const username = `id_${scenario}`.slice(0, 24);
   await getAuth().api.signUpEmail({
     body: {
       name: "Identity Test",
+      username,
       email,
       password: oldPassword,
       callbackURL: "/auth/verified",
@@ -82,7 +92,41 @@ async function registerPendingUser(email: string) {
     orderBy: { createdAt: "desc" },
   });
 
-  return { user, account, delivery };
+  return { user, account, delivery, username };
+}
+
+function accountRequest(
+  path: string,
+  method: "PATCH" | "POST",
+  body: Record<string, unknown>,
+  cookie: string,
+) {
+  return new Request(`http://127.0.0.1:3000${path}`, {
+    method,
+    headers: {
+      cookie,
+      origin: "http://127.0.0.1:3000",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+function avatarRequest(cookie: string, marker: number) {
+  const form = new FormData();
+  form.set(
+    "avatar",
+    new File(
+      [new Uint8Array([0x52, 0x49, 0x46, 0x46, marker, 0, 0, 0, 0x57, 0x45, 0x42, 0x50])],
+      "avatar.webp",
+      { type: "image/webp" },
+    ),
+  );
+  return new Request("http://127.0.0.1:3000/api/account/avatar", {
+    method: "POST",
+    headers: { cookie, origin: "http://127.0.0.1:3000" },
+    body: form,
+  });
 }
 
 async function verifyUser(
@@ -182,6 +226,7 @@ describe("identity authentication integration", () => {
         },
         body: JSON.stringify({
           name: "Duplicate Identity Test",
+          username: "duplicate_identity",
           email,
           password: oldPassword,
         }),
@@ -190,6 +235,120 @@ describe("identity authentication integration", () => {
 
     expect(response.status).toBe(202);
     expect(await getPrismaClient().user.count({ where: { email } })).toBe(1);
+  });
+
+  it("creates durable identity profiles and enforces username history", async () => {
+    await redis.flushdb();
+    const email = testEmail("profile-api");
+    const { user, delivery, username } = await registerPendingUser(email);
+    expect(user.uid).toBeGreaterThanOrEqual(1000);
+    expect(user.username).toBe(username);
+    await expect(resolvePublicProfile(username)).resolves.toBeNull();
+    await expect(
+      getPrismaClient().profile.findUnique({ where: { userId: user.id } }),
+    ).resolves.toBeTruthy();
+    await verifyUser(email, delivery);
+    await expect(resolvePublicProfile(username)).resolves.toMatchObject({
+      user: { id: user.id },
+      redirected: false,
+    });
+
+    const signIn = await getAuth().handler(
+      request("/sign-in/email", { email, password: oldPassword }),
+    );
+    const cookie = sessionCookie(signIn);
+
+    await expect(
+      updateProfile(
+        accountRequest(
+          "/api/account/profile",
+          "PATCH",
+          { name: "Profile Test", bio: "Durable profile", website: "https://example.com" },
+          cookie,
+        ),
+      ),
+    ).resolves.toMatchObject({ status: 200 });
+
+    await expect(
+      updateUsername(
+        accountRequest("/api/account/username", "PATCH", { username: "profile_changed" }, cookie),
+      ),
+    ).resolves.toMatchObject({ status: 200 });
+    await expect(
+      getPrismaClient().usernameAlias.findUnique({ where: { username } }),
+    ).resolves.toMatchObject({
+      userId: user.id,
+    });
+    const aliasClaimEmail = testEmail("profile-alias-claim");
+    await expect(
+      getAuth().api.signUpEmail({
+        body: {
+          name: "Alias Claim Test",
+          username,
+          email: aliasClaimEmail,
+          password: oldPassword,
+          callbackURL: "/auth/verified",
+        },
+        headers: new Headers({
+          origin: "http://127.0.0.1:3000",
+          "x-nextbuf-registration": getInternalRegistrationHeader(),
+        }),
+      }),
+    ).rejects.toBeTruthy();
+    await expect(getPrismaClient().user.count({ where: { email: aliasClaimEmail } })).resolves.toBe(
+      0,
+    );
+    const cooldown = await updateUsername(
+      accountRequest("/api/account/username", "PATCH", { username: "profile_again" }, cookie),
+    );
+    expect(cooldown.status).toBe(429);
+
+    const firstAvatar = await updateAvatar(avatarRequest(cookie, 1));
+    expect(firstAvatar.status).toBe(200);
+    const firstImage = String((await firstAvatar.json()).image);
+    const firstKey = firstImage.split("/").at(-1);
+    if (!firstKey) throw new Error("Avatar response did not contain a media key");
+    await expect(
+      readAvatar(new Request(`http://127.0.0.1:3000${firstImage}`), {
+        params: Promise.resolve({ key: firstKey }),
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    const secondAvatar = await updateAvatar(avatarRequest(cookie, 2));
+    expect(secondAvatar.status).toBe(200);
+    await expect(
+      readAvatar(new Request(`http://127.0.0.1:3000${firstImage}`), {
+        params: Promise.resolve({ key: firstKey }),
+      }),
+    ).resolves.toMatchObject({ status: 404 });
+
+    await expect(
+      updatePrivacy(
+        accountRequest(
+          "/api/account/privacy",
+          "PATCH",
+          { isPublic: false, showActivity: false },
+          cookie,
+        ),
+      ),
+    ).resolves.toMatchObject({ status: 200 });
+    const deletion = await updateDeletion(
+      accountRequest("/api/account/deletion", "POST", { action: "request" }, cookie),
+    );
+    expect(deletion.status).toBe(200);
+    const deletionBody = (await deletion.json()) as { scheduledAt: string };
+    const repeatedDeletion = await updateDeletion(
+      accountRequest("/api/account/deletion", "POST", { action: "request" }, cookie),
+    );
+    await expect(repeatedDeletion.json()).resolves.toMatchObject({
+      scheduledAt: deletionBody.scheduledAt,
+    });
+    await expect(
+      getPrismaClient().user.findUniqueOrThrow({ where: { id: user.id } }),
+    ).resolves.toMatchObject({ deletionRequestedAt: expect.any(Date) });
+    await expect(
+      updateDeletion(accountRequest("/api/account/deletion", "POST", { action: "cancel" }, cookie)),
+    ).resolves.toMatchObject({ status: 200 });
   });
 
   it("hashes reset identifiers and revokes old sessions after password reset", async () => {

@@ -36,6 +36,9 @@ import { Tooltip } from "@/components/ui/tooltip";
 type SiteHeaderProps = {
   account: {
     name: string;
+    username: string;
+    uid: number;
+    trustLevel: number;
     email: string;
     image: string | null;
     initials: string;
@@ -142,28 +145,29 @@ export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
                     <span className="account-identity">
                       <span className="account-name-row">
                         <strong>{account.name}</strong>
+                        <span>@{account.username}</span>
                       </span>
                       <span className="account-uid-row">
-                        <span>{account.email}</span>
-                        <Badge variant="trust">已验证</Badge>
+                        <span>UID {account.uid}</span>
+                        <Badge variant="trust">TL{account.trustLevel}</Badge>
                       </span>
                     </span>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
                     <DropdownMenuItem asChild>
-                      <Link href="/account/security">
-                        <ShieldCheck /> 账号安全
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/status/unavailable?from=profile">
+                      <Link href={`/u/${account.username}`}>
                         <UserRound /> 个人主页
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                      <Link href="/status/unavailable?from=settings">
+                      <Link href="/account">
                         <Settings /> 账户设置
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/account/security">
+                        <ShieldCheck /> 账号安全
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>

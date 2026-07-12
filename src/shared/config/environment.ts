@@ -29,7 +29,7 @@ const environmentSchema = z.object({
   TZ: z.string().min(1).default("Asia/Shanghai"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   LOG_FORMAT: z.enum(["pretty", "json"]).default("pretty"),
-  NEXTBUF_VERSION: z.string().min(1).default("0.4.0"),
+  NEXTBUF_VERSION: z.string().min(1).default("0.5.0"),
   NEXTBUF_COMMIT: z.string().min(1).default("development"),
   NEXTBUF_BUILD_TIME: z.string().default(""),
   DATABASE_URL: optionalUrl,
@@ -68,6 +68,9 @@ const environmentSchema = z.object({
   SMTP_USER: optionalString,
   SMTP_PASSWORD: optionalString,
   SMTP_FROM: z.string().min(3).default("NextBuf <noreply@localhost>"),
+  STORAGE_DRIVER: z.enum(["local"]).default("local"),
+  STORAGE_LOCAL_PATH: z.string().min(1).default("data/uploads"),
+  AVATAR_MAX_UPLOAD_BYTES: z.coerce.number().int().min(65_536).max(5_242_880).default(1_048_576),
   GITHUB_CLIENT_ID: optionalString,
   GITHUB_CLIENT_SECRET: optionalString,
 });
