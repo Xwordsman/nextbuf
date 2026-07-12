@@ -1,7 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const mailpitUrl = process.env.MAILPIT_API_URL ?? "http://127.0.0.1:8025";
-const email = `identity-e2e-${Date.now()}@nextbuf.test`;
 const oldPassword = "old-password-for-e2e";
 const newPassword = "new-password-for-e2e";
 
@@ -43,7 +42,7 @@ function firstUrl(message: MailpitMessageDetail): string {
   return match[0];
 }
 
-async function signIn(page: Page, password: string) {
+async function signIn(page: Page, email: string, password: string) {
   await page.goto("/auth/sign-in");
   await page.getByLabel("邮箱").fill(email);
   await page.getByLabel("密码", { exact: true }).fill(password);
@@ -54,7 +53,8 @@ test.describe.serial("identity authentication", () => {
   test("registers, verifies, manages sessions and resets the password", async ({
     browser,
     page,
-  }) => {
+  }, testInfo) => {
+    const email = `identity-e2e-${Date.now()}-${testInfo.retry}@nextbuf.test`;
     await page.goto("/account/security");
     await expect(page).toHaveURL(/\/auth\/sign-in\?next=(?:%2F|\/)account(?:%2F|\/)security$/i);
 
@@ -71,7 +71,7 @@ test.describe.serial("identity authentication", () => {
     await page.goto(firstUrl(verification));
     await expect(page.getByRole("heading", { name: "邮箱已验证" })).toBeVisible();
 
-    await signIn(page, oldPassword);
+    await signIn(page, email, oldPassword);
     await expect(page).toHaveURL("/");
     await expect(page.getByRole("button", { name: "账户菜单" })).toBeVisible();
 
@@ -80,7 +80,7 @@ test.describe.serial("identity authentication", () => {
       locale: "zh-CN",
     });
     const secondPage = await secondContext.newPage();
-    await signIn(secondPage, oldPassword);
+    await signIn(secondPage, email, oldPassword);
     await expect(secondPage).toHaveURL("/");
     await secondPage.goto("/account/security");
     await expect(secondPage.getByRole("heading", { name: "账号安全" })).toBeVisible();
@@ -103,7 +103,7 @@ test.describe.serial("identity authentication", () => {
     await expect(page.getByRole("button", { name: "账户菜单" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "登录" }).first()).toBeVisible();
 
-    await signIn(secondPage, oldPassword);
+    await signIn(secondPage, email, oldPassword);
     await expect(secondPage.getByText("邮箱或密码错误，或者邮箱尚未完成验证。")).toBeVisible();
     await secondPage.getByLabel("密码", { exact: true }).fill(newPassword);
     await secondPage.getByRole("button", { name: "登录", exact: true }).click();
@@ -111,7 +111,7 @@ test.describe.serial("identity authentication", () => {
 
     await secondPage.goto("/account/security");
     await expect(secondPage.locator(".session-item")).toHaveCount(1);
-    await expect(secondPage.getByText("当前设备")).toBeVisible();
+    await expect(secondPage.getByText("当前设备", { exact: true })).toBeVisible();
     await secondContext.close();
   });
 });
