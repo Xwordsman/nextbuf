@@ -56,4 +56,12 @@ Topic 可以保存 `first_post_id` 作为显式引用，也可以通过唯一的
 
 - [领域模型](../03-domain-model.md)
 - [详细开发计划](../09-detailed-development-plan.md)
+
+## `v0.6.0` 实现记录
+
+- Topic、position=1 Post 和 version=1 Revision 在同一 PostgreSQL 事务中创建。
+- Topic 使用 UUID 内部主键和递增数字公开编号；公开编号不作为授权依据，也不因软删除回收。
+- 草稿、发布、关闭、隐藏和删除属于 Topic 状态；首帖只同步当前主题级可见状态，避免覆盖未来回复自身的删除语义。
+- 标题或正文实际变化才创建新 Revision；节点移动、置顶、精华、关闭和隐藏进入社区审计，不制造伪内容版本。
+- 普通回复、Markdown 和附件尚未实现，继续由 `v0.7.0` 按本 ADR 的统一 Post 模型扩展。
 - [决策台账](../08-decisions-and-open-questions.md)

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 import type {
   CommunityTopicStatus,
@@ -32,13 +33,15 @@ export function TopicList({ topics }: { topics: CommunityTopicView[] }) {
       {topics.map((topic) => (
         <article className="topic-item" id={`topic-${topic.id}`} key={topic.id}>
           <Avatar className="size-9">
-            <AvatarImage src={topic.authorAvatarUrl} alt={topic.authorName} />
+            <AvatarImage src={topic.authorAvatarUrl ?? undefined} alt={topic.authorName} />
             <AvatarFallback>{topic.authorInitials}</AvatarFallback>
           </Avatar>
 
           <div className="topic-main">
             <div className="topic-title-row">
-              <h2 className="topic-title">{topic.title}</h2>
+              <h2 className="topic-title">
+                <Link href={`/topics/${topic.id}`}>{topic.title}</Link>
+              </h2>
               {topic.statuses.length > 0 ? (
                 <div className="topic-flags" aria-label="话题状态">
                   {topic.statuses.map((status) => (
@@ -51,15 +54,17 @@ export function TopicList({ topics }: { topics: CommunityTopicView[] }) {
             </div>
 
             <div className="topic-subline">
-              <span className="topic-node">
+              <Link className="topic-node" href={`/nodes/${topic.nodeId}`}>
                 <span
                   className="node-dot"
                   style={{ backgroundColor: topic.nodeColor }}
                   aria-hidden="true"
                 />
                 {topic.nodeName}
-              </span>
-              <span className="topic-author">{topic.authorName}</span>
+              </Link>
+              <Link className="topic-author" href={`/u/${topic.authorUsername}`}>
+                {topic.authorName}
+              </Link>
               <span className="meta-separator" aria-hidden="true" />
               <span>{topic.createdLabel}</span>
               <span className="meta-separator" aria-hidden="true" />

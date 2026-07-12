@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Bot,
   Code2,
@@ -27,10 +28,9 @@ const iconMap: Record<CommunityNodeIcon, LucideIcon> = {
 type SideNavigationProps = {
   nodes: CommunityNodeView[];
   activeNode: string;
-  onNodeChange: (nodeId: string) => void;
 };
 
-export function SideNavigation({ nodes, activeNode, onNodeChange }: SideNavigationProps) {
+export function SideNavigation({ nodes, activeNode }: SideNavigationProps) {
   return (
     <Panel className="side-navigation" aria-label="社区节点">
       <div className="nav-label">浏览</div>
@@ -39,12 +39,11 @@ export function SideNavigation({ nodes, activeNode, onNodeChange }: SideNavigati
           const Icon = iconMap[node.icon];
           const active = node.id === activeNode;
           return (
-            <button
-              type="button"
+            <Link
               key={node.id}
+              href={node.id === "all" ? "/" : `/nodes/${node.id}`}
               className={cn("node-navigation-item", active && "is-active")}
               aria-current={active ? "page" : undefined}
-              onClick={() => onNodeChange(node.id)}
             >
               {node.id === "all" ? (
                 <Icon aria-hidden="true" />
@@ -57,7 +56,7 @@ export function SideNavigation({ nodes, activeNode, onNodeChange }: SideNavigati
               )}
               <span>{node.name}</span>
               <span className="node-count">{node.topicCount}</span>
-            </button>
+            </Link>
           );
         })}
       </nav>

@@ -86,6 +86,34 @@ test.describe.serial("identity authentication", () => {
     await expect(page.getByLabel("@username")).toHaveValue(username);
     await expect(page.getByText(`UID`, { exact: false }).first()).toBeVisible();
 
+    const topicTitle = `E2E 用户主题 ${Date.now()}`;
+    await page.goto("/topics/new");
+    await page.getByLabel("标题").fill(topicTitle);
+    await page.getByLabel("节点").selectOption("site");
+    await page
+      .getByLabel("正文")
+      .fill("这是通过真实浏览器发布的主题正文，用于验证创建、编辑、软删除和恢复流程。");
+    await page.getByRole("button", { name: "预览" }).click();
+    await expect(page.getByText("正文预览", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "发布主题" }).click();
+    await expect(page).toHaveURL(/\/topics\/\d+$/);
+    await expect(page.getByRole("heading", { name: topicTitle })).toBeVisible();
+    await page.getByRole("link", { name: "编辑主题" }).click();
+    await page
+      .getByLabel("正文")
+      .fill("这是修改后的主题正文，用于确认修订版本会被持久化并可以继续查看。");
+    await page.getByRole("button", { name: "保存修改" }).click();
+    await expect(page).toHaveURL(/\/topics\/\d+$/);
+    await page.goto("/account/topics");
+    await expect(page.getByRole("link", { name: topicTitle })).toBeVisible();
+    await page.getByRole("link", { name: "编辑", exact: true }).click();
+    await page.getByRole("button", { name: "删除主题" }).click();
+    await expect(page).toHaveURL("/account/topics");
+    await expect(page.getByText("已删除", { exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "编辑", exact: true }).click();
+    await page.getByRole("button", { name: "恢复主题" }).click();
+    await expect(page).toHaveURL(/\/topics\/\d+\/edit$/);
+
     const secondContext = await browser.newContext({
       baseURL: "http://127.0.0.1:3000",
       locale: "zh-CN",

@@ -2,11 +2,12 @@
 
 Before changing code, read `docs/14-project-status-handoff.md`, the current milestone in `docs/09-detailed-development-plan.md`, and the relevant architecture document.
 
-- Current completed milestone: `v0.5.0`; develop only `v0.6.0` next.
+- Current completed milestone: `v0.6.0`; develop only `v0.7.0` next.
 - Better Auth owns authentication. Do not replace its password, session, verification, OAuth, or Cookie behavior without a superseding ADR and migration plan.
-- The current community topics, nodes, overview, hot topics, and online members are a read-only demo ViewModel. Do not turn them into fake persistence.
+- Nodes, topics, first posts, revisions and member/topic overview counts are real PostgreSQL data. Ordinary replies and online-member tracking are not implemented; keep their counters at explicit zero/empty states instead of inventing demo activity.
 - Real identity includes immutable UID, `@username`, permanent aliases, profile, local avatars, privacy settings, public member pages, and cancellable deletion requests. Follow ADR-0009; `TL0` is only an initial display value, while persisted trust calculations remain in `v0.10.0`.
-- `v0.6.0` may replace demo nodes/topics with real Node, Topic, first Post, and Revision persistence. Do not implement ordinary replies, likes, bookmarks, notifications, search ranking, governance, or trust calculations early.
+- Real community data includes Node, Topic, position=1 Post, revisions, role assignments and audit events. Public topic URLs use immutable numeric topic numbers; topic and first Post are created in one transaction.
+- `v0.7.0` adds ordinary replies, the Markdown editor and attachments. Do not implement likes, bookmarks, notifications, search ranking, governance workflows or trust calculations early.
 - Preserve the approved layout contract: max width 1380px, desktop columns 230px and 300px, and 16px gaps.
 - Use Node.js 24, pnpm, Next.js 16.2.10, TypeScript strict mode, and `src/app`.
 - Do not create separate top-level frontend/backend projects.

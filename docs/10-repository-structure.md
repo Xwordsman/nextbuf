@@ -24,7 +24,9 @@ NextBuf/
 │  │  ├─ api/                 Route Handlers
 │  │  ├─ layout.tsx
 │  │  ├─ auth/                 登录、注册、验证和重置页面
-│  │  ├─ account/security/     登录设备与会话管理
+│  │  ├─ account/              资料、安全和我的主题
+│  │  ├─ nodes/                节点目录和节点主题流
+│  │  ├─ topics/               主题详情、创建和编辑
 │  │  ├─ error.tsx
 │  │  └─ not-found.tsx
 │  ├─ components/
@@ -214,7 +216,9 @@ src/app/
 ├─ (site)/
 │  ├─ page.tsx                 首页
 │  ├─ nodes/[slug]/page.tsx    节点页
-│  ├─ topics/[id]/page.tsx     主题页
+│  ├─ topics/[number]/page.tsx 主题页
+│  ├─ topics/new/page.tsx      创建主题
+│  ├─ topics/[number]/edit/    编辑、管理和恢复
 │  └─ members/[username]/      用户公开页
 ├─ account/                    登录用户账号中心
 ├─ auth/                       登录、注册、验证和重置页面
@@ -222,6 +226,8 @@ src/app/
 └─ api/
    ├─ auth/[...all]/           Better Auth 处理入口
    ├─ identity/register/       NextBuf 注册策略边界
+   ├─ community/topics/        主题创建和状态写入
+   ├─ community/nodes/         受权节点配置写入
    ├─ internal/               站内专用接口，不视为公开合同
    └─ v1/                     V2.0.0 后的公开 API
 ```

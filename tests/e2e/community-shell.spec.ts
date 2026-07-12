@@ -27,7 +27,7 @@ async function openHome(page: Page) {
     );
   }
   await expect(shell).toBeVisible();
-  await expect(page.getByText("共 9 个话题", { exact: true })).toBeVisible();
+  await expect(page.locator(".topic-count")).toContainText(/共 \d+ 个话题/);
 }
 
 test.describe("community shell", () => {
@@ -70,13 +70,14 @@ test.describe("community shell", () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await openHome(page);
 
-    await page.getByLabel("搜索话题、节点或作者").fill("DNS");
+    await page.getByLabel("搜索话题、节点或作者").fill("E2E DNS");
     await expect(page.getByText("共 1 个话题", { exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /域名转入后 DNS 生效慢/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /E2E DNS 解析排查主题/ })).toBeVisible();
 
     await page.getByLabel("搜索话题、节点或作者").fill("");
-    await page.getByRole("button", { name: /人工智能/ }).click();
-    await expect(page.getByText("共 2 个话题", { exact: true })).toBeVisible();
+    await page.getByRole("link", { name: /人工智能/ }).click();
+    await expect(page).toHaveURL(/\/nodes\/ai$/);
+    await expect(page.getByText("共 1 个话题", { exact: true })).toBeVisible();
   });
 
   test("uses a two-column layout and account panel on tablet", async ({ page }, testInfo) => {
@@ -101,7 +102,7 @@ test.describe("community shell", () => {
     await openHome(page);
 
     await page.getByRole("button", { name: "搜索" }).click();
-    await page.locator("#mobile-search").fill("DNS");
+    await page.locator("#mobile-search").fill("E2E DNS");
     await expect(page.getByText("共 1 个话题", { exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "登录" }).first()).toBeVisible();
 

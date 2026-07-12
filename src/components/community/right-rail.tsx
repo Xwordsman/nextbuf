@@ -13,13 +13,11 @@ import { Panel } from "@/components/ui/panel";
 type RightRailProps = {
   account: CurrentAccountView | null;
   overview: Array<{ label: string; value: string }>;
-  topics: CommunityTopicView[];
+  hotTopics: CommunityTopicView[];
   onlineMembers: Array<Pick<CommunityUserView, "name" | "avatarUrl" | "initials">>;
 };
 
-export function RightRail({ account, overview, topics, onlineMembers }: RightRailProps) {
-  const hotTopics = topics.filter((topic) => topic.statuses.includes("hot")).slice(0, 3);
-
+export function RightRail({ account, overview, hotTopics, onlineMembers }: RightRailProps) {
   return (
     <div className="right-rail-content">
       <Panel className="rail-panel">
@@ -84,19 +82,20 @@ export function RightRail({ account, overview, topics, onlineMembers }: RightRai
         </div>
         <div className="hot-topic-list">
           {hotTopics.map((topic, index) => (
-            <a href={`#topic-${topic.id}`} key={topic.id}>
+            <Link href={`/topics/${topic.id}`} key={topic.id}>
               <span>{index + 1}</span>
               <strong>{topic.title}</strong>
               <ArrowUpRight aria-hidden="true" />
-            </a>
+            </Link>
           ))}
+          {hotTopics.length === 0 ? <p className="rail-empty">暂无热议话题</p> : null}
         </div>
       </Panel>
 
       <Panel className="rail-panel">
         <div className="panel-heading">
           <h2>在线成员</h2>
-          <span>96 在线</span>
+          <span>{onlineMembers.length} 在线</span>
         </div>
         <div className="online-members" aria-label="在线成员">
           {onlineMembers.map((member) => (
@@ -105,6 +104,7 @@ export function RightRail({ account, overview, topics, onlineMembers }: RightRai
               <AvatarFallback>{member.initials}</AvatarFallback>
             </Avatar>
           ))}
+          {onlineMembers.length === 0 ? <p className="rail-empty">暂无在线成员</p> : null}
         </div>
       </Panel>
     </div>

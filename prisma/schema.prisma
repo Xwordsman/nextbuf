@@ -8,27 +8,160 @@ datasource db {
 }
 
 model User {
-  id                  String          @id @default(uuid()) @db.Uuid
-  uid                 Int             @unique(map: "users_uid_key") @default(autoincrement())
-  username            String          @unique(map: "users_username_key") @db.VarChar(24)
-  name                String          @db.VarChar(80)
-  email               String          @unique(map: "users_email_key") @db.VarChar(320)
-  emailVerified       Boolean         @default(false) @map("email_verified")
-  image               String?         @db.Text
-  status              String          @default("pending") @db.VarChar(32)
-  activatedAt         DateTime?       @map("activated_at") @db.Timestamptz(6)
-  usernameChangedAt   DateTime?       @map("username_changed_at") @db.Timestamptz(6)
-  deletionRequestedAt DateTime?       @map("deletion_requested_at") @db.Timestamptz(6)
-  deletionScheduledAt DateTime?       @map("deletion_scheduled_at") @db.Timestamptz(6)
-  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sessions            Session[]
-  accounts            Account[]
-  profile             Profile?
-  usernameAliases     UsernameAlias[]
+  id                    String                    @id @default(uuid()) @db.Uuid
+  uid                   Int                       @unique(map: "users_uid_key") @default(autoincrement())
+  username              String                    @unique(map: "users_username_key") @db.VarChar(24)
+  name                  String                    @db.VarChar(80)
+  email                 String                    @unique(map: "users_email_key") @db.VarChar(320)
+  emailVerified         Boolean                   @default(false) @map("email_verified")
+  image                 String?                   @db.Text
+  status                String                    @default("pending") @db.VarChar(32)
+  activatedAt           DateTime?                 @map("activated_at") @db.Timestamptz(6)
+  usernameChangedAt     DateTime?                 @map("username_changed_at") @db.Timestamptz(6)
+  deletionRequestedAt   DateTime?                 @map("deletion_requested_at") @db.Timestamptz(6)
+  deletionScheduledAt   DateTime?                 @map("deletion_scheduled_at") @db.Timestamptz(6)
+  createdAt             DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sessions              Session[]
+  accounts              Account[]
+  profile               Profile?
+  usernameAliases       UsernameAlias[]
+  communityTopics       CommunityTopic[]          @relation("CommunityTopicAuthor")
+  communityPosts        CommunityPost[]           @relation("CommunityPostAuthor")
+  communityRevisions    CommunityPostRevision[]   @relation("CommunityRevisionEditor")
+  communityRoles        CommunityRoleAssignment[] @relation("CommunityRoleUser")
+  grantedCommunityRoles CommunityRoleAssignment[] @relation("CommunityRoleGrantor")
+  communityAuditEvents  CommunityAuditEvent[]     @relation("CommunityAuditActor")
 
   @@index([status], map: "users_status_idx")
   @@map("users")
+}
+
+model CommunityNode {
+  id              String                    @id @default(uuid()) @db.Uuid
+  slug            String                    @unique(map: "community_nodes_slug_key") @db.VarChar(64)
+  name            String                    @db.VarChar(80)
+  description     String                    @default("") @db.VarChar(500)
+  color           String                    @db.Char(7)
+  icon            String                    @db.VarChar(32)
+  sortOrder       Int                       @default(0) @map("sort_order")
+  visibility      String                    @default("public") @db.VarChar(32)
+  archivedAt      DateTime?                 @map("archived_at") @db.Timestamptz(6)
+  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  topics          CommunityTopic[]
+  roleAssignments CommunityRoleAssignment[]
+  auditEvents     CommunityAuditEvent[]
+
+  @@index([visibility, archivedAt, sortOrder], map: "community_nodes_browse_idx")
+  @@map("community_nodes")
+}
+
+model CommunityTopic {
+  id                String                @id @default(uuid()) @db.Uuid
+  number            Int                   @unique(map: "community_topics_number_key") @default(autoincrement())
+  nodeId            String                @map("node_id") @db.Uuid
+  authorId          String                @map("author_id") @db.Uuid
+  title             String                @db.VarChar(120)
+  status            String                @default("draft") @db.VarChar(32)
+  deletedFromStatus String?               @map("deleted_from_status") @db.VarChar(32)
+  isPinned          Boolean               @default(false) @map("is_pinned")
+  isEssence         Boolean               @default(false) @map("is_essence")
+  replyCount        Int                   @default(0) @map("reply_count")
+  viewCount         Int                   @default(0) @map("view_count")
+  bookmarkCount     Int                   @default(0) @map("bookmark_count")
+  lastActivityAt    DateTime              @default(now()) @map("last_activity_at") @db.Timestamptz(6)
+  publishedAt       DateTime?             @map("published_at") @db.Timestamptz(6)
+  editedAt          DateTime?             @map("edited_at") @db.Timestamptz(6)
+  closedAt          DateTime?             @map("closed_at") @db.Timestamptz(6)
+  deletedAt         DateTime?             @map("deleted_at") @db.Timestamptz(6)
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  node              CommunityNode         @relation(fields: [nodeId], references: [id], onDelete: Restrict)
+  author            User                  @relation("CommunityTopicAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  posts             CommunityPost[]
+  auditEvents       CommunityAuditEvent[]
+
+  @@index([status, isPinned, lastActivityAt, number], map: "community_topics_feed_idx")
+  @@index([nodeId, status, isPinned, lastActivityAt, number], map: "community_topics_node_feed_idx")
+  @@index([authorId, status, updatedAt], map: "community_topics_author_status_idx")
+  @@map("community_topics")
+}
+
+model CommunityPost {
+  id            String                  @id @default(uuid()) @db.Uuid
+  topicId       String                  @map("topic_id") @db.Uuid
+  authorId      String                  @map("author_id") @db.Uuid
+  position      Int
+  status        String                  @default("draft") @db.VarChar(32)
+  bodySource    String                  @map("body_source") @db.Text
+  revisionCount Int                     @default(1) @map("revision_count")
+  editedAt      DateTime?               @map("edited_at") @db.Timestamptz(6)
+  deletedAt     DateTime?               @map("deleted_at") @db.Timestamptz(6)
+  createdAt     DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  topic         CommunityTopic          @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author        User                    @relation("CommunityPostAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  revisions     CommunityPostRevision[]
+
+  @@unique([topicId, position], map: "community_posts_topic_position_key")
+  @@index([authorId, createdAt], map: "community_posts_author_created_idx")
+  @@index([topicId, status], map: "community_posts_topic_status_idx")
+  @@map("community_posts")
+}
+
+model CommunityPostRevision {
+  id         String        @id @default(uuid()) @db.Uuid
+  postId     String        @map("post_id") @db.Uuid
+  editorId   String        @map("editor_id") @db.Uuid
+  version    Int
+  title      String        @db.VarChar(120)
+  bodySource String        @map("body_source") @db.Text
+  source     String        @db.VarChar(32)
+  reason     String?       @db.VarChar(500)
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  post       CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  editor     User          @relation("CommunityRevisionEditor", fields: [editorId], references: [id], onDelete: Restrict)
+
+  @@unique([postId, version], map: "community_post_revisions_post_version_key")
+  @@index([editorId, createdAt], map: "community_post_revisions_editor_created_idx")
+  @@map("community_post_revisions")
+}
+
+model CommunityRoleAssignment {
+  id          String         @id @default(uuid()) @db.Uuid
+  userId      String         @map("user_id") @db.Uuid
+  role        String         @db.VarChar(32)
+  nodeId      String?        @map("node_id") @db.Uuid
+  scopeKey    String         @map("scope_key") @db.VarChar(64)
+  grantedById String?        @map("granted_by_id") @db.Uuid
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  user        User           @relation("CommunityRoleUser", fields: [userId], references: [id], onDelete: Cascade)
+  node        CommunityNode? @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  grantedBy   User?          @relation("CommunityRoleGrantor", fields: [grantedById], references: [id], onDelete: SetNull)
+
+  @@unique([userId, role, scopeKey], map: "community_role_assignments_user_role_scope_key")
+  @@index([role, scopeKey], map: "community_role_assignments_role_scope_idx")
+  @@map("community_role_assignments")
+}
+
+model CommunityAuditEvent {
+  id        String          @id @default(uuid()) @db.Uuid
+  actorId   String?         @map("actor_id") @db.Uuid
+  action    String          @db.VarChar(80)
+  topicId   String?         @map("topic_id") @db.Uuid
+  nodeId    String?         @map("node_id") @db.Uuid
+  requestId String?         @map("request_id") @db.VarChar(64)
+  metadata  Json?           @db.JsonB
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor     User?           @relation("CommunityAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  topic     CommunityTopic? @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  node      CommunityNode?  @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+
+  @@index([topicId, createdAt], map: "community_audit_topic_created_idx")
+  @@index([actorId, createdAt], map: "community_audit_actor_created_idx")
+  @@index([action, createdAt], map: "community_audit_action_created_idx")
+  @@map("community_audit_events")
 }
 
 model Profile {

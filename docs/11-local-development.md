@@ -1,6 +1,6 @@
 # 本地开发手册
 
-本文定义 NextBuf 开发环境的实际命令和工作流。`v0.5.0` 已实现 PostgreSQL、Redis、Mailpit、Better Auth、SMTP Worker、真实身份/资料集成测试、同时运行 standalone Web 与 Worker 的 Playwright E2E，以及本地头像存储；S3 对象存储仍属于后续版本。
+本文定义 NextBuf 开发环境的实际命令和工作流。`v0.6.0` 已实现 PostgreSQL、Redis、Mailpit、Better Auth、SMTP Worker、真实身份/资料/社区集成测试、同时运行 standalone Web 与 Worker 的 Playwright E2E、本地头像存储和真实节点/主题；普通回复、Markdown、通用附件和 S3 仍属于后续版本。
 
 ## 1. 前置条件
 
@@ -208,7 +208,7 @@ pnpm test:e2e
 
 Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalone/server.js` 和已构建 Worker。测试服务继承当前进程的完整环境配置，显式绑定 `127.0.0.1:3000`，并以 `/api/health/live` 作为启动探针，避免 CI Runner 自带的 `HOSTNAME` 改变 standalone 监听地址。`build:web` 会自动整理 `.next/static` 与 `public`，不能把启动命令改回不支持 standalone 的 `next start`。
 
-`v0.5.0` E2E 依赖 PostgreSQL、Redis、Mailpit、Web 和 Worker，覆盖：
+`v0.6.0` E2E 依赖 PostgreSQL、Redis、Mailpit、Web 和 Worker，覆盖：
 
 - 1440px 下 1380px 最大宽度、230px/300px 侧栏和 16px 间距。
 - 1024px 双栏和右侧面板弹窗。
@@ -217,6 +217,7 @@ Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalon
 - 桌面/平板/手机完整截图和 serious/critical axe 检查。
 - 注册、Mailpit 验证链接、登录、两设备会话、找回密码、旧会话撤销和新密码登录。
 - 注册用户名、用户菜单中的 `@username`/UID/TL0、公开用户页和账号中心保护。
+- 真实社区首页、节点路由、主题搜索过滤、发布、纯文本预览、编辑修订、软删除、恢复和“我的主题”。
 
 身份/资料集成测试还会验证 UID/Profile 迁移、未激活资料不可公开、用户名历史别名与冷却、头像媒体写入/替换、隐私设置和 14 天注销申请幂等。头像测试文件写入 `STORAGE_LOCAL_PATH`，测试清理与工作区忽略规则必须保持一致。
 
@@ -253,7 +254,7 @@ Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalon
 
 ## 10. 开发环境完成标准
 
-`v0.5.0` 后，新贡献者应能够只阅读本手册完成：
+`v0.6.0` 后，新贡献者应能够只阅读本手册完成：
 
 1. 安装依赖。
 2. 启动 PostgreSQL、Redis 与 Mailpit。
@@ -264,5 +265,6 @@ Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalon
 7. 运行单元、真实服务集成测试和 standalone E2E。
 8. 在 Mailpit 中完成邮箱验证和密码重置，并创建邀请制注册邀请码。
 9. 注册带用户名的账号，修改资料与隐私，上传头像并访问公开用户页。
+10. 发布草稿或主题，浏览节点流，编辑主题并验证修订、软删除和恢复。
 
 任何命令发生变化时，代码、CI、`.env.example` 和本文必须在同一个变更中更新。

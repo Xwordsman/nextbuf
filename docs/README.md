@@ -2,7 +2,7 @@
 
 本目录是 NextBuf 的产品、架构和工程基线。它用于回答三个问题：我们要做什么、为什么这样设计、开发和发布时必须遵守什么。
 
-> 当前阶段：`v0.5.0` 用户资料与账号中心已完成，下一阶段为 `v0.6.0` 节点与主题。`UI/index.html` 仅是历史视觉参考，运行页面以 `src/app` 和 `src/components` 为准。
+> 当前阶段：`v0.6.0` 节点与主题已完成，下一阶段为 `v0.7.0` 回复、编辑器和附件。`UI/index.html` 仅是历史视觉参考，运行页面以 `src/app` 和 `src/components` 为准。
 
 ## 项目定位
 
@@ -48,7 +48,7 @@ NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开
 4. [详细开发计划](./09-detailed-development-plan.md)：只实现当前版本范围。
 5. 开发前阅读[本地开发手册](./11-local-development.md)，部署前阅读[配置参考](./12-configuration-reference.md)和[运行手册](./13-installation-operations-runbook.md)。
 
-当前已有可运行的 Next.js Web、Worker、CLI、开发/测试 Compose、身份认证、账号资料和本地头像链路，但仍没有生产 Dockerfile、生产 Compose 或正式发布包。文档中标注为未来合同的命令必须在对应版本实现后才能使用。
+当前已有可运行的 Next.js Web、Worker、CLI、开发/测试 Compose、身份认证、账号资料、本地头像、真实节点和主题链路，但仍没有生产 Dockerfile、生产 Compose 或正式发布包。文档中标注为未来合同的命令必须在对应版本实现后才能使用。
 
 ## 决策状态
 

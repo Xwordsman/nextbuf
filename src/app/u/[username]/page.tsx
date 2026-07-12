@@ -64,7 +64,7 @@ export default async function UserPage({ params }: UserPageProps) {
               <div className="profile-stats">
                 <Panel>
                   <MessageSquareText />
-                  <strong>0</strong>
+                  <strong>{user._count.communityTopics}</strong>
                   <span>主题</span>
                 </Panel>
                 <Panel>

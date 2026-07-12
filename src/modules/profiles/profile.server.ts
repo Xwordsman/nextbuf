@@ -20,13 +20,27 @@ export async function resolvePublicProfile(handle: string) {
   const username = handle.toLowerCase();
   const user = await prisma.user.findUnique({
     where: { username, status: "active" },
-    include: { profile: true },
+    include: {
+      profile: true,
+      _count: {
+        select: { communityTopics: { where: { status: { in: ["published", "closed"] } } } },
+      },
+    },
   });
   if (user) return { user, redirected: false } as const;
 
   const alias = await prisma.usernameAlias.findUnique({
     where: { username },
-    include: { user: { include: { profile: true } } },
+    include: {
+      user: {
+        include: {
+          profile: true,
+          _count: {
+            select: { communityTopics: { where: { status: { in: ["published", "closed"] } } } },
+          },
+        },
+      },
+    },
   });
   return alias?.user.status === "active" ? ({ user: alias.user, redirected: true } as const) : null;
 }

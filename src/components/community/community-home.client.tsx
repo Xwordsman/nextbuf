@@ -1,8 +1,14 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
-import type { CommunityHomeView } from "@/modules/community/contracts/home-view";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useMemo } from "react";
+import type {
+  CommunityFeedFilter,
+  CommunityHomeView,
+  CommunityNodeView,
+} from "@/modules/community/contracts/home-view";
 import type { CurrentAccountView } from "@/modules/identity/session.server";
 import { useCommunityUi } from "@/components/community/community-ui-provider.client";
 import { RightRail } from "@/components/community/right-rail";
@@ -12,47 +18,69 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type TopicFilter = "latest" | "hot" | "essence";
-
 export function CommunityHome({
   view,
   account,
+  activeNode,
+  filter,
 }: {
   view: CommunityHomeView;
   account: CurrentAccountView | null;
+  activeNode: CommunityNodeView | null;
+  filter: CommunityFeedFilter;
 }) {
   const { query, railOpen, setRailOpen } = useCommunityUi();
-  const [activeNode, setActiveNode] = useState("all");
-  const [filter, setFilter] = useState<TopicFilter>("latest");
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   const visibleTopics = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN");
     return view.topics.filter((topic) => {
-      const matchesNode = activeNode === "all" || topic.nodeId === activeNode;
-      const matchesFilter =
-        filter === "latest" ||
-        (filter === "hot" && topic.statuses.includes("hot")) ||
-        (filter === "essence" && topic.statuses.includes("essence"));
       const matchesQuery =
         !normalizedQuery ||
         [topic.title, topic.nodeName, topic.authorName].some((value) =>
           value.toLocaleLowerCase("zh-CN").includes(normalizedQuery),
         );
-      return matchesNode && matchesFilter && matchesQuery;
+      return matchesQuery;
     });
-  }, [activeNode, filter, query, view.topics]);
+  }, [query, view.topics]);
+
+  const feedHref = (nextFilter: CommunityFeedFilter, cursor?: string, direction?: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextFilter === "latest") params.delete("filter");
+    else params.set("filter", nextFilter);
+    if (cursor) params.set("cursor", cursor);
+    else params.delete("cursor");
+    if (direction) params.set("direction", direction);
+    else params.delete("direction");
+    const queryString = params.toString();
+    return queryString ? `${pathname}?${queryString}` : pathname;
+  };
 
   return (
     <main className="community-shell" data-testid="community-shell">
       <aside className="left-column">
-        <SideNavigation nodes={view.nodes} activeNode={activeNode} onNodeChange={setActiveNode} />
+        <SideNavigation nodes={view.nodes} activeNode={activeNode?.id ?? "all"} />
       </aside>
 
       <section className="main-column" aria-labelledby="topic-feed-title">
-        <Tabs value={filter} onValueChange={(value) => setFilter(value as TopicFilter)}>
+        {activeNode ? (
+          <header className="node-feed-header">
+            <span className="node-dot" style={{ backgroundColor: activeNode.color }} />
+            <div>
+              <h1>{activeNode.name}</h1>
+              <p>{activeNode.description}</p>
+            </div>
+          </header>
+        ) : null}
+        <Tabs
+          value={filter}
+          onValueChange={(value) => router.push(feedHref(value as CommunityFeedFilter))}
+        >
           <div className="topic-toolbar">
             <div>
-              <h1 id="topic-feed-title" className="sr-only">
+              <h1 id="topic-feed-title" className={activeNode ? "sr-only" : "sr-only"}>
                 社区话题
               </h1>
               <TabsList aria-label="话题筛选">
@@ -62,30 +90,44 @@ export function CommunityHome({
               </TabsList>
             </div>
             <span className="topic-count" aria-live="polite">
-              共 {visibleTopics.length} 个话题
+              共 {query.trim() ? visibleTopics.length : view.topicTotal} 个话题
             </span>
           </div>
 
-          {(["latest", "hot", "essence"] as const).map((value) => (
-            <TabsContent key={value} value={value} forceMount hidden={filter !== value}>
-              {filter === value ? <TopicList topics={visibleTopics} /> : null}
-            </TabsContent>
-          ))}
+          <TabsContent value={filter}>
+            <TopicList topics={visibleTopics} />
+          </TabsContent>
         </Tabs>
 
         <nav className="pagination" aria-label="话题分页">
-          <Button type="button" variant="outline" size="icon" disabled aria-label="上一页">
-            <ChevronLeft />
-          </Button>
+          {view.pagination.previousCursor ? (
+            <Button asChild variant="outline" size="icon">
+              <Link
+                href={feedHref(filter, view.pagination.previousCursor, "previous")}
+                aria-label="上一页"
+              >
+                <ChevronLeft />
+              </Link>
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" size="icon" disabled aria-label="上一页">
+              <ChevronLeft />
+            </Button>
+          )}
           <Button type="button" size="sm" aria-current="page">
             1
           </Button>
-          <Button type="button" variant="outline" size="sm" disabled>
-            2
-          </Button>
-          <Button type="button" variant="outline" size="icon" disabled aria-label="下一页">
-            <ChevronRight />
-          </Button>
+          {view.pagination.nextCursor ? (
+            <Button asChild variant="outline" size="icon">
+              <Link href={feedHref(filter, view.pagination.nextCursor, "next")} aria-label="下一页">
+                <ChevronRight />
+              </Link>
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" size="icon" disabled aria-label="下一页">
+              <ChevronRight />
+            </Button>
+          )}
         </nav>
       </section>
 
@@ -93,7 +135,7 @@ export function CommunityHome({
         <RightRail
           account={account}
           overview={view.overview}
-          topics={view.topics}
+          hotTopics={view.hotTopics}
           onlineMembers={view.onlineMembers}
         />
       </aside>
@@ -107,7 +149,7 @@ export function CommunityHome({
             <RightRail
               account={account}
               overview={view.overview}
-              topics={view.topics}
+              hotTopics={view.hotTopics}
               onlineMembers={view.onlineMembers}
             />
           </div>

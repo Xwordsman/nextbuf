@@ -95,7 +95,7 @@ export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
             </Button>
           </Tooltip>
 
-          {pathname === "/" ? (
+          {pathname === "/" || pathname.startsWith("/nodes/") ? (
             <Tooltip content="我的面板">
               <Button
                 className="mobile-rail-trigger"
@@ -121,7 +121,7 @@ export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
               </Tooltip>
 
               <Button asChild>
-                <Link href="/status/unavailable?from=publish" aria-label="发帖">
+                <Link href="/topics/new" aria-label="发帖">
                   <FileText />
                   <span className="publish-label">发帖</span>
                 </Link>
@@ -171,7 +171,7 @@ export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                      <Link href="/status/unavailable?from=topics">
+                      <Link href="/account/topics">
                         <FileText /> 我的话题
                       </Link>
                     </DropdownMenuItem>

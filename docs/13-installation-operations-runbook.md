@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 面向部署者的目标操作流程，包括 Docker Compose、宝塔、非 Docker、升级、备份、恢复和故障排查。
 
-> 当前实现状态：截至 `v0.5.0`，已实现 Node 形式的 `web`、`worker`、`migrate`、`setup`、`doctor`、`invite` 入口、Next.js standalone Web、Better Auth、SMTP Worker、本地头像存储和 PostgreSQL/Redis/Mailpit 开发/测试 Compose，但尚无生产 NextBuf 镜像、生产四容器 Compose 或 `nextbufctl`。本文仍是 `v0.12.0` 必须完整实现和验证的运维合同；Mailpit 不进入生产拓扑。
+> 当前实现状态：截至 `v0.6.0`，已实现 Node 形式的 `web`、`worker`、`migrate`、`setup`、`doctor`、`invite` 入口、Next.js standalone Web、Better Auth、SMTP Worker、本地头像、真实节点/主题和 PostgreSQL/Redis/Mailpit 开发/测试 Compose，但尚无生产 NextBuf 镜像、生产四容器 Compose 或 `nextbufctl`。本文仍是 `v0.12.0` 必须完整实现和验证的运维合同；Mailpit 不进入生产拓扑。
 
 ## 1. 发布包合同
 

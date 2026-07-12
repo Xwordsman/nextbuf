@@ -4,6 +4,7 @@ export type CommunityNodeIcon =
 export type CommunityNodeView = {
   id: string;
   name: string;
+  description: string;
   color: string;
   icon: CommunityNodeIcon;
   topicCount: number;
@@ -33,7 +34,8 @@ export type CommunityTopicView = {
   nodeName: string;
   nodeColor: string;
   authorName: string;
-  authorAvatarUrl: string;
+  authorUsername: string;
+  authorAvatarUrl: string | null;
   authorInitials: string;
   createdLabel: string;
   lastReplyLabel: string;
@@ -41,6 +43,13 @@ export type CommunityTopicView = {
   views: number;
   replies: number;
   statuses: CommunityTopicStatus[];
+};
+
+export type CommunityFeedFilter = "latest" | "hot" | "essence";
+
+export type CommunityPaginationView = {
+  previousCursor: string | null;
+  nextCursor: string | null;
 };
 
 export type CommunityNotificationView = {
@@ -57,6 +66,9 @@ export type CommunityNotificationView = {
 export type CommunityHomeView = {
   nodes: CommunityNodeView[];
   topics: CommunityTopicView[];
+  topicTotal: number;
+  hotTopics: CommunityTopicView[];
+  pagination: CommunityPaginationView;
   overview: Array<{ label: string; value: string }>;
   onlineMembers: Array<Pick<CommunityUserView, "name" | "avatarUrl" | "initials">>;
 };
