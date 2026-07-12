@@ -14,7 +14,7 @@ CREATE TABLE "community_nodes" (
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
 
     CONSTRAINT "community_nodes_pkey" PRIMARY KEY ("id"),
-    CONSTRAINT "community_nodes_slug_check" CHECK ("slug" ~ '^[a-z][a-z0-9-]{1,62}[a-z0-9]$'),
+    CONSTRAINT "community_nodes_slug_check" CHECK ("slug" ~ '^[a-z][a-z0-9-]{0,62}[a-z0-9]$'),
     CONSTRAINT "community_nodes_color_check" CHECK ("color" ~ '^#[0-9A-Fa-f]{6}$'),
     CONSTRAINT "community_nodes_visibility_check" CHECK ("visibility" IN ('public', 'hidden'))
 );
