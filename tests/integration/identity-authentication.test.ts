@@ -15,11 +15,16 @@ import {
 } from "@/modules/identity/invites.server";
 import { createOutboxWorker } from "@/worker/processors/outbox";
 
-const email = "identity-integration@nextbuf.test";
+const emailPrefix = "identity-integration+";
+const emailDomain = "@nextbuf.test";
 const oldPassword = "old-password-for-integration";
 const newPassword = "new-password-for-integration";
 
-async function waitFor(assertion: () => Promise<boolean>, timeoutMs = 15_000): Promise<void> {
+function testEmail(scenario: string): string {
+  return `${emailPrefix}${scenario}${emailDomain}`;
+}
+
+async function waitFor(assertion: () => Promise<boolean>, timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await assertion()) return;
@@ -53,6 +58,51 @@ function firstUrl(text: string): string {
   return match[0];
 }
 
+async function registerPendingUser(email: string) {
+  await getAuth().api.signUpEmail({
+    body: {
+      name: "Identity Test",
+      email,
+      password: oldPassword,
+      callbackURL: "/auth/verified",
+    },
+    headers: new Headers({
+      origin: "http://127.0.0.1:3000",
+      "x-nextbuf-registration": getInternalRegistrationHeader(),
+    }),
+  });
+
+  const prisma = getPrismaClient();
+  const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+  const account = await prisma.account.findFirstOrThrow({
+    where: { userId: user.id, providerId: "credential" },
+  });
+  const delivery = await prisma.emailDelivery.findFirstOrThrow({
+    where: { recipient: email, kind: "email-verification" },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return { user, account, delivery };
+}
+
+async function verifyUser(
+  email: string,
+  delivery: Awaited<ReturnType<typeof registerPendingUser>>["delivery"],
+) {
+  const verificationText = decryptMailPayload(delivery).text;
+  if (!verificationText) throw new Error("Verification email did not contain text");
+
+  const response = await getAuth().handler(
+    new Request(firstUrl(verificationText), {
+      headers: { origin: "http://127.0.0.1:3000" },
+      redirect: "manual",
+    }),
+  );
+
+  expect(response.status).toBe(302);
+  return getPrismaClient().user.findUniqueOrThrow({ where: { email } });
+}
+
 async function closeWorker(worker: ReturnType<typeof createOutboxWorker>): Promise<void> {
   await worker.worker.close();
   if (worker.connection.status !== "end") await worker.connection.quit();
@@ -68,12 +118,16 @@ describe("identity authentication integration", () => {
     await redis.flushdb();
     await prisma.processedJob.deleteMany();
     await prisma.outboxEvent.deleteMany();
-    await prisma.emailDelivery.deleteMany();
+    await prisma.emailDelivery.deleteMany({
+      where: { recipient: { startsWith: emailPrefix, endsWith: emailDomain } },
+    });
     await prisma.identityAuditEvent.deleteMany();
     await prisma.registrationInvite.deleteMany();
     await prisma.session.deleteMany();
     await prisma.account.deleteMany();
-    await prisma.user.deleteMany({ where: { email } });
+    await prisma.user.deleteMany({
+      where: { email: { startsWith: emailPrefix, endsWith: emailDomain } },
+    });
   });
 
   afterAll(async () => {
@@ -83,6 +137,7 @@ describe("identity authentication integration", () => {
   });
 
   it("enforces the NextBuf registration boundary", async () => {
+    const email = testEmail("boundary");
     const response = await getAuth().handler(
       request("/sign-up/email", { name: "Boundary", email, password: oldPassword }),
     );
@@ -91,43 +146,13 @@ describe("identity authentication integration", () => {
   });
 
   it("registers, verifies and signs in with a stored scrypt credential", async () => {
-    await getAuth().api.signUpEmail({
-      body: {
-        name: "Identity Test",
-        email,
-        password: oldPassword,
-        callbackURL: "/auth/verified",
-      },
-      headers: new Headers({
-        origin: "http://127.0.0.1:3000",
-        "x-nextbuf-registration": getInternalRegistrationHeader(),
-      }),
-    });
-
-    const prisma = getPrismaClient();
-    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
-    const account = await prisma.account.findFirstOrThrow({
-      where: { userId: user.id, providerId: "credential" },
-    });
+    const email = testEmail("registration");
+    const { user, account, delivery } = await registerPendingUser(email);
     expect(user).toMatchObject({ status: "pending", emailVerified: false });
     expect(account.password).toMatch(/^[a-f0-9]{32}:[a-f0-9]{128}$/);
     expect(account.password).not.toContain(oldPassword);
 
-    const delivery = await prisma.emailDelivery.findFirstOrThrow({
-      where: { recipient: email, kind: "email-verification" },
-      orderBy: { createdAt: "desc" },
-    });
-    const verificationText = decryptMailPayload(delivery).text;
-    if (!verificationText) throw new Error("Verification email did not contain text");
-    const verificationUrl = firstUrl(verificationText);
-    const verificationResponse = await getAuth().handler(
-      new Request(verificationUrl, {
-        headers: { origin: "http://127.0.0.1:3000" },
-        redirect: "manual",
-      }),
-    );
-    expect(verificationResponse.status).toBe(302);
-    await expect(prisma.user.findUniqueOrThrow({ where: { id: user.id } })).resolves.toMatchObject({
+    await expect(verifyUser(email, delivery)).resolves.toMatchObject({
       status: "active",
       emailVerified: true,
     });
@@ -141,10 +166,13 @@ describe("identity authentication integration", () => {
     expect(firstSignIn.status).toBe(200);
     expect(secondSignIn.status).toBe(200);
     expect(sessionCookie(firstSignIn)).toContain("nextbuf.session_token=");
-    expect(await prisma.session.count({ where: { userId: user.id } })).toBe(2);
+    expect(await getPrismaClient().session.count({ where: { userId: user.id } })).toBe(2);
   });
 
   it("does not disclose an existing account through the registration endpoint", async () => {
+    const email = testEmail("duplicate");
+    await registerPendingUser(email);
+
     const response = await register(
       new Request("http://127.0.0.1:3000/api/identity/register", {
         method: "POST",
@@ -165,6 +193,20 @@ describe("identity authentication integration", () => {
   });
 
   it("hashes reset identifiers and revokes old sessions after password reset", async () => {
+    await redis.flushdb();
+    const email = testEmail("password-reset");
+    const { delivery } = await registerPendingUser(email);
+    await verifyUser(email, delivery);
+
+    const firstSignIn = await getAuth().handler(
+      request("/sign-in/email", { email, password: oldPassword }),
+    );
+    const secondSignIn = await getAuth().handler(
+      request("/sign-in/email", { email, password: oldPassword }),
+    );
+    expect(firstSignIn.status).toBe(200);
+    expect(secondSignIn.status).toBe(200);
+
     const prisma = getPrismaClient();
     const resetRequest = await getAuth().handler(
       request("/request-password-reset", {
@@ -214,16 +256,54 @@ describe("identity authentication integration", () => {
     await releaseRegistrationInvite(invite.id);
     await expect(reserveRegistrationInvite(code)).resolves.toMatchObject({ id: invite.id });
 
+    const prisma = getPrismaClient();
+    await prisma.processedJob.deleteMany();
+    await prisma.outboxEvent.deleteMany();
+    await prisma.emailDelivery.deleteMany();
+
+    const email = testEmail("worker");
+    const { delivery } = await registerPendingUser(email);
     const worker = createOutboxWorker();
-    await worker.worker.waitUntilReady();
-    await dispatchOutboxBatch("identity-integration-dispatcher");
-    await waitFor(async () => {
-      return (
-        (await getPrismaClient().emailDelivery.count({
-          where: { recipient: email, status: "sent" },
-        })) >= 1
-      );
+    let workerFailure: Error | undefined;
+    worker.worker.on("failed", (_job, error) => {
+      workerFailure = error;
     });
-    await closeWorker(worker);
+
+    try {
+      await worker.worker.waitUntilReady();
+      await expect(dispatchOutboxBatch("identity-integration-dispatcher")).resolves.toEqual({
+        dispatched: 1,
+        failed: 0,
+      });
+      await waitFor(async () => {
+        if (workerFailure) throw workerFailure;
+        const current = await prisma.emailDelivery.findUnique({ where: { id: delivery.id } });
+        return current?.status === "sent";
+      });
+    } catch (error) {
+      const [currentDelivery, currentOutbox] = await Promise.all([
+        prisma.emailDelivery.findUnique({ where: { id: delivery.id } }),
+        prisma.outboxEvent.findFirst({
+          where: { payload: { path: ["deliveryId"], equals: delivery.id } },
+        }),
+      ]);
+      throw new Error(
+        `Identity email worker failed: ${JSON.stringify({
+          cause: error instanceof Error ? error.message : String(error),
+          delivery: currentDelivery && {
+            status: currentDelivery.status,
+            attempts: currentDelivery.attempts,
+            lastError: currentDelivery.lastError,
+          },
+          outbox: currentOutbox && {
+            attempts: currentOutbox.attempts,
+            lastError: currentOutbox.lastError,
+            publishedAt: currentOutbox.publishedAt,
+          },
+        })}`,
+      );
+    } finally {
+      await closeWorker(worker);
+    }
   });
 });
