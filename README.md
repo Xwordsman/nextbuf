@@ -2,22 +2,25 @@
 
 NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开源综合社区。
 
-当前版本为 `v0.1.0` 工程骨架。注册、用户资料、主题、回复、通知、治理和管理后台将按照版本计划逐步实现，当前页面不代表已经完成社区业务功能。
+当前版本为 `v0.2.0` 运行时基础：已经接入 PostgreSQL 18、Prisma 7、Redis 8、BullMQ、Outbox、独立 Worker 和运行诊断。注册、用户资料、主题、回复、通知、治理和管理后台仍将按照版本计划逐步实现。
 
 ## 技术基线
 
 - Next.js 16.2.10、React 19、TypeScript 严格模式
 - Node.js 24 LTS、pnpm 11
 - App Router 与统一 `src/` 结构
-- PostgreSQL 18、Redis 8、BullMQ 将在 `v0.2.0` 接入
+- PostgreSQL 18、Prisma 7、Redis 8、BullMQ
 - 一个应用镜像，Web 与 Worker 分开运行
+- 事务性 Outbox、数据库内幂等任务和 Web/Worker 健康检查
 
 ## 开始开发
 
-```bash
+```powershell
 corepack enable
 pnpm install --frozen-lockfile
 Copy-Item .env.example .env
+docker compose -f deploy/compose/compose.dev.yml up -d
+pnpm nextbuf setup
 pnpm dev
 ```
 
@@ -29,6 +32,8 @@ cp .env.example .env
 
 访问 <http://localhost:3000>。
 
+`pnpm dev` 同时启动 Web 和 Worker；也可以分别运行 `pnpm dev:web` 与 `pnpm dev:worker`。开发 Compose 只提供 PostgreSQL/Redis，不是生产部署文件。
+
 ## 质量检查
 
 ```bash
@@ -38,6 +43,8 @@ pnpm typecheck
 pnpm test
 pnpm build
 ```
+
+真实 PostgreSQL/Redis 集成测试使用独立测试 Compose，步骤见 [本地开发手册](./docs/11-local-development.md)。
 
 ## 文档
 

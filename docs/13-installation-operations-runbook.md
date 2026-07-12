@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 面向部署者的目标操作流程，包括 Docker Compose、宝塔、非 Docker、升级、备份、恢复和故障排查。
 
-> 当前实现状态：规划期，尚无可运行的 NextBuf 镜像和脚本。本文是 `v0.12.0` 必须实现和验证的运维合同。发布后，任何命令、文件名或行为变化必须同步更新本文。
+> 当前实现状态：`v0.2.0` 已实现 Node 形式的 `web`、`worker`、`migrate`、`setup`、`doctor` 入口和开发/测试依赖 Compose，但尚无生产 NextBuf 镜像、生产四容器 Compose 或 `nextbufctl`。本文仍是 `v0.12.0` 必须完整实现和验证的运维合同。
 
 ## 1. 发布包合同
 

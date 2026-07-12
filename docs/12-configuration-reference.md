@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 环境变量的目标合同。`v0.1.0` 必须建立统一配置 Schema，`v0.12.0` 前必须让 `.env.example`、Compose、安装向导、Web、Worker、CLI 与本文完全一致。
 
-> 当前实现状态：应用代码尚未初始化。以下名称是已规划的公开配置合同；若实现验证证明需要调整，必须在 v1.0.0 前通过决策台账统一修改。v1.0.0 后改名需要兼容和弃用周期。
+> 当前实现状态：`v0.2.0` 已实现 `.env.example` 中列出的应用、数据库、Redis、Worker、Outbox 和任务保留变量，并由 Web、Worker、CLI 共享 Zod Schema。本文其余认证、邮件、存储、OAuth、搜索和观测变量仍是后续版本合同；尚未出现在 `.env.example` 的变量不能视为当前可用功能。
 
 ## 1. 配置规则
 
@@ -35,7 +35,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `DATABASE_URL` | 是 | 无 | Web、Worker、setup、doctor | 是 | PostgreSQL 连接串 |
 | `DATABASE_DIRECT_URL` | 否 | 使用 `DATABASE_URL` | setup、迁移 | 是 | 绕过连接池的迁移连接 |
-| `DATABASE_POOL_SIZE` | 否 | 由运行角色确定 | Web、Worker | 否 | 每进程连接池上限 |
+| `DATABASE_POOL_SIZE` | 否 | `10` | Web、Worker | 否 | 每进程连接池上限 |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | 否 | `15000` | Web、Worker | 否 | 普通查询超时 |
 | `DATABASE_SSL_MODE` | 否 | `prefer` | 全部 | 否 | 托管数据库可设 `require`/`verify-full` |
 
@@ -54,10 +54,17 @@
 | `REDIS_PREFIX` | 否 | `nextbuf` | Web、Worker | 否 | 实例命名空间，同一 Redis 多实例时必须唯一 |
 | `WORKER_CONCURRENCY` | 否 | `5` | Worker | 否 | 单 Worker 并发，需按任务类型和资源调优 |
 | `WORKER_SHUTDOWN_TIMEOUT_MS` | 否 | `30000` | Worker | 否 | 优雅停止等待时间 |
+| `WORKER_HEARTBEAT_INTERVAL_MS` | 否 | `10000` | Worker | 否 | 写入 PostgreSQL Worker 心跳的间隔 |
+| `WORKER_STALE_AFTER_MS` | 否 | `30000` | Web、doctor | 否 | 超过该时长未心跳的 Worker 不计为 ready |
+| `OUTBOX_POLL_INTERVAL_MS` | 否 | `1000` | Worker | 否 | Outbox Dispatcher 轮询间隔 |
+| `OUTBOX_BATCH_SIZE` | 否 | `50` | Worker | 否 | 单轮最多认领并投递的 Outbox 数量 |
+| `OUTBOX_LOCK_TIMEOUT_MS` | 否 | `60000` | Worker | 否 | Dispatcher 崩溃后允许其他实例重新认领的时间 |
 | `JOB_REMOVE_COMPLETE_AFTER` | 否 | `1000` | Worker | 否 | 保留最近成功任务数量/策略 |
 | `JOB_REMOVE_FAILED_AFTER` | 否 | `5000` | Worker | 否 | 保留失败任务用于诊断 |
 
 Redis 服务必须兼容 BullMQ 所需命令。业务事实不能只存在 Redis；关键异步意图通过 PostgreSQL Outbox 恢复。
+
+当前实现从 `REDIS_PREFIX` 派生三个空间：`${REDIS_PREFIX}:cache`、`${REDIS_PREFIX}:rate`、`${REDIS_PREFIX}:queue`。BullMQ 使用自己的 `prefix` 选项，不能给 BullMQ 连接设置 ioredis `keyPrefix`，否则 Lua 脚本和队列 key 会不一致。
 
 ## 5. 认证与加密
 

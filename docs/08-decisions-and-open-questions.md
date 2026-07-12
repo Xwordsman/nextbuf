@@ -31,12 +31,12 @@
 | D-023 | 使用 Zod 作为统一运行时输入校验工具 | v0.1.0 环境 Schema 验证通过，适合 Web、Worker 和 CLI 共享 | 环境、表单和 API 在边界解析，不信任 TypeScript 静态类型 |
 | D-024 | 单元测试使用 Vitest | 与 TypeScript、Node.js 24 和当前构建兼容，v0.1.0 已验证 | 数据库集成测试仍使用真实 PostgreSQL/Redis，不能只做 mock |
 | D-025 | 每个完成阶段必须推送并创建版本标签 | 远程提交和标签提供稳定回滚点，避免故障时依赖某台开发机 | 检查通过后更新文档、sign-off 提交、推送 main、创建并推送注释标签 |
+| D-026 | 使用 Prisma 7 与 `@prisma/adapter-pg` | Node.js 24、PostgreSQL 18 Schema/迁移、Next.js standalone 和独立 Worker/CLI 构建已验证 | Prisma Client 使用 driver adapter；复杂 PostgreSQL 能力保留参数化 SQL 与手写迁移出口 |
 
 ## 2. 暂定方案
 
 | ID | 方案 | 验证点 | 最晚决定时间 |
 | --- | --- | --- | --- |
-| P-001 | Prisma 作为 ORM | PostgreSQL 18、迁移、全文索引和 Worker 打包体验 | 工程初始化 |
 | P-003 | Playwright 作为 E2E 工具 | Next.js 16、多视口、Web/Worker 完整链路和 CI 性能 | `v0.3.0` 开始前 |
 | P-004 | Markdown 作为内容源格式 | 编辑器体验、修订、引用和安全渲染 | 主题功能开发前 |
 | P-005 | PostgreSQL FTS + pg_trgm 作为 V1 搜索 | 中文分词质量、数据规模和部署成本 | 搜索里程碑前 |

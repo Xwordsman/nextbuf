@@ -1,0 +1,36 @@
+name: nextbuf-dev
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: nextbuf
+      POSTGRES_USER: nextbuf
+      POSTGRES_PASSWORD: nextbuf
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - nextbuf_dev_postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextbuf -d nextbuf"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - nextbuf_dev_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  nextbuf_dev_postgres:
+  nextbuf_dev_redis:

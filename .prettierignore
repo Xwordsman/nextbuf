@@ -1,6 +1,8 @@
 .next
 coverage
 node_modules
+dist
+src/generated/prisma
 .tmp-*
 scaffold-nextbuf-temp
 UI

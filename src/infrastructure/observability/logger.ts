@@ -1,6 +1,4 @@
-import "server-only";
-
-import { env } from "@/shared/config/env.server";
+import { runtimeEnv } from "@/shared/config/runtime-env";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 type LogContext = Record<string, unknown>;
@@ -12,7 +10,7 @@ const levelPriority: Record<LogLevel, number> = {
   error: 40,
 };
 
-const redactedKeys = /authorization|cookie|password|secret|token/i;
+const redactedKeys = /authorization|cookie|password|secret|token|database_url|redis_url/i;
 
 function redact(context: LogContext): LogContext {
   return Object.fromEntries(
@@ -24,7 +22,7 @@ function redact(context: LogContext): LogContext {
 }
 
 function write(level: LogLevel, message: string, context: LogContext = {}): void {
-  if (levelPriority[level] < levelPriority[env.LOG_LEVEL]) {
+  if (levelPriority[level] < levelPriority[runtimeEnv.LOG_LEVEL]) {
     return;
   }
 
@@ -35,7 +33,7 @@ function write(level: LogLevel, message: string, context: LogContext = {}): void
     ...redact(context),
   };
 
-  if (env.LOG_FORMAT === "json") {
+  if (runtimeEnv.LOG_FORMAT === "json") {
     console[level === "debug" ? "log" : level](JSON.stringify(entry));
     return;
   }

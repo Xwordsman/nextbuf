@@ -11,6 +11,8 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "dist/**",
+    "src/generated/prisma/**",
     "next-env.d.ts",
     ".tmp-*/**",
     "scaffold-nextbuf-temp/**",
@@ -22,7 +24,7 @@ const eslintConfig = defineConfig([
       "no-restricted-imports": [
         "error",
         {
-          patterns: ["@/infrastructure/*", "@/modules/*", "@/worker/*"],
+          patterns: ["@/infrastructure/*", "@/modules/*", "@/worker/*", "@/shared/config/*"],
         },
       ],
     },

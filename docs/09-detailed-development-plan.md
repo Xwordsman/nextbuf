@@ -90,7 +90,7 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 
 ### v0.2.0：数据库、缓存、队列和运行角色
 
-状态：**Next**
+状态：**Completed（2026-07-12）**
 
 目标：打通 Web、Worker、PostgreSQL、Redis 和迁移基础设施。
 
@@ -113,6 +113,8 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 - 清空 Redis 后业务事实数据仍完整，缓存可以重建。
 
 ### v0.3.0：设计系统与页面框架
+
+状态：**Next**
 
 目标：把 `UI/index.html` 转换为可复用、响应式、可访问的真实应用外壳。
 

@@ -1,6 +1,6 @@
 # 本地开发手册
 
-本文定义 NextBuf 开发环境必须提供的命令和工作流。当前仓库尚未初始化应用代码，因此命令是 `v0.1.0`/`v0.2.0` 必须实现并持续维护的开发合同；在对应版本完成前，不应声称这些命令已经可运行。
+本文定义 NextBuf 开发环境的实际命令和工作流。`v0.2.0` 已实现 Node.js 工程、PostgreSQL/Redis 开发依赖、迁移、Web、Worker、CLI 与真实服务集成测试；邮件、对象存储和 E2E 将在对应后续版本补充。
 
 ## 1. 前置条件
 
@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | Node.js | 24 LTS | Next.js、Worker、脚本 |
 | pnpm | 通过 Corepack 固定仓库版本 | 包管理 |
-| Docker Engine/Desktop | 支持 Compose v2 | 本地 PostgreSQL、Redis、邮件测试服务 |
+| Docker Engine/Desktop | 支持 Compose v2 | 本地 PostgreSQL 18、Redis 8 与集成测试 |
 | Git | 当前稳定版 | 版本控制 |
 
 可选工具：
@@ -19,7 +19,7 @@
 - Redis CLI，用于队列和缓存诊断。
 - VS Code 及 ESLint、Prettier、Playwright 扩展。
 
-仓库完成初始化后，`package.json` 的 `packageManager` 字段必须锁定 pnpm 版本，开发者不应全局安装任意版本覆盖 Corepack。
+`package.json` 的 `packageManager` 字段已经锁定 pnpm 版本，开发者不应全局安装任意版本覆盖 Corepack。
 
 ## 2. 首次初始化流程
 
@@ -29,9 +29,9 @@
 corepack enable
 pnpm install --frozen-lockfile
 cp .env.example .env
-docker compose -f deploy/compose/compose.dev.yml up -d postgres redis mailpit
+docker compose -f deploy/compose/compose.dev.yml up -d
 pnpm db:generate
-pnpm db:migrate
+pnpm nextbuf setup
 pnpm db:seed
 ```
 
@@ -71,7 +71,6 @@ pnpm dev
 | 服务 | 地址 | 说明 |
 | --- | --- | --- |
 | Web | `http://localhost:3000` | Next.js 应用 |
-| Mailpit UI | `http://localhost:8025` | 查看开发邮件 |
 | PostgreSQL | `localhost:5432` | 仅开发机回环地址 |
 | Redis | `localhost:6379` | 仅开发机回环地址 |
 
@@ -88,9 +87,11 @@ pnpm dev
 | `pnpm dev:worker` | 监听 Worker 源码并重启 Worker |
 | `pnpm build` | 构建 Web、Worker 和 CLI |
 | `pnpm build:web` | 构建 Next.js standalone 产物 |
-| `pnpm build:worker` | 将 Worker 编译到生产输出目录 |
+| `pnpm build:runtime` | 将 Worker 与 CLI 编译到 `dist/` |
 | `pnpm start:web` | 运行已构建 Web |
 | `pnpm start:worker` | 运行已构建 Worker |
+| `pnpm nextbuf <命令>` | 开发时运行 `web`、`worker`、`migrate`、`setup`、`doctor` 入口 |
+| `pnpm nextbuf:built <命令>` | 验证构建后的 CLI 入口 |
 
 ### 数据库
 
@@ -115,7 +116,6 @@ pnpm dev
 | `pnpm typecheck` | TypeScript 严格检查 |
 | `pnpm test` | 单元测试 |
 | `pnpm test:integration` | 使用真实 PostgreSQL/Redis 的集成测试 |
-| `pnpm test:e2e` | Playwright 端到端测试 |
 | `pnpm test:all` | CI 级完整检查 |
 
 ## 5. 环境文件
@@ -125,7 +125,8 @@ pnpm dev
 ```text
 .env.example       已提交，全部配置说明和安全占位符
 .env               本地共享默认值，不提交
-.env.test           测试默认值，不包含真实秘密
+.env.test.example   已提交的隔离测试模板
+.env.test           从模板复制的本地测试配置，不提交
 .env.local          开发者个人覆盖，不提交
 ```
 
@@ -174,9 +175,12 @@ pnpm test:integration
 
 ```bash
 docker compose -f deploy/compose/compose.test.yml up -d
+cp .env.test.example .env.test
 pnpm test:integration
 docker compose -f deploy/compose/compose.test.yml down
 ```
+
+PowerShell 使用 `Copy-Item .env.test.example .env.test`。集成测试配置会加载 `.env.test`，强制要求 `RUN_INTEGRATION_TESTS=true`，并在测试开始时通过 `setup` 执行已有迁移；未显式启用时命令会失败而不是静默跳过。
 
 测试数据库名称、Redis DB/前缀与开发环境隔离。测试结束不能清理到开发或生产数据。
 
@@ -222,14 +226,14 @@ pnpm test:e2e
 
 ## 10. 开发环境完成标准
 
-`v0.2.0` 结束时，新贡献者应能够只阅读本手册完成：
+`v0.2.0` 后，新贡献者应能够只阅读本手册完成：
 
 1. 安装依赖。
-2. 启动 PostgreSQL、Redis 和 Mailpit。
+2. 启动 PostgreSQL 与 Redis。
 3. 执行迁移和种子。
 4. 启动 Web 与 Worker。
 5. 修改页面并看到热更新。
 6. 创建任务并观察 Worker 消费。
-7. 运行单元、集成和 E2E 测试。
+7. 运行单元与真实服务集成测试；E2E 在 `v0.3.0` 接入后加入同一流程。
 
 任何命令发生变化时，代码、CI、`.env.example` 和本文必须在同一个变更中更新。

@@ -50,9 +50,13 @@ NextBuf/
 │  │  └─ observability/
 │  ├─ worker/
 │  │  ├─ index.ts             Worker 进程入口
+│  │  ├─ runtime.ts           心跳、Dispatcher 和优雅停止
 │  │  ├─ registry.ts          任务注册
 │  │  ├─ schedulers.ts        周期任务注册
 │  │  └─ processors/          队列处理器
+│  ├─ cli/
+│  │  ├─ index.ts             web/worker/migrate/setup/doctor 入口
+│  │  └─ commands/            可组合的运行命令
 │  └─ shared/
 │     ├─ contracts/           稳定的跨模块类型
 │     ├─ errors/              通用错误基类
@@ -128,6 +132,10 @@ community/
 
 只负责启动队列消费者、调度器和任务处理器。处理器解析任务 payload 后调用模块应用用例，不复制 Web 中的业务代码。
 
+### `src/cli`
+
+提供 Web、Worker、迁移、setup 和 doctor 的统一 Node 入口。CLI 可以组装基础设施并调用 Prisma/Next.js 官方入口，但不能重新实现领域规则，也不能在输出中泄露连接串或密钥。
+
 ### `src/shared`
 
 只存放真正跨模块、没有领域所有者的稳定代码。禁止把无法归类的代码全部丢进 `shared`。用户、主题、信任等业务类型应由对应模块拥有。
@@ -140,6 +148,7 @@ community/
 src/modules/
 src/infrastructure/
 src/worker/
+src/cli/
 ```
 
 服务端入口添加：

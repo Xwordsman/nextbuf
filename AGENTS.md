@@ -2,7 +2,7 @@
 
 Before changing code, read `docs/14-project-status-handoff.md`, the current milestone in `docs/09-detailed-development-plan.md`, and the relevant architecture document.
 
-- Current milestone: `v0.1.0`.
+- Current completed milestone: `v0.2.0`; develop only `v0.3.0` next.
 - Use Node.js 24, pnpm, Next.js 16.2.10, TypeScript strict mode, and `src/app`.
 - Do not create separate top-level frontend/backend projects.
 - Keep server code behind `server-only`; client code must not import database, queue, Redis, or secrets.

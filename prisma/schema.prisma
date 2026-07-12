@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model SystemState {
+  key       String   @id @db.VarChar(120)
+  value     Json     @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("system_state")
+}
+
+model OutboxEvent {
+  id             String    @id @default(uuid()) @db.Uuid
+  topic          String    @db.VarChar(160)
+  version        Int       @default(1)
+  payload        Json      @db.JsonB
+  idempotencyKey String    @unique(map: "outbox_events_idempotency_key_key") @map("idempotency_key") @db.VarChar(255)
+  occurredAt     DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  availableAt    DateTime  @default(now()) @map("available_at") @db.Timestamptz(6)
+  publishedAt    DateTime? @map("published_at") @db.Timestamptz(6)
+  lockedAt       DateTime? @map("locked_at") @db.Timestamptz(6)
+  lockOwner      String?   @map("lock_owner") @db.VarChar(160)
+  attempts       Int       @default(0)
+  lastError      String?   @map("last_error") @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([publishedAt, availableAt], map: "outbox_events_publishable_idx")
+  @@index([lockedAt], map: "outbox_events_locked_at_idx")
+  @@map("outbox_events")
+}
+
+model ProcessedJob {
+  id             String   @id @default(uuid()) @db.Uuid
+  queueName      String   @map("queue_name") @db.VarChar(120)
+  jobName        String   @map("job_name") @db.VarChar(160)
+  idempotencyKey String   @map("idempotency_key") @db.VarChar(255)
+  result         Json?    @db.JsonB
+  completedAt    DateTime @default(now()) @map("completed_at") @db.Timestamptz(6)
+
+  @@unique([queueName, idempotencyKey], map: "processed_jobs_queue_idempotency_key")
+  @@index([completedAt], map: "processed_jobs_completed_at_idx")
+  @@map("processed_jobs")
+}
+
+model WorkerHeartbeat {
+  workerId    String    @id @map("worker_id") @db.VarChar(160)
+  status      String    @db.VarChar(32)
+  version     String    @db.VarChar(64)
+  startedAt   DateTime  @map("started_at") @db.Timestamptz(6)
+  heartbeatAt DateTime  @map("heartbeat_at") @db.Timestamptz(6)
+  stoppedAt   DateTime? @map("stopped_at") @db.Timestamptz(6)
+  metadata    Json?     @db.JsonB
+
+  @@index([heartbeatAt], map: "worker_heartbeats_heartbeat_at_idx")
+  @@map("worker_heartbeats")
+}

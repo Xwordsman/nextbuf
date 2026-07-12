@@ -40,6 +40,36 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://nextbuf:nextbuf_test@127.0.0.1:5432/nextbuf_test
+      REDIS_URL: redis://127.0.0.1:6379/0
+      REDIS_PREFIX: nextbuf_ci
+      RUN_INTEGRATION_TESTS: "true"
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: nextbuf_test
+          POSTGRES_USER: nextbuf
+          POSTGRES_PASSWORD: nextbuf_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nextbuf -d nextbuf_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
 
     steps:
       - name: Checkout
@@ -57,6 +87,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate development and test Compose files
+        run: |
+          docker compose -f deploy/compose/compose.dev.yml config --quiet
+          docker compose -f deploy/compose/compose.test.yml config --quiet
+
       - name: Check formatting
         run: pnpm format:check
 
@@ -68,6 +103,12 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Apply database migrations
+        run: pnpm db:deploy
+
+      - name: Integration test
+        run: pnpm test:integration
 
       - name: Build
         run: pnpm build

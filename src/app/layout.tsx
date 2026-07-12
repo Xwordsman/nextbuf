@@ -25,7 +25,7 @@ export default function RootLayout({
             <Link className="brand" href="/" aria-label="NextBuf 首页">
               NextBuf
             </Link>
-            <span className="milestone">v0.1.0 工程骨架</span>
+            <span className="milestone">v0.2.0 运行时基础</span>
           </header>
           <div className="page-frame">{children}</div>
           <LegalAttribution />
