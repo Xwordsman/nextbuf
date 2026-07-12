@@ -1,6 +1,6 @@
 # 本地开发手册
 
-本文定义 NextBuf 开发环境的实际命令和工作流。`v0.3.0` 已实现 Node.js 工程、PostgreSQL/Redis 开发依赖、迁移、Web、Worker、CLI、真实服务集成测试，以及基于 Next.js standalone 的 Playwright 多视口 E2E；邮件和对象存储将在对应后续版本补充。
+本文定义 NextBuf 开发环境的实际命令和工作流。`v0.4.0` 已实现 PostgreSQL、Redis、Mailpit、Better Auth、SMTP Worker、真实身份集成测试，以及同时运行 standalone Web 与 Worker 的 Playwright E2E；对象存储仍属于后续版本。
 
 ## 1. 前置条件
 
@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | Node.js | 24 LTS | Next.js、Worker、脚本 |
 | pnpm | 通过 Corepack 固定仓库版本 | 包管理 |
-| Docker Engine/Desktop | 支持 Compose v2 | 本地 PostgreSQL 18、Redis 8 与集成测试 |
+| Docker Engine/Desktop | 支持 Compose v2 | 本地 PostgreSQL 18、Redis 8、Mailpit 与集成测试 |
 | Git | 当前稳定版 | 版本控制 |
 
 可选工具：
@@ -73,6 +73,8 @@ pnpm dev
 | Web | `http://localhost:3000` | Next.js 应用 |
 | PostgreSQL | `localhost:5432` | 仅开发机回环地址 |
 | Redis | `localhost:6379` | 仅开发机回环地址 |
+| Mailpit SMTP | `localhost:1025` | Worker 开发发信 |
+| Mailpit Web | `http://localhost:8025` | 查看验证和重置邮件 |
 
 端口冲突时通过 `.env` 或开发 Compose override 修改，不应直接改已提交的默认文件。
 
@@ -93,6 +95,7 @@ pnpm dev
 | `pnpm start:worker` | 运行已构建 Worker |
 | `pnpm nextbuf <命令>` | 开发时运行 `web`、`worker`、`migrate`、`setup`、`doctor` 入口 |
 | `pnpm nextbuf:built <命令>` | 验证构建后的 CLI 入口 |
+| `pnpm nextbuf invite create --uses 1 --expires-hours 168 --label text` | 创建只显示一次明文的邀请码 |
 
 ### 数据库
 
@@ -173,7 +176,7 @@ pnpm test:integration
 
 ### 集成测试
 
-使用独立测试 PostgreSQL 和 Redis：
+使用独立测试 PostgreSQL、Redis 和 Mailpit：
 
 ```bash
 docker compose -f deploy/compose/compose.test.yml up -d
@@ -201,15 +204,16 @@ pnpm build
 pnpm test:e2e
 ```
 
-Playwright 配置会执行 `pnpm start:web`，即 `node .next/standalone/server.js`。`build:web` 会自动整理 `.next/static` 与 `public`，不能把启动命令改回不支持 standalone 的 `next start`。
+Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalone/server.js` 和已构建 Worker。`build:web` 会自动整理 `.next/static` 与 `public`，不能把启动命令改回不支持 standalone 的 `next start`。
 
-`v0.3.0` 的页面框架测试只需要 Web，覆盖：
+`v0.4.0` E2E 依赖 PostgreSQL、Redis、Mailpit、Web 和 Worker，覆盖：
 
 - 1440px 下 1380px 最大宽度、230px/300px 侧栏和 16px 间距。
 - 1024px 双栏和右侧面板弹窗。
-- 390px 搜索、发帖校验、移动布局与无横向溢出。
-- 搜索、节点筛选、账户菜单、通知已读、Esc 关闭弹层。
+- 390px 搜索、移动布局与无横向溢出。
+- 匿名搜索、节点筛选、登录/注册入口和右侧面板。
 - 桌面/平板/手机完整截图和 serious/critical axe 检查。
+- 注册、Mailpit 验证链接、登录、两设备会话、找回密码、旧会话撤销和新密码登录。
 
 后续认证、发帖和异步通知等核心旅程必须同时启动 Worker、PostgreSQL 和 Redis，不能用同步假实现掩盖队列问题。
 
@@ -244,14 +248,15 @@ Playwright 配置会执行 `pnpm start:web`，即 `node .next/standalone/server.
 
 ## 10. 开发环境完成标准
 
-`v0.3.0` 后，新贡献者应能够只阅读本手册完成：
+`v0.4.0` 后，新贡献者应能够只阅读本手册完成：
 
 1. 安装依赖。
-2. 启动 PostgreSQL 与 Redis。
+2. 启动 PostgreSQL、Redis 与 Mailpit。
 3. 执行迁移和种子。
 4. 启动 Web 与 Worker。
 5. 修改页面并看到热更新。
 6. 创建任务并观察 Worker 消费。
 7. 运行单元、真实服务集成测试和 standalone E2E。
+8. 在 Mailpit 中完成邮箱验证和密码重置，并创建邀请制注册邀请码。
 
 任何命令发生变化时，代码、CI、`.env.example` 和本文必须在同一个变更中更新。

@@ -7,12 +7,12 @@ import { checkRedisHealth } from "@/infrastructure/cache/health";
 import { logger } from "@/infrastructure/observability/logger";
 import { dispatchOutboxBatch } from "@/infrastructure/outbox/dispatcher";
 import { closeSystemQueue } from "@/infrastructure/queue/system-queue";
-import { getServiceEnvironment } from "@/shared/config/runtime-env";
+import { getAuthEnvironment } from "@/shared/config/runtime-env";
 import { getErrorMessage } from "@/shared/errors/error-message";
 import { createOutboxWorker } from "@/worker/processors/outbox";
 
 export async function startWorker(): Promise<void> {
-  const environment = getServiceEnvironment();
+  const environment = getAuthEnvironment();
   const databaseHealth = await checkDatabaseHealth();
   const redisHealth = await checkRedisHealth();
 

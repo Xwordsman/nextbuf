@@ -31,6 +31,18 @@ services:
       timeout: 3s
       retries: 20
 
+  mailpit:
+    image: axllent/mailpit:v1.30.4
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    environment:
+      MP_MAX_MESSAGES: "500"
+      MP_DATABASE: /data/mailpit.db
+    volumes:
+      - nextbuf_dev_mailpit:/data
+
 volumes:
   nextbuf_dev_postgres:
   nextbuf_dev_redis:
+  nextbuf_dev_mailpit:

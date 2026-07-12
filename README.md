@@ -2,7 +2,7 @@
 
 NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开源综合社区。
 
-当前版本为 `v0.3.0` 设计系统与页面框架：在既有 PostgreSQL、Redis、Outbox 和独立 Worker 基础上，已经实现三栏响应式社区外壳、可复用 UI 原语、头像与通知菜单、发帖表单演示、状态页、真实页脚和 Playwright 多视口检查。当前页面使用只读演示 ViewModel，尚未实现注册、真实用户、节点/主题写入、回复、治理或管理后台业务。
+当前版本为 `v0.4.0` 身份认证：已实现邮箱密码注册、邮箱验证、登录退出、找回密码、会话设备管理、开放/邀请/关闭注册策略、可选 GitHub OAuth、Redis 限流、身份审计，以及由 PostgreSQL Outbox 和 Worker 驱动的加密异步邮件。首页节点、话题、概览和在线成员仍是只读演示 ViewModel；UID、`@username`、用户资料、主题写入、回复、通知、治理和管理后台尚未实现。
 
 ## 技术基线
 
@@ -10,6 +10,8 @@ NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开
 - Node.js 24 LTS、pnpm 11
 - App Router 与统一 `src/` 结构
 - PostgreSQL 18、Prisma 7、Redis 8、BullMQ
+- Better Auth、数据库会话、scrypt 凭证和可选 GitHub OAuth
+- Mailpit 开发邮件箱、AES-256-GCM 邮件载荷和 SMTP Worker
 - 一个应用镜像，Web 与 Worker 分开运行
 - 事务性 Outbox、数据库内幂等任务和 Web/Worker 健康检查
 - Tailwind CSS、Radix UI 原语、Lucide 图标和可访问的响应式社区页面
@@ -34,7 +36,7 @@ cp .env.example .env
 
 访问 <http://localhost:3000>。
 
-`pnpm dev` 同时启动 Web 和 Worker；也可以分别运行 `pnpm dev:web` 与 `pnpm dev:worker`。开发 Compose 只提供 PostgreSQL/Redis，不是生产部署文件。
+`pnpm dev` 同时启动 Web 和 Worker；也可以分别运行 `pnpm dev:web` 与 `pnpm dev:worker`。开发 Compose 提供 PostgreSQL、Redis 和 Mailpit，Mailpit Web 界面位于 <http://localhost:8025>。它不是生产部署文件。
 
 ## 质量检查
 
@@ -47,7 +49,7 @@ pnpm build
 pnpm test:e2e
 ```
 
-`pnpm test:e2e` 运行已构建的 Next.js standalone 服务。真实 PostgreSQL/Redis 集成测试使用独立测试 Compose，完整步骤见 [本地开发手册](./docs/11-local-development.md)。
+`pnpm test:e2e` 同时运行已构建的 Next.js standalone Web 与 Worker。真实 PostgreSQL、Redis、SMTP/Mailpit 集成测试使用独立测试 Compose，完整步骤见 [本地开发手册](./docs/11-local-development.md)。
 
 ## 文档
 

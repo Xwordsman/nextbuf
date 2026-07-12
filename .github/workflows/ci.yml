@@ -46,6 +46,15 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/0
       REDIS_PREFIX: nextbuf_ci
       RUN_INTEGRATION_TESTS: "true"
+      APP_URL: http://127.0.0.1:3000
+      AUTH_SECRET: nextbuf-ci-auth-secret-at-least-32-characters
+      AUTH_REGISTRATION_MODE: open
+      MAIL_PAYLOAD_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: "1025"
+      SMTP_SECURE: "false"
+      SMTP_FROM: NextBuf CI <noreply@nextbuf.test>
+      MAILPIT_API_URL: http://127.0.0.1:8025
 
     services:
       postgres:
@@ -70,6 +79,11 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 20
+      mailpit:
+        image: axllent/mailpit:v1.30.4
+        ports:
+          - 1025:1025
+          - 8025:8025
 
     steps:
       - name: Checkout

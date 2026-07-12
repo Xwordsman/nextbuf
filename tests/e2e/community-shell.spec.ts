@@ -24,9 +24,7 @@ async function openHome(page: Page) {
 }
 
 test.describe("community shell", () => {
-  test("preserves the approved desktop grid and account interactions", async ({
-    page,
-  }, testInfo) => {
+  test("preserves the approved desktop grid for anonymous visitors", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await openHome(page);
 
@@ -41,24 +39,21 @@ test.describe("community shell", () => {
       right.evaluate((element) => element.getBoundingClientRect().toJSON()),
     ]);
 
-    expect(shellBox.width).toBeLessThanOrEqual(1380);
     expect(shellBox.width).toBeGreaterThanOrEqual(1379);
+    expect(shellBox.width).toBeLessThanOrEqual(1380);
     expect(leftBox.width).toBeCloseTo(230, 0);
     expect(rightBox.width).toBeCloseTo(300, 0);
     expect(mainBox.x - (leftBox.x + leftBox.width)).toBeCloseTo(16, 0);
     expect(rightBox.x - (mainBox.x + mainBox.width)).toBeCloseTo(16, 0);
 
-    await page.getByLabel("账户菜单").click();
-    const accountMenu = page.getByRole("menu");
-    await expect(accountMenu.getByText("@linan", { exact: true })).toBeVisible();
-    await expect(accountMenu.getByText("UID 10086", { exact: true })).toBeVisible();
-    await expect(accountMenu.getByText("TL3", { exact: true })).toBeVisible();
-    await page.keyboard.press("Escape");
-
-    await page.getByRole("button", { name: /通知，3 条未读/ }).click();
-    await page.getByRole("button", { name: "全部已读" }).click();
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("button", { name: "通知" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "登录" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "注册" }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "账户菜单" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "通知" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "发帖" })).toHaveCount(0);
+    await expect(page.getByText("@linan", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("UID 10086", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("TL3", { exact: true })).toHaveCount(0);
 
     await expectNoHorizontalOverflow(page);
     await captureFullPage(page, testInfo, "desktop-1440");
@@ -77,7 +72,7 @@ test.describe("community shell", () => {
     await expect(page.getByText("共 2 个话题", { exact: true })).toBeVisible();
   });
 
-  test("uses a two-column layout and right-rail dialog on tablet", async ({ page }, testInfo) => {
+  test("uses a two-column layout and account panel on tablet", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1024, height: 900 });
     await openHome(page);
 
@@ -86,7 +81,7 @@ test.describe("community shell", () => {
     await page.getByRole("button", { name: "我的面板" }).click();
     const dialog = page.getByRole("dialog", { name: "我的面板" });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("heading", { name: "我的状态" })).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: "加入社区" })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
 
@@ -94,25 +89,14 @@ test.describe("community shell", () => {
     await captureFullPage(page, testInfo, "tablet-1024");
   });
 
-  test("supports mobile search, publish validation and compact layout", async ({
-    page,
-  }, testInfo) => {
+  test("supports mobile search and compact layout", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openHome(page);
 
     await page.getByRole("button", { name: "搜索" }).click();
     await page.locator("#mobile-search").fill("DNS");
     await expect(page.getByText("共 1 个话题", { exact: true })).toBeVisible();
-
-    await page.getByRole("button", { name: "发帖" }).click();
-    const dialog = page.getByRole("dialog", { name: "发布新话题" });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "发布" }).click();
-    await expect(dialog.getByText("标题至少需要 6 个字符")).toBeVisible();
-    await expect(dialog.getByText("请选择节点")).toBeVisible();
-    await expect(dialog.getByText("内容至少需要 12 个字符")).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(dialog).toBeHidden();
+    await expect(page.getByRole("link", { name: "登录" }).first()).toBeVisible();
 
     await expectNoHorizontalOverflow(page);
     await captureFullPage(page, testInfo, "mobile-390");

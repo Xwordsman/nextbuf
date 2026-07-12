@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 环境变量的目标合同。`v0.1.0` 必须建立统一配置 Schema，`v0.12.0` 前必须让 `.env.example`、Compose、安装向导、Web、Worker、CLI 与本文完全一致。
 
-> 当前实现状态：截至 `v0.3.0`，已实现 `.env.example` 中列出的应用、数据库、Redis、Worker、Outbox 和任务保留变量，并由 Web、Worker、CLI 共享 Zod Schema。页面框架没有新增运行配置。本文其余认证、邮件、存储、OAuth、搜索和观测变量仍是后续版本合同；尚未出现在 `.env.example` 的变量不能视为当前可用功能。
+> 当前实现状态：截至 `v0.4.0`，`.env.example` 中的应用、数据库、Redis、Worker、Outbox、认证、身份邮件和 GitHub OAuth 变量已经由共享 Zod Schema 实现。存储、搜索、观测、首次安装和生产 Compose 变量仍是后续合同；尚未出现在 `.env.example` 的变量不能视为当前可用功能。
 
 ## 1. 配置规则
 
@@ -71,40 +71,42 @@ Redis 服务必须兼容 BullMQ 所需命令。业务事实不能只存在 Redis
 | 变量 | 必需 | 默认值 | 适用进程 | 敏感 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | `AUTH_SECRET` | 是 | 无 | Web、Worker、setup | 是 | 至少 32 字节随机值，用于会话/认证签名 |
-| `ENCRYPTION_KEY` | 是 | 无 | Web、Worker、setup | 是 | 32 字节 Base64 主密钥，用于数据库敏感值加密 |
-| `SETUP_TOKEN` | 首次安装必需 | 无 | setup、Web | 是 | 首次安装向导的一次性令牌，完成后失效 |
-| `SESSION_MAX_AGE_SECONDS` | 否 | `2592000` | Web | 否 | 会话绝对有效期，默认 30 天 |
-| `SESSION_IDLE_TIMEOUT_SECONDS` | 否 | `604800` | Web | 否 | 非活动有效期，默认 7 天 |
+| `AUTH_REGISTRATION_MODE` | 否 | `open` | Web | 否 | `open`、`invite` 或 `closed` |
+| `AUTH_SESSION_EXPIRES_IN_SECONDS` | 否 | `2592000` | Web | 否 | 会话绝对有效期，默认 30 天 |
+| `AUTH_SESSION_UPDATE_AGE_SECONDS` | 否 | `86400` | Web | 否 | 会话刷新周期，默认 1 天 |
+| `AUTH_VERIFICATION_EXPIRES_IN_SECONDS` | 否 | `86400` | Web | 否 | 邮箱验证链接有效期 |
+| `AUTH_PASSWORD_RESET_EXPIRES_IN_SECONDS` | 否 | `3600` | Web | 否 | 密码重置链接有效期 |
+| `AUTH_TRUSTED_ORIGINS` | 否 | 空 | Web | 否 | 逗号分隔的附加可信 Origin；`APP_URL` 自动包含 |
+| `AUTH_TRUSTED_PROXIES` | 否 | 空 | Web | 否 | 逗号分隔的可信代理地址/规则，不能无条件信任公网转发头 |
+| `MAIL_PAYLOAD_KEY` | 是 | 无 | Web、Worker | 是 | Base64 编码的精确 32 字节 AES-256-GCM 密钥 |
 
 密钥生成示例：
 
 ```bash
-openssl rand -base64 48
+openssl rand -hex 32
 openssl rand -base64 32
 ```
 
 规则：
 
-- `AUTH_SECRET` 和 `ENCRYPTION_KEY` 用途不同，不能复用。
-- `ENCRYPTION_KEY` 丢失会导致已加密 Provider 密钥无法恢复，必须与备份一起安全保存。
-- `SETUP_TOKEN` 不写日志、不进入 URL 查询参数，安装完成后从运行配置移除或作废。
-- 认证库确定后可以增加其专用变量，但不得静默改掉以上公开语义。
+- `AUTH_SECRET` 至少 32 个字符；示例第一条命令生成 64 位十六进制值。
+- `AUTH_SECRET` 和 `MAIL_PAYLOAD_KEY` 用途不同，不能复用。
+- 轮换 `AUTH_SECRET` 会使现有 Cookie 和尚未使用的验证/重置链接失效。
+- `MAIL_PAYLOAD_KEY` 丢失会导致待发送邮件正文无法恢复，必须与备份一起安全保存。
+- 通用 Provider `ENCRYPTION_KEY` 与首次安装 `SETUP_TOKEN` 是后续版本合同，`v0.4.0` 尚未实现。
 
 ## 6. 邮件
 
 | 变量 | 必需 | 默认值 | 适用进程 | 敏感 | 说明 |
 | --- | --- | --- | --- | --- | --- |
-| `MAIL_DRIVER` | 否 | 开发 `log`，生产 `smtp` | Worker、doctor | 否 | `log`、`smtp` |
-| `MAIL_FROM` | SMTP 必需 | 无 | Worker | 否 | 发件地址 |
-| `MAIL_FROM_NAME` | 否 | 站点名称 | Worker | 否 | 发件显示名 |
-| `MAIL_REPLY_TO` | 否 | 无 | Worker | 否 | 回复地址 |
-| `SMTP_HOST` | SMTP 必需 | 无 | Worker、doctor | 否 | SMTP 主机 |
-| `SMTP_PORT` | SMTP 必需 | `587` | Worker、doctor | 否 | SMTP 端口 |
-| `SMTP_SECURE` | 否 | `false` | Worker、doctor | 否 | 连接建立时是否直接 TLS，通常端口 465 为 true |
+| `SMTP_HOST` | 是 | 无 | Web、Worker | 否 | SMTP 主机；Web 校验配置，Worker 实际连接 |
+| `SMTP_PORT` | 否 | `1025` | Web、Worker | 否 | SMTP 端口；生产常用 465 或 587 |
+| `SMTP_SECURE` | 否 | `false` | Web、Worker | 否 | 连接建立时是否直接 TLS，通常端口 465 为 true |
 | `SMTP_USER` | 视服务而定 | 无 | Worker | 是 | SMTP 用户名 |
 | `SMTP_PASSWORD` | 视服务而定 | 无 | Worker | 是 | SMTP 密码 |
+| `SMTP_FROM` | 否 | `NextBuf <noreply@localhost>` | Worker | 否 | 完整发件人，可同时包含名称和地址 |
 
-生产环境若没有可用邮件服务，注册策略必须避免用户卡在无法验证的流程，并在后台持续显示明确警告。
+`SMTP_USER` 与 `SMTP_PASSWORD` 必须同时设置或同时为空。开发 Compose 的 Mailpit 使用 `127.0.0.1:1025`，Web 界面为 `http://127.0.0.1:8025`；Mailpit 不用于生产。生产环境若没有可用邮件服务，不得开放邮箱注册。
 
 ## 7. 文件存储
 
@@ -129,14 +131,12 @@ OAuth Provider 按配置启用。首批变量命名：
 
 | 变量 | 必需 | 敏感 | 说明 |
 | --- | --- | --- | --- |
-| `OAUTH_GITHUB_CLIENT_ID` | 启用 GitHub 时 | 否 | GitHub OAuth Client ID |
-| `OAUTH_GITHUB_CLIENT_SECRET` | 启用 GitHub 时 | 是 | GitHub OAuth Secret |
-| `OAUTH_GOOGLE_CLIENT_ID` | 启用 Google 时 | 否 | Google OAuth Client ID |
-| `OAUTH_GOOGLE_CLIENT_SECRET` | 启用 Google 时 | 是 | Google OAuth Secret |
+| `GITHUB_CLIENT_ID` | 启用 GitHub 时 | 否 | GitHub OAuth Client ID |
+| `GITHUB_CLIENT_SECRET` | 启用 GitHub 时 | 是 | GitHub OAuth Secret |
 
-只有 Client ID 与 Secret 同时存在时才启用对应 Provider。回调 URL 从 `APP_URL` 构造，后台应显示准确回调地址。
+只有 Client ID 与 Secret 同时存在时才启用 GitHub；只设置一个会导致启动配置校验失败。回调 URL 为 `${APP_URL}/api/auth/callback/github`。`AUTH_REGISTRATION_MODE` 不是 `open` 时，既有 GitHub 账号仍可登录，但 OAuth 不创建新用户。
 
-Linux.do 等提供者是否首发支持仍是产品决策；实现前确认其协议、申请和用户标识稳定性。
+Google、Linux.do 等其他 Provider 尚未实现；增加前必须确认协议、申请流程、邮箱可信度和稳定用户标识。
 
 ## 9. 搜索
 

@@ -1,72 +1,64 @@
-import { ArrowUpRight, CalendarDays, FileText, MessageCircle } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, LogIn, ShieldCheck, UserPlus } from "lucide-react";
 import type {
   CommunityTopicView,
   CommunityUserView,
 } from "@/modules/community/contracts/home-view";
+import type { CurrentAccountView } from "@/modules/identity/session.server";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 
 type RightRailProps = {
-  currentUser: CommunityUserView;
+  account: CurrentAccountView | null;
   overview: Array<{ label: string; value: string }>;
   topics: CommunityTopicView[];
   onlineMembers: Array<Pick<CommunityUserView, "name" | "avatarUrl" | "initials">>;
 };
 
-export function RightRail({ currentUser, overview, topics, onlineMembers }: RightRailProps) {
+export function RightRail({ account, overview, topics, onlineMembers }: RightRailProps) {
   const hotTopics = topics.filter((topic) => topic.statuses.includes("hot")).slice(0, 3);
 
   return (
     <div className="right-rail-content">
       <Panel className="rail-panel">
         <div className="panel-heading">
-          <h2>我的状态</h2>
-          <span>信任等级</span>
+          <h2>{account ? "账号状态" : "加入社区"}</h2>
+          {account?.emailVerified ? <Badge variant="trust">已验证</Badge> : null}
         </div>
-        <div className="rail-user">
-          <div className="rail-user-head">
-            <Avatar className="size-11">
-              <AvatarImage src={currentUser.avatarUrl} alt={currentUser.name} />
-              <AvatarFallback>{currentUser.initials}</AvatarFallback>
-            </Avatar>
-            <div>
-              <strong>{currentUser.name}</strong>
-              <span>@{currentUser.username}</span>
+        {account ? (
+          <div className="rail-user">
+            <div className="rail-user-head">
+              <Avatar className="size-11">
+                <AvatarImage src={account.image ?? undefined} alt={account.name} />
+                <AvatarFallback>{account.initials}</AvatarFallback>
+              </Avatar>
+              <div>
+                <strong>{account.name}</strong>
+                <span>{account.email}</span>
+              </div>
             </div>
-            <Badge variant="trust">TL{currentUser.trustLevel}</Badge>
+            <Button asChild variant="outline" className="rail-account-action">
+              <Link href="/account/security">
+                <ShieldCheck /> 账号安全
+              </Link>
+            </Button>
           </div>
-          <div className="trust-progress-copy">
-            <span>{currentUser.trustName}</span>
-            <span>距离 TL{currentUser.nextTrustLevel}</span>
+        ) : (
+          <div className="rail-auth-actions">
+            <Button asChild>
+              <Link href="/auth/sign-in">
+                <LogIn /> 登录
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/auth/sign-up">
+                <UserPlus /> 注册
+              </Link>
+            </Button>
           </div>
-          <div
-            className="trust-progress"
-            role="progressbar"
-            aria-label="信任等级进度"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={currentUser.trustProgress}
-          >
-            <span style={{ width: `${currentUser.trustProgress}%` }} />
-          </div>
-          <div className="user-kpis">
-            <span>
-              <FileText aria-hidden="true" />
-              <strong>{currentUser.topicCount}</strong>
-              话题
-            </span>
-            <span>
-              <MessageCircle aria-hidden="true" />
-              <strong>{currentUser.replyCount}</strong>
-              回复
-            </span>
-            <span>
-              <CalendarDays aria-hidden="true" />
-              <strong>{currentUser.joinedDays}</strong>天
-            </span>
-          </div>
-        </div>
+        )}
       </Panel>
 
       <Panel className="rail-panel">

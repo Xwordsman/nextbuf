@@ -73,7 +73,7 @@ export function SiteFooter() {
         <div className="footer-bottom">
           <div>
             <p>© 2026 NextBuf 开源社区项目</p>
-            <p>AGPL-3.0-only · DCO 1.1 · v0.3.0</p>
+            <p>AGPL-3.0-only · DCO 1.1 · v{PROJECT.version}</p>
           </div>
           <div className="footer-bottom-links">
             <LegalAttribution />

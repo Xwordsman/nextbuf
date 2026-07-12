@@ -7,11 +7,8 @@ async function main(): Promise<void> {
 
   switch (command) {
     case "web": {
-      const { runNodePackageBinary } = await import("@/cli/process");
-      const exitCode = await runNodePackageBinary("next/dist/bin/next", [
-        "start",
-        ...process.argv.slice(3),
-      ]);
+      const { runNodeScript } = await import("@/cli/process");
+      const exitCode = await runNodeScript(".next/standalone/server.js", process.argv.slice(3));
       process.exitCode = exitCode;
       return;
     }
@@ -36,8 +33,13 @@ async function main(): Promise<void> {
       await doctor();
       return;
     }
+    case "invite": {
+      const { invite } = await import("@/cli/commands/invite");
+      await invite(process.argv.slice(3));
+      return;
+    }
     default:
-      console.log("Usage: nextbuf <web|worker|migrate|setup|doctor>");
+      console.log("Usage: nextbuf <web|worker|migrate|setup|doctor|invite>");
       process.exitCode = command ? 1 : 0;
   }
 }

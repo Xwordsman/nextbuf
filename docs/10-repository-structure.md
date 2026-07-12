@@ -23,12 +23,15 @@ NextBuf/
 │  │  ├─ admin/               管理后台路由
 │  │  ├─ api/                 Route Handlers
 │  │  ├─ layout.tsx
+│  │  ├─ auth/                 登录、注册、验证和重置页面
+│  │  ├─ account/security/     登录设备与会话管理
 │  │  ├─ error.tsx
 │  │  └─ not-found.tsx
 │  ├─ components/
 │  │  ├─ ui/                  shadcn/ui 与通用界面原语
 │  │  ├─ layout/              导航、三栏框架、页脚
 │  │  ├─ community/           主题、回复、节点展示组件
+│  │  ├─ auth/                身份表单与会话管理组件
 │  │  └─ admin/               后台专用展示组件
 │  ├─ modules/
 │  │  ├─ identity/
@@ -44,7 +47,8 @@ NextBuf/
 │  │  ├─ database/
 │  │  ├─ cache/
 │  │  ├─ queue/
-│  │  ├─ mail/
+│  │  ├─ auth/                Better Auth、Prisma adapter、Redis 限流
+│  │  ├─ mail/                加密载荷、Outbox 入队与 SMTP
 │  │  ├─ storage/
 │  │  ├─ search/
 │  │  └─ observability/
@@ -55,7 +59,7 @@ NextBuf/
 │  │  ├─ schedulers.ts        周期任务注册
 │  │  └─ processors/          队列处理器
 │  ├─ cli/
-│  │  ├─ index.ts             web/worker/migrate/setup/doctor 入口
+│  │  ├─ index.ts             web/worker/migrate/setup/doctor/invite 入口
 │  │  └─ commands/            可组合的运行命令
 │  └─ shared/
 │     ├─ contracts/           稳定的跨模块类型
@@ -137,7 +141,7 @@ community/
 
 ### `src/cli`
 
-提供 Web、Worker、迁移、setup 和 doctor 的统一 Node 入口。CLI 可以组装基础设施并调用 Prisma/Next.js 官方入口，但不能重新实现领域规则，也不能在输出中泄露连接串或密钥。
+提供 Web、Worker、迁移、setup、doctor 和邀请码管理的统一 Node 入口。CLI 可以组装基础设施并调用 Prisma/Next.js 官方入口，但不能重新实现领域规则，也不能在输出中泄露连接串或密钥。邀请码明文只能在创建时输出一次。
 
 ### `src/shared`
 
@@ -213,8 +217,11 @@ src/app/
 │  ├─ topics/[id]/page.tsx     主题页
 │  └─ members/[username]/      用户公开页
 ├─ account/                    登录用户账号中心
+├─ auth/                       登录、注册、验证和重置页面
 ├─ admin/                      后台
 └─ api/
+   ├─ auth/[...all]/           Better Auth 处理入口
+   ├─ identity/register/       NextBuf 注册策略边界
    ├─ internal/               站内专用接口，不视为公开合同
    └─ v1/                     V2.0.0 后的公开 API
 ```

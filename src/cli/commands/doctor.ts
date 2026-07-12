@@ -3,9 +3,10 @@ import { disconnectRedisClient } from "@/infrastructure/cache/redis";
 import { disconnectPrismaClient } from "@/infrastructure/database/client";
 import { checkDatabaseHealth } from "@/infrastructure/database/health";
 import { getRedisKeyspaces } from "@/infrastructure/cache/keys";
-import { runtimeEnv } from "@/shared/config/runtime-env";
+import { getAuthEnvironment, runtimeEnv } from "@/shared/config/runtime-env";
 
 export async function doctor(): Promise<void> {
+  getAuthEnvironment();
   const [database, redis] = await Promise.all([checkDatabaseHealth(), checkRedisHealth()]);
   const report = {
     status: database.ok && redis.ok ? "ok" : "error",

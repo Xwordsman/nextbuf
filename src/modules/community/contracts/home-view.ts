@@ -55,10 +55,8 @@ export type CommunityNotificationView = {
 };
 
 export type CommunityHomeView = {
-  currentUser: CommunityUserView;
   nodes: CommunityNodeView[];
   topics: CommunityTopicView[];
-  notifications: CommunityNotificationView[];
   overview: Array<{ label: string; value: string }>;
   onlineMembers: Array<Pick<CommunityUserView, "name" | "avatarUrl" | "initials">>;
 };

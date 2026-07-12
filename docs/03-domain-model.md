@@ -17,11 +17,10 @@
 
 账号主体，包含：
 
-- 内部主键。
-- 不可变、可公开展示的数字 UID。
+- `v0.4.0` 已实现 UUID 内部主键、昵称、规范化邮箱、邮箱验证状态和账号状态。
+- `v0.5.0` 增加不可变、可公开展示的数字 UID；当前 `users` 表没有 UID。
 - 账号状态：`pending`、`active`、`restricted`、`suspended`、`deleted`。
-- 当前信任等级及最后计算时间。
-- 创建、激活、最后活动和软删除时间。
+- 当前实现创建、更新时间和激活时间；最后活动、软删除和信任等级属于后续版本。
 
 ### Profile
 
@@ -33,12 +32,14 @@
 
 用户名比较使用规范化值并建立唯一索引。用户名变更必须保存历史别名，在保留期内继续跳转并防止他人立即冒用。
 
-### Credential、Account、Session
+### Account、Session、Verification
 
-- `Credential` 保存密码认证所需信息，不保存明文密码。
-- `Account` 保存 OAuth 提供者与外部账号绑定。
+- `Account` 保存 Better Auth credential 或 OAuth Provider 绑定；credential 密码字段保存 scrypt 哈希，不保存明文密码。
 - `Session` 保存可撤销会话、有效期和必要的设备信息。
-- `VerificationToken`、`PasswordResetToken` 等一次性凭证只保存哈希并设置短有效期。
+- `Verification` 统一承载邮箱验证和密码重置记录，identifier 经 HMAC-SHA256 后落库并设置短有效期。
+- `RegistrationInvite` 只保存邀请码 HMAC、最大次数、使用次数、有效期和禁用时间。
+- `IdentityAuditEvent` 保存身份安全事件、关联用户/会话和 HMAC 后的 IP。
+- `EmailDelivery` 保存收件人、主题、状态和 AES-256-GCM 加密正文；实际发送由 Outbox Worker 完成。
 
 认证数据归 `identity` 模块所有，业务模块只通过用户 ID 和认证上下文引用。
 

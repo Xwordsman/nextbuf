@@ -33,6 +33,9 @@
 | D-025 | 每个完成阶段必须推送并创建版本标签 | 远程提交和标签提供稳定回滚点，避免故障时依赖某台开发机 | 检查通过后更新文档、sign-off 提交、推送 main、创建并推送注释标签 |
 | D-026 | 使用 Prisma 7 与 `@prisma/adapter-pg` | Node.js 24、PostgreSQL 18 Schema/迁移、Next.js standalone 和独立 Worker/CLI 构建已验证 | Prisma Client 使用 driver adapter；复杂 PostgreSQL 能力保留参数化 SQL 与手写迁移出口 |
 | D-027 | E2E 使用 Playwright，基础无障碍使用 axe | 已验证 Next.js 16 standalone、多视口、Radix 交互、截图和 CI 运行方式 | `pnpm test:e2e` 在构建后运行 Chromium；严重和致命 axe 问题阻止发布 |
+| D-028 | 身份认证使用 Better Auth 1.6.23 与 Prisma adapter | Next.js 16、React 19、Prisma 7、数据库会话和 standalone 构建已验证 | 密码使用 scrypt；升级认证库必须运行真实身份集成与 E2E，见 ADR-0008 |
+| D-029 | 身份邮件通过加密 PostgreSQL Outbox 和独立 Worker 发送 | 注册请求不应同步依赖 SMTP，邮件正文也不应明文落库 | `MAIL_PAYLOAD_KEY` 使用 AES-256-GCM；开发/测试使用 Mailpit，生产仍保持四个常驻容器 |
+| D-030 | 注册支持 open/invite/closed，GitHub 是首个可选 OAuth | 满足公开社区、自用站点和邀请测试三类部署 | 邀请码与限流标识只保存 HMAC；非开放注册禁止 OAuth 新建账号但允许既有账号登录 |
 
 ## 2. 暂定方案
 
@@ -50,8 +53,6 @@
 | 问题 | 需要的结论 | 最晚时点 | 影响 |
 | --- | --- | --- | --- |
 | 正式产品名 | NextBuf 是否为正式名称，“汇谈”是否保留 | 发布公开包、镜像和域名前 | 包名、镜像、品牌和迁移成本 |
-| 认证库 | 选择并验证具体库 | `v0.4.0` 开始前 | 数据表、会话、OAuth、升级与安全维护 |
-| 初始 OAuth | GitHub 之外是否支持 Google、Linux.do 等 | `v0.4.0` 范围冻结前 | 配置、审核和登录体验 |
 | 管理员二次验证 | TOTP、Passkey 的首发范围 | `v0.11.0` 开始前 | 公网运营安全基线 |
 | 内容协议与隐私政策 | 用户内容授权、数据保留和注销行为 | `v0.13.0` 公开 Beta 前 | 法务、导出、删除和备份策略 |
 
@@ -60,6 +61,7 @@
 | 问题 | 需要的结论 | 最晚时点 | 影响 |
 | --- | --- | --- | --- |
 | 用户名修改规则 | 是否允许、冷却期和历史保留期 | `v0.5.0` 开始前 | URL、提及和冒用风险 |
+| 后续 OAuth | 是否增加 Google、Linux.do 或其他 OIDC Provider | 对应 Provider 开发前 | 配置、审核、账号绑定和稳定标识 |
 | 中文搜索方案 | PostgreSQL 分词方案和外部搜索触发标准 | `v0.8.0` 开始前 | 镜像、数据库扩展和结果质量 |
 | 热门算法 | 时间衰减、互动权重和反操纵规则 | `v0.8.0` 开始前 | 首页排序和透明度 |
 

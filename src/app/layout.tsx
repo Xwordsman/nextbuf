@@ -3,8 +3,11 @@ import { CommunityUiProvider } from "@/components/community/community-ui-provide
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header.client";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { getDemoCommunityHome } from "@/modules/community/demo-home.server";
+import { getCurrentAccount } from "@/modules/identity/session.server";
+import { runtimeEnv } from "@/shared/config/runtime-env";
 import "./globals.css";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://github.com/Xwordsman/nextbuf"),
@@ -15,12 +18,12 @@ export const metadata: Metadata = {
   description: "面向 AI、建站、主机与域名话题的开源综合社区。",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const home = getDemoCommunityHome();
+  const account = await getCurrentAccount();
 
   return (
     <html lang="zh-CN">
@@ -29,9 +32,8 @@ export default function RootLayout({
           <CommunityUiProvider>
             <div className="app-shell">
               <SiteHeader
-                currentUser={home.currentUser}
-                notifications={home.notifications}
-                nodes={home.nodes}
+                account={account}
+                registrationOpen={runtimeEnv.AUTH_REGISTRATION_MODE !== "closed"}
               />
               <div className="page-frame">{children}</div>
               <SiteFooter />

@@ -3,6 +3,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { CommunityHomeView } from "@/modules/community/contracts/home-view";
+import type { CurrentAccountView } from "@/modules/identity/session.server";
 import { useCommunityUi } from "@/components/community/community-ui-provider.client";
 import { RightRail } from "@/components/community/right-rail";
 import { SideNavigation } from "@/components/community/side-navigation.client";
@@ -13,7 +14,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type TopicFilter = "latest" | "hot" | "essence";
 
-export function CommunityHome({ view }: { view: CommunityHomeView }) {
+export function CommunityHome({
+  view,
+  account,
+}: {
+  view: CommunityHomeView;
+  account: CurrentAccountView | null;
+}) {
   const { query, railOpen, setRailOpen } = useCommunityUi();
   const [activeNode, setActiveNode] = useState("all");
   const [filter, setFilter] = useState<TopicFilter>("latest");
@@ -84,7 +91,7 @@ export function CommunityHome({ view }: { view: CommunityHomeView }) {
 
       <aside className="right-column" aria-label="社区侧栏">
         <RightRail
-          currentUser={view.currentUser}
+          account={account}
           overview={view.overview}
           topics={view.topics}
           onlineMembers={view.onlineMembers}
@@ -98,7 +105,7 @@ export function CommunityHome({ view }: { view: CommunityHomeView }) {
           </DialogHeader>
           <div className="mobile-rail-body">
             <RightRail
-              currentUser={view.currentUser}
+              account={account}
               overview={view.overview}
               topics={view.topics}
               onlineMembers={view.onlineMembers}

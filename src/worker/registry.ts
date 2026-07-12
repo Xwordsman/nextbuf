@@ -1,5 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { RUNTIME_PROBE_TOPIC, type OutboxJobData } from "@/infrastructure/queue/contracts";
+import { IDENTITY_EMAIL_TOPIC } from "@/infrastructure/mail/queue";
+import { sendEmailDelivery } from "@/infrastructure/mail/smtp";
 
 type OutboxHandler = (
   transaction: Prisma.TransactionClient,
@@ -26,6 +28,16 @@ handlers.set(handlerKey(RUNTIME_PROBE_TOPIC, 1), async (transaction, job) => {
   });
 
   return { eventId: job.eventId, processedAt };
+});
+
+handlers.set(handlerKey(IDENTITY_EMAIL_TOPIC, 1), async (transaction, job) => {
+  const deliveryId = job.payload.deliveryId;
+  if (typeof deliveryId !== "string") {
+    throw new Error("Identity email job is missing deliveryId");
+  }
+
+  await sendEmailDelivery(transaction, deliveryId);
+  return { deliveryId };
 });
 
 export function getOutboxHandler(topic: string, version: number): OutboxHandler {

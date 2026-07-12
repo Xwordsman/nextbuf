@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 面向部署者的目标操作流程，包括 Docker Compose、宝塔、非 Docker、升级、备份、恢复和故障排查。
 
-> 当前实现状态：截至 `v0.3.0`，已实现 Node 形式的 `web`、`worker`、`migrate`、`setup`、`doctor` 入口、可运行的 Next.js standalone Web 产物和开发/测试依赖 Compose，但尚无生产 NextBuf 镜像、生产四容器 Compose 或 `nextbufctl`。本文仍是 `v0.12.0` 必须完整实现和验证的运维合同。
+> 当前实现状态：截至 `v0.4.0`，已实现 Node 形式的 `web`、`worker`、`migrate`、`setup`、`doctor`、`invite` 入口、Next.js standalone Web、Better Auth、SMTP Worker 和 PostgreSQL/Redis/Mailpit 开发/测试 Compose，但尚无生产 NextBuf 镜像、生产四容器 Compose 或 `nextbufctl`。本文仍是 `v0.12.0` 必须完整实现和验证的运维合同；Mailpit 不进入生产拓扑。
 
 ## 1. 发布包合同
 
@@ -80,7 +80,7 @@ chmod 600 .env
 `init` 必须：
 
 - 检查 Docker、Compose 和目录权限。
-- 生成 `POSTGRES_PASSWORD`、`REDIS_PASSWORD`、`AUTH_SECRET`、`ENCRYPTION_KEY` 和 `SETUP_TOKEN`。
+- 生成 `POSTGRES_PASSWORD`、`REDIS_PASSWORD`、`AUTH_SECRET`、`MAIL_PAYLOAD_KEY`，并在对应后续版本生成 `ENCRYPTION_KEY` 和 `SETUP_TOKEN`。
 - 不覆盖用户已经设置的非占位密钥。
 - 创建本地上传、备份和日志目录（如部署模式需要）。
 - 运行配置 Schema 校验并输出脱敏摘要。
@@ -90,9 +90,37 @@ chmod 600 .env
 - `APP_URL`。
 - `NEXTBUF_IMAGE` 和 `NEXTBUF_VERSION`。
 - 邮件配置。
+- 注册策略：`open`、`invite` 或 `closed`。
 - 本地/S3 存储选择。
 
 完整变量见 [配置参考](./12-configuration-reference.md)。
+
+### 3.2.1 当前身份配置
+
+`v0.4.0` 启动真实认证至少需要：
+
+```dotenv
+APP_URL=https://community.example.com
+AUTH_SECRET=<至少 32 个字符的随机值>
+AUTH_REGISTRATION_MODE=invite
+MAIL_PAYLOAD_KEY=<Base64 编码的 32 字节随机值>
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=<smtp-user>
+SMTP_PASSWORD=<smtp-password>
+SMTP_FROM=NextBuf <noreply@example.com>
+```
+
+邀请制由应用 CLI 创建邀请码：
+
+```bash
+nextbuf invite create --uses 1 --expires-hours 168 --label initial-admin
+```
+
+邀请码只在创建时显示一次，数据库只保存 HMAC。当前尚无生产镜像，因此以上命令是发布入口合同；源码开发环境使用 `pnpm nextbuf invite create ...`。
+
+GitHub OAuth 可选，变量为 `GITHUB_CLIENT_ID` 和 `GITHUB_CLIENT_SECRET`，回调地址是 `${APP_URL}/api/auth/callback/github`。只配置其中一个会被启动校验拒绝。非开放注册模式不允许 OAuth 新建账号。
 
 ### 3.3 配置检查
 
@@ -411,7 +439,11 @@ systemd 单元分别监督 Web 和 Worker，共享版本目录和环境文件。
 
 ### 邮件积压
 
-检查 Worker、SMTP、Outbox 和失败任务。修复后重放幂等任务，不直接在数据库把所有任务标成成功。
+检查 Worker、SMTP、`email_deliveries`、Outbox 和失败任务。确认 `MAIL_PAYLOAD_KEY` 与创建邮件时一致；密钥错误不能靠重试恢复。修复后重放幂等任务，不直接在数据库把所有任务标成成功。
+
+### 验证或重置链接全部失效
+
+检查是否轮换了 `AUTH_SECRET`、修改了 `APP_URL`，或验证记录已过期。`AUTH_SECRET` 同时参与 Cookie 签名和验证标识 HMAC，轮换会按设计使旧会话与未使用链接失效。
 
 ## 14. 上线检查清单
 
