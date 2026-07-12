@@ -23,11 +23,13 @@ export default defineConfig({
   ],
   webServer: {
     command: "pnpm start:e2e",
-    url: "http://127.0.0.1:3000",
+    url: "http://127.0.0.1:3000/api/health/live",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
+      HOSTNAME: "127.0.0.1",
       NEXT_TELEMETRY_DISABLED: "1",
+      PORT: "3000",
     },
   },
 });

@@ -204,7 +204,7 @@ pnpm build
 pnpm test:e2e
 ```
 
-Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalone/server.js` 和已构建 Worker。`build:web` 会自动整理 `.next/static` 与 `public`，不能把启动命令改回不支持 standalone 的 `next start`。
+Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalone/server.js` 和已构建 Worker。测试服务显式绑定 `127.0.0.1:3000`，并以 `/api/health/live` 作为启动探针，避免 CI Runner 自带的 `HOSTNAME` 改变 standalone 监听地址。`build:web` 会自动整理 `.next/static` 与 `public`，不能把启动命令改回不支持 standalone 的 `next start`。
 
 `v0.4.0` E2E 依赖 PostgreSQL、Redis、Mailpit、Web 和 Worker，覆盖：
 
