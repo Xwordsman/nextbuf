@@ -27,6 +27,7 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
+      ...process.env,
       HOSTNAME: "127.0.0.1",
       NEXT_TELEMETRY_DISABLED: "1",
       PORT: "3000",
