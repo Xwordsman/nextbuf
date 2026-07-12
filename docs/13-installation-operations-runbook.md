@@ -1,0 +1,441 @@
+# 安装与运维运行手册
+
+本文定义 NextBuf 面向部署者的目标操作流程，包括 Docker Compose、宝塔、非 Docker、升级、备份、恢复和故障排查。
+
+> 当前实现状态：规划期，尚无可运行的 NextBuf 镜像和脚本。本文是 `v0.12.0` 必须实现和验证的运维合同。发布后，任何命令、文件名或行为变化必须同步更新本文。
+
+## 1. 发布包合同
+
+每个正式版本至少发布：
+
+```text
+nextbuf-release/
+├─ compose.yml
+├─ .env.example
+├─ nextbufctl
+├─ deploy/
+│  ├─ nginx/nextbuf.conf.example
+│  ├─ systemd/nextbuf-web.service
+│  ├─ systemd/nextbuf-worker.service
+│  └─ scripts/
+├─ checksums.txt
+└─ VERSION
+```
+
+同时发布：
+
+- amd64/arm64 应用镜像。
+- 非 Docker tar.gz 发布包。
+- SBOM、校验和、变更日志和升级说明。
+- 与该版本完全匹配的文档快照。
+
+`nextbufctl` 是面向单机部署者的薄封装，只组合 Docker Compose 和经过测试的脚本，不重新实现一套隐藏部署逻辑。必须支持：
+
+```text
+./nextbufctl init
+./nextbufctl start
+./nextbufctl stop
+./nextbufctl status
+./nextbufctl logs [web|worker|postgres|redis]
+./nextbufctl doctor
+./nextbufctl backup
+./nextbufctl restore <backup-file>
+./nextbufctl upgrade <version>
+```
+
+高级用户可以直接使用文档列出的等价 `docker compose` 命令。
+
+## 2. Docker Compose 前置条件
+
+- 64 位 Linux，amd64 或 arm64。
+- Docker Engine 和 Compose v2。
+- 一个解析到服务器的域名。
+- 可用的 80/443 端口或已有反向代理。
+- SMTP 服务；正式开放注册前必须验证邮件。
+- 足够的磁盘用于 PostgreSQL、附件、日志和备份。
+
+在 `v0.13.0` 压力测试完成前，资源数值只能作为开发估算。正式发布必须提供经过验证的试用、小型生产和中型单机档位，不能延续未经测试的最低配置。
+
+## 3. Docker 首次安装
+
+### 3.1 获取发布文件
+
+只从正式 Release 下载与目标版本匹配的发布包，并验证 `checksums.txt`。生产环境使用精确版本：
+
+```dotenv
+NEXTBUF_IMAGE=<正式发布时确定的镜像地址>
+NEXTBUF_VERSION=1.0.0
+```
+
+禁止生产部署默认使用 `latest`、`edge` 或未校验的第三方镜像。
+
+### 3.2 初始化配置
+
+```bash
+cp .env.example .env
+chmod 600 .env
+./nextbufctl init
+```
+
+`init` 必须：
+
+- 检查 Docker、Compose 和目录权限。
+- 生成 `POSTGRES_PASSWORD`、`REDIS_PASSWORD`、`AUTH_SECRET`、`ENCRYPTION_KEY` 和 `SETUP_TOKEN`。
+- 不覆盖用户已经设置的非占位密钥。
+- 创建本地上传、备份和日志目录（如部署模式需要）。
+- 运行配置 Schema 校验并输出脱敏摘要。
+
+用户必须设置：
+
+- `APP_URL`。
+- `NEXTBUF_IMAGE` 和 `NEXTBUF_VERSION`。
+- 邮件配置。
+- 本地/S3 存储选择。
+
+完整变量见 [配置参考](./12-configuration-reference.md)。
+
+### 3.3 配置检查
+
+```bash
+docker compose --env-file .env -f compose.yml config
+./nextbufctl doctor
+```
+
+`doctor` 在依赖尚未启动时只做静态检查；启动后增加数据库、Redis、邮件和存储连通性测试。
+
+### 3.4 启动
+
+```bash
+./nextbufctl start
+```
+
+等价核心流程：
+
+```bash
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+Compose 必须自动执行一次性 `setup`，等待 PostgreSQL、Redis 健康，并在 setup 成功后启动 Web 和 Worker。setup 失败时 Web/Worker 不得进入假健康状态。
+
+检查：
+
+```bash
+./nextbufctl status
+./nextbufctl logs web
+./nextbufctl logs worker
+```
+
+### 3.5 首次管理员
+
+1. 浏览器访问 `APP_URL`。
+2. 使用 `SETUP_TOKEN` 进入一次性安装向导。
+3. 创建首个管理员并验证邮箱。
+4. 完成站点名称、注册策略、邮件和存储测试。
+5. 安装状态写入 PostgreSQL后，setup token 立即失效。
+6. 从 `.env` 删除或轮换 `SETUP_TOKEN`，重启 Web。
+
+安装向导不得在已有用户或已初始化数据库上重新创建管理员。丢失 setup token 时使用受控 CLI 重置流程，不能直接修改数据库角色字段。
+
+## 4. 宝塔面板安装
+
+### 4.1 导入编排
+
+1. 在宝塔 Docker 的“编排/Compose”中创建 NextBuf 项目。
+2. 上传正式 `compose.yml` 和 `.env`，或粘贴 Release 中的精确内容。
+3. 确认 PostgreSQL、Redis 端口没有发布到公网。
+4. 将 Web 仅绑定到 `127.0.0.1:${WEB_PORT}`。
+5. 启动整个编排，不单独手工启动某一个依赖容器。
+
+预期四个常驻服务角色：
+
+```text
+web       NextBuf Web
+worker    NextBuf Worker
+postgres  PostgreSQL
+redis     Redis
+```
+
+宝塔中实际容器名可能带 Compose 项目名前缀和序号，例如 `nextbuf-web-1`。官方 Compose 不应通过固定 `container_name` 阻止后续扩容；判断角色应看服务名 `web`、`worker`、`postgres`、`redis`。
+
+setup 是一次性容器，成功退出属于正常状态，不应反复手动重启。
+
+### 4.2 反向代理
+
+在宝塔网站中：
+
+1. 创建对应域名站点。
+2. 申请并强制 HTTPS。
+3. 反向代理到 `http://127.0.0.1:${WEB_PORT}`。
+4. 转发 Host、真实协议和经过限制的客户端 IP 头。
+5. 配置上传大小和超时，使其与 `MAX_UPLOAD_SIZE_MB` 协调。
+
+应用只信任明确配置的宝塔/Nginx 代理地址，不能无条件接受任意 `X-Forwarded-For`。
+
+### 4.3 宝塔升级
+
+不要在面板中只把镜像标签改成 `latest`。按照“升级”章节先备份、修改精确版本、拉取镜像、迁移并观察健康状态。
+
+## 5. 反向代理合同
+
+最低要求：
+
+- HTTP 重定向 HTTPS。
+- 保留原始 Host 和协议。
+- 设置合理上传上限和请求超时。
+- WebSocket 若未来使用，需要显式转发 Upgrade 头。
+- `/health/live` 可以供本机健康检查，但不向公网暴露内部诊断详情。
+- 管理后台不通过静态缓存或 CDN 公共缓存。
+
+官方发布提供 Nginx 示例，但域名、证书路径和代理 IP 必须由部署者确认，不能无脑覆盖宝塔生成配置。
+
+## 6. 日常操作
+
+### 状态
+
+```bash
+./nextbufctl status
+./nextbufctl doctor
+```
+
+至少检查：Web readiness、Worker readiness、PostgreSQL、Redis、迁移版本、Outbox 积压和失败任务。
+
+### 日志
+
+```bash
+./nextbufctl logs web
+./nextbufctl logs worker
+```
+
+日志默认结构化并轮转。排障包必须脱敏 Cookie、Authorization、邮箱验证码、连接串密码和 Provider Secret。
+
+### 重启
+
+```bash
+docker compose restart web
+docker compose restart worker
+```
+
+不应为普通页面问题重启 PostgreSQL/Redis。Worker 重启前确保停止宽限期足以释放正在处理的任务锁。
+
+## 7. 备份
+
+### 7.1 备份内容
+
+完整备份包含：
+
+- PostgreSQL 一致性转储。
+- 本地上传目录，或 S3 版本/清单。
+- `.env` 中的实例密钥，单独加密保存。
+- Compose、应用版本和迁移版本信息。
+- 备份元数据和校验和。
+
+Redis 不作为主要数据备份。Outbox 保证关键任务可以从 PostgreSQL 恢复投递。
+
+### 7.2 执行
+
+```bash
+./nextbufctl backup
+```
+
+备份工具必须：
+
+1. 检查剩余磁盘空间。
+2. 使用与 PostgreSQL 主版本匹配的 `pg_dump`。
+3. 记录应用、数据库和迁移版本。
+4. 备份本地附件或生成对象存储清单。
+5. 生成校验和。
+6. 临时文件失败时清理，不把半成品标成成功。
+
+生产建议把备份复制到与应用服务器不同的存储，并设置保留策略。只在同一磁盘保留备份不能应对磁盘损坏。
+
+### 7.3 验证
+
+每个备份至少验证文件可读、校验和匹配和 PostgreSQL 转储清单可解析。定期在空环境执行完整恢复；没有恢复演练的备份不能视为可靠。
+
+## 8. 恢复
+
+恢复是破坏性操作，必须明确目标实例和备份来源。
+
+```bash
+./nextbufctl stop
+./nextbufctl restore /path/to/nextbuf-backup.tar.zst
+./nextbufctl start
+./nextbufctl doctor
+```
+
+恢复工具必须在写入前显示：
+
+- 目标数据库和数据卷。
+- 备份创建时间、应用版本和数据库版本。
+- 是否会覆盖现有数据。
+- 附件和加密密钥是否齐全。
+
+标准恢复流程：
+
+1. 在隔离或维护状态停止 Web 和 Worker。
+2. 备份当前残留状态，以便误操作回退。
+3. 恢复 PostgreSQL。
+4. 恢复附件和正确的 `ENCRYPTION_KEY`。
+5. 使用与备份兼容的应用版本启动。
+6. 必要时按版本顺序执行迁移。
+7. 检查登录、主题、附件、邮件和 Worker。
+
+禁止把较新数据库直接交给不兼容的旧应用镜像启动。
+
+## 9. 升级
+
+### 9.1 升级前
+
+1. 阅读从当前版本到目标版本的全部发布说明。
+2. 确认目标版本支持直接跨越；否则逐个中间版本升级。
+3. 执行并验证完整备份。
+4. 运行 `doctor` 和迁移预检。
+5. 记录当前 `NEXTBUF_IMAGE`、`NEXTBUF_VERSION` 和迁移版本。
+
+### 9.2 单机标准升级
+
+```bash
+./nextbufctl upgrade 1.2.3
+```
+
+工具内部等价流程：
+
+```text
+拉取目标镜像
+验证镜像和配置
+停止 Web 与 Worker
+运行一次性 migrate
+以目标版本启动 Web 与 Worker
+等待 readiness
+执行冒烟检查
+保留升级日志
+```
+
+PostgreSQL 和 Redis 不因每次应用补丁自动升级主版本。基础服务主版本升级使用独立指南和备份恢复测试。
+
+### 9.3 升级后检查
+
+- 首页、登录、主题页和后台可访问。
+- Web 与 Worker 运行同一应用版本。
+- 数据库迁移状态与镜像匹配。
+- Outbox 和队列继续下降，没有持续失败任务。
+- 邮件、附件和 OAuth Provider 正常。
+- 错误率和资源占用没有异常上升。
+
+## 10. 回滚
+
+回滚分两类：
+
+### 仅代码回滚
+
+目标迁移向后兼容时，可以切回旧镜像并重新启动 Web/Worker。发布说明必须明确支持的回滚范围。
+
+### 数据恢复回滚
+
+迁移不可逆或旧代码不兼容新 Schema 时：
+
+1. 停止 Web/Worker。
+2. 恢复升级前数据库和附件备份。
+3. 恢复旧版本配置和镜像。
+4. 启动并执行完整检查。
+
+不能承诺“改回镜像标签”就总能回滚。所有破坏性迁移必须在发布说明中突出标记。
+
+## 11. 非 Docker 部署
+
+### 11.1 系统布局
+
+建议：
+
+```text
+/opt/nextbuf/releases/<version>/    不可变发布目录
+/opt/nextbuf/current -> releases/... 当前版本符号链接
+/etc/nextbuf/nextbuf.env            环境配置，权限 600
+/var/lib/nextbuf/uploads            本地附件
+/var/log/nextbuf                    日志（若不只输出 journald）
+```
+
+创建不可登录系统用户 `nextbuf`，不得以 root 运行应用。
+
+### 11.2 安装流程
+
+1. 安装 Node.js 24 LTS、PostgreSQL 18、Redis 8 和反向代理。
+2. 验证发布包校验和。
+3. 解压到版本目录，设置 `nextbuf` 用户只读应用权限。
+4. 创建 `/etc/nextbuf/nextbuf.env` 并运行配置检查。
+5. 执行 `nextbuf migrate` 和首次 `nextbuf setup`。
+6. 安装并启用 `nextbuf-web.service`、`nextbuf-worker.service`。
+7. 配置 Nginx/Caddy 和 HTTPS。
+
+systemd 单元分别监督 Web 和 Worker，共享版本目录和环境文件。服务需要正确的 `Restart`、`TimeoutStopSec`、工作目录、用户和安全限制。
+
+### 11.3 非 Docker 升级
+
+新版本解压到新目录，先执行预检和迁移，再切换 `current` 符号链接并重启两个服务。不要直接覆盖正在运行的版本目录，否则无法可靠回退代码。
+
+## 12. 外部 PostgreSQL/Redis/S3
+
+使用托管依赖时：
+
+- 从 Compose 中禁用内置 PostgreSQL/Redis 服务或使用官方外部依赖 override。
+- `DATABASE_URL`、`REDIS_URL` 使用 TLS 和最小权限账号。
+- 确认 Redis 支持 BullMQ 命令和持久化需求。
+- 多实例强制使用 S3 或可靠共享文件系统。
+- 备份责任需要明确由托管服务还是 NextBuf 运维承担。
+
+切换存储前必须迁移已有附件并验证对象键，不能只修改 `STORAGE_DRIVER`。
+
+## 13. 常见故障
+
+### setup 退出且 Web 未启动
+
+这是保护行为。查看 setup 日志，通常是数据库不可达、迁移失败、密钥无效或已有不兼容 Schema。不要删除迁移表强行启动。
+
+### Web 正常但 Worker 不健康
+
+检查 Redis、数据库、Worker 配置、任务注册和停止锁。Web 可以继续提供只读或部分功能，但后台必须显示通知/邮件可能延迟。
+
+### PostgreSQL 容器重建后数据为空
+
+立即停止写入，检查 PostgreSQL 18 卷是否挂载 `/var/lib/postgresql`，不要在错误的新空库继续初始化。
+
+### 登录后循环跳转或 Cookie 不生效
+
+检查 `APP_URL`、HTTPS、Host、代理协议头和可信代理设置。不要通过关闭 Secure Cookie 解决生产 HTTPS 配置错误。
+
+### 上传成功但重启后附件丢失
+
+检查 `UPLOAD_DIR` 是否挂载持久卷；多实例检查是否错误使用本地存储。
+
+### 邮件积压
+
+检查 Worker、SMTP、Outbox 和失败任务。修复后重放幂等任务，不直接在数据库把所有任务标成成功。
+
+## 14. 上线检查清单
+
+- 使用精确应用版本和经过验证的镜像。
+- PostgreSQL、Redis 不暴露公网。
+- HTTPS、`APP_URL` 和可信代理正确。
+- 默认密码和示例密钥已替换。
+- 首次安装 token 已失效。
+- 邮箱验证、重置密码和发件地址测试成功。
+- 附件持久化和恢复测试成功。
+- 完整备份已复制到异机并验证。
+- 管理员二次验证按当前版本能力启用。
+- 日志脱敏、轮转和磁盘告警有效。
+- Web/Worker readiness 和队列积压可观察。
+- 已阅读当前版本已知问题和回滚限制。
+
+## 15. 文档实现责任
+
+`v0.12.0` 不能仅以“Dockerfile 能构建”作为完成标准。以下内容必须一起交付并通过全新服务器验证：
+
+- `compose.yml`。
+- `.env.example`。
+- `nextbufctl`。
+- 宝塔安装步骤。
+- 非 Docker systemd 单元。
+- 备份/恢复和升级/回滚工具。
+- 本文中的全部核心命令。

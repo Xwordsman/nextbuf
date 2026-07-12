@@ -1,0 +1,39 @@
+NextBuf Notices
+
+Copyright (c) 2026 NextBuf contributors.
+
+NextBuf is licensed under the GNU Affero General Public License version 3 only.
+See LICENSE for the complete license text.
+
+Official project repository:
+https://github.com/Xwordsman/nextbuf
+
+==== Additional Terms under GNU AGPL v3 Section 7(b) ====
+
+Any original or modified version of the Program that provides a web user
+interface must preserve a clearly visible attribution notice in the global
+footer of normal user-facing pages:
+
+    Powered by NextBuf
+
+The name "NextBuf" must be a hyperlink to the canonical official project
+repository identified in this NOTICE file.
+
+The attribution notice must not be removed, hidden, obscured, or rendered
+substantially less visible than other ordinary text in the same footer area.
+Deployers may add their own copyright notices, branding, and links, but may
+not remove, replace, or disable the attribution required above.
+
+Modified versions must not misrepresent the origin of the software and must
+mark their changes as required by GNU AGPL v3 Section 7(c).
+
+The NextBuf name may be used as necessary to provide the attribution required
+above. No other trademark rights are granted by this notice.
+
+This attribution link does not replace the GNU AGPL requirement to offer the
+Corresponding Source of the modified version actually provided over a network.
+
+==== Third-Party Notices ====
+
+Third-party dependency notices will be generated and reviewed before the first
+stable release. Each third-party component remains subject to its own license.

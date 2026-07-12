@@ -1,0 +1,50 @@
+{
+  "name": "nextbuf",
+  "version": "0.1.0",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=11.7.0 <12"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Xwordsman/nextbuf.git"
+  },
+  "homepage": "https://github.com/Xwordsman/nextbuf#readme",
+  "bugs": {
+    "url": "https://github.com/Xwordsman/nextbuf/issues"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
+  },
+  "dependencies": {
+    "next": "16.2.10",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "server-only": "0.0.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.10",
+    "prettier": "^3.6.2",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^3.2.4"
+  }
+}

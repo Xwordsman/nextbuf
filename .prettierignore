@@ -1,0 +1,9 @@
+.next
+coverage
+node_modules
+.tmp-*
+scaffold-nextbuf-temp
+UI
+docs
+LICENSE
+NOTICE

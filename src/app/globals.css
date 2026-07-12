@@ -1,0 +1,201 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --background: #f5f6f8;
+  --surface: #ffffff;
+  --foreground: #18181b;
+  --muted: #62626b;
+  --border: #dedfe3;
+  --accent: #0f766e;
+  --accent-hover: #115e59;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: var(--background);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+a {
+  color: inherit;
+}
+
+.app-shell {
+  display: grid;
+  min-height: 100vh;
+  grid-template-rows: auto 1fr auto;
+}
+
+.site-header {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  background: rgb(255 255 255 / 92%);
+  padding: 0 24px;
+}
+
+.brand {
+  color: var(--foreground);
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.milestone,
+.eyebrow {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.page-frame {
+  width: 100%;
+}
+
+.status-page {
+  display: grid;
+  min-height: calc(100vh - 104px);
+  place-items: center;
+  padding: 32px 20px;
+}
+
+.status-panel {
+  width: min(720px, 100%);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 28px rgb(24 24 27 / 7%);
+  padding: 32px;
+}
+
+.status-heading h1 {
+  margin: 6px 0 12px;
+  font-size: 30px;
+  line-height: 1.2;
+}
+
+.status-heading p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.eyebrow {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin: 28px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--border);
+}
+
+.status-grid div {
+  min-width: 0;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.status-grid dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.status-grid dd {
+  overflow-wrap: anywhere;
+  margin: 6px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.status-actions a,
+.status-actions button {
+  appearance: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 9px 12px;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.status-actions a:hover,
+.status-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.legal-footer {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 12px 20px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.legal-footer a {
+  color: var(--foreground);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.legal-footer a:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+@media (max-width: 560px) {
+  .site-header {
+    padding: 0 16px;
+  }
+
+  .status-page {
+    padding: 20px 12px;
+  }
+
+  .status-panel {
+    padding: 22px 18px;
+  }
+
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .status-actions a,
+  .status-actions button {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+}
