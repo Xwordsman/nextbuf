@@ -89,7 +89,7 @@ test.describe.serial("identity authentication", () => {
     const topicTitle = `E2E 用户主题 ${Date.now()}`;
     await page.goto("/topics/new");
     await page.getByLabel("标题").fill(topicTitle);
-    await page.getByLabel("节点").selectOption("site");
+    await page.getByLabel("节点", { exact: true }).selectOption("site");
     await page
       .getByLabel("正文")
       .fill("这是通过真实浏览器发布的主题正文，用于验证创建、编辑、软删除和恢复流程。");

@@ -1638,7 +1638,6 @@ button:disabled {
 .topic-title a,
 .topic-author,
 .topic-node {
-  color: inherit;
   outline: none;
 }
 

@@ -75,7 +75,7 @@ test.describe("community shell", () => {
     await expect(page.getByRole("heading", { name: /E2E DNS 解析排查主题/ })).toBeVisible();
 
     await page.getByLabel("搜索话题、节点或作者").fill("");
-    await page.getByRole("link", { name: /人工智能/ }).click();
+    await page.locator('.node-navigation-item[href="/nodes/ai"]').click();
     await expect(page).toHaveURL(/\/nodes\/ai$/);
     await expect(page.getByText("共 1 个话题", { exact: true })).toBeVisible();
   });
