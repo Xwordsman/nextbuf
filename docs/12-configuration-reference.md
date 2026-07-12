@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 环境变量的目标合同。`v0.1.0` 必须建立统一配置 Schema，`v0.12.0` 前必须让 `.env.example`、Compose、安装向导、Web、Worker、CLI 与本文完全一致。
 
-> 当前实现状态：`v0.2.0` 已实现 `.env.example` 中列出的应用、数据库、Redis、Worker、Outbox 和任务保留变量，并由 Web、Worker、CLI 共享 Zod Schema。本文其余认证、邮件、存储、OAuth、搜索和观测变量仍是后续版本合同；尚未出现在 `.env.example` 的变量不能视为当前可用功能。
+> 当前实现状态：截至 `v0.3.0`，已实现 `.env.example` 中列出的应用、数据库、Redis、Worker、Outbox 和任务保留变量，并由 Web、Worker、CLI 共享 Zod Schema。页面框架没有新增运行配置。本文其余认证、邮件、存储、OAuth、搜索和观测变量仍是后续版本合同；尚未出现在 `.env.example` 的变量不能视为当前可用功能。
 
 ## 1. 配置规则
 

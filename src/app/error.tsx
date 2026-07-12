@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { FeedbackState } from "@/components/states/feedback-state";
+import { Button } from "@/components/ui/button";
 
 export default function ErrorPage({
   reset,
@@ -9,20 +11,20 @@ export default function ErrorPage({
   reset: () => void;
 }) {
   return (
-    <main className="status-page">
-      <section className="status-panel">
-        <div className="status-heading">
-          <p className="eyebrow">请求失败</p>
-          <h1>页面暂时无法加载</h1>
-          <p>错误已经被隔离。可以重试当前操作，持续失败时请记录请求时间。</p>
-        </div>
-        <div className="status-actions">
-          <button type="button" onClick={reset}>
+    <FeedbackState
+      kind="error"
+      title="页面暂时无法加载"
+      description="请求没有正常完成，可以重试当前操作。"
+      actions={
+        <>
+          <Button type="button" onClick={reset}>
             重新尝试
-          </button>
-          <Link href="/">返回首页</Link>
-        </div>
-      </section>
-    </main>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/">返回首页</Link>
+          </Button>
+        </>
+      }
+    />
   );
 }

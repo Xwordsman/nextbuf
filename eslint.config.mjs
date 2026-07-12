@@ -24,7 +24,25 @@ const eslintConfig = defineConfig([
       "no-restricted-imports": [
         "error",
         {
-          patterns: ["@/infrastructure/*", "@/modules/*", "@/worker/*", "@/shared/config/*"],
+          patterns: [
+            {
+              group: ["@/infrastructure/*", "@/infrastructure/**"],
+              message: "Client Components must not import infrastructure code.",
+            },
+            {
+              group: ["@/modules/*", "@/modules/**"],
+              allowTypeImports: true,
+              message: "Client Components may import only module-owned public types.",
+            },
+            {
+              group: ["@/worker/*", "@/worker/**"],
+              message: "Client Components must not import worker code.",
+            },
+            {
+              group: ["@/shared/config/*", "@/shared/config/**"],
+              message: "Client Components must not import server configuration.",
+            },
+          ],
         },
       ],
     },

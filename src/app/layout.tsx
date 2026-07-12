@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { LegalAttribution } from "@/components/layout/legal-attribution";
+import { CommunityUiProvider } from "@/components/community/community-ui-provider.client";
+import { SiteFooter } from "@/components/layout/site-footer";
+import { SiteHeader } from "@/components/layout/site-header.client";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { getDemoCommunityHome } from "@/modules/community/demo-home.server";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,19 +20,24 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const home = getDemoCommunityHome();
+
   return (
     <html lang="zh-CN">
       <body>
-        <div className="app-shell">
-          <header className="site-header">
-            <Link className="brand" href="/" aria-label="NextBuf 首页">
-              NextBuf
-            </Link>
-            <span className="milestone">v0.2.0 运行时基础</span>
-          </header>
-          <div className="page-frame">{children}</div>
-          <LegalAttribution />
-        </div>
+        <TooltipProvider>
+          <CommunityUiProvider>
+            <div className="app-shell">
+              <SiteHeader
+                currentUser={home.currentUser}
+                notifications={home.notifications}
+                nodes={home.nodes}
+              />
+              <div className="page-frame">{children}</div>
+              <SiteFooter />
+            </div>
+          </CommunityUiProvider>
+        </TooltipProvider>
       </body>
     </html>
   );

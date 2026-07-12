@@ -67,6 +67,8 @@ NextBuf/
 │  ├─ migrations/
 │  └─ seed.ts
 ├─ public/                    浏览器可直接访问的静态资源
+├─ scripts/
+│  └─ prepare-standalone.mjs  整理本地/发布用 standalone 静态资源
 ├─ tests/
 │  ├─ unit/
 │  ├─ integration/
@@ -78,7 +80,8 @@ NextBuf/
 │  ├─ nginx/
 │  └─ scripts/
 ├─ docs/
-├─ UI/                        设计原型，迁移完成前保留
+├─ UI/                        历史设计原型，仅作视觉参考
+├─ playwright.config.ts       多视口浏览器测试与 standalone Web 启动
 ├─ package.json
 ├─ pnpm-lock.yaml
 ├─ Dockerfile
@@ -163,6 +166,7 @@ import "server-only";
 - `*.client.tsx`：明确的 Client Component 或客户端适配器。
 - 普通 `.tsx` 默认优先作为 Server Component。
 - 共享给浏览器的 DTO 不得包含密码哈希、密钥、内部审计字段或数据库连接类型。
+- `*.client.tsx` 只能从业务模块导入 `import type` 的公开浏览器安全合同；ESLint 禁止导入模块实现、基础设施、Worker 和服务端配置。
 
 必须配置 lint/import 规则阻止：
 

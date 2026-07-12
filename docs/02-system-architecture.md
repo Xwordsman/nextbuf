@@ -37,7 +37,7 @@ flowchart LR
 | ORM | Prisma 7 + PostgreSQL driver adapter | 已确定 | 常规模型与迁移使用 Prisma；复杂查询允许参数化 SQL |
 | 缓存/队列 | Redis 8、BullMQ | 已确定 | 缓存、限流和队列使用不同 key 前缀 |
 | 校验 | Zod | 已确定 | 已用于 Web、Worker、CLI 共享环境边界；后续扩展到表单和 API |
-| 测试 | Vitest；Playwright（后续） | 部分确定 | Vitest 已覆盖单元与真实服务集成；Playwright 在 UI/E2E 里程碑验证 |
+| 测试 | Vitest；Playwright + axe | 已确定 | Vitest 覆盖单元与真实服务集成；Playwright 覆盖 standalone、多视口、交互、截图与基础无障碍 |
 
 Next.js 的最低 Node 要求不等于项目运行基线。选择 Node 24 LTS 是为了获得较长支持周期；发布包必须明确说明该要求。
 

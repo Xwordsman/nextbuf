@@ -1,5 +1,7 @@
 .next
 coverage
+playwright-report
+test-results
 node_modules
 dist
 src/generated/prisma

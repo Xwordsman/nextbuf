@@ -32,12 +32,12 @@
 | D-024 | 单元测试使用 Vitest | 与 TypeScript、Node.js 24 和当前构建兼容，v0.1.0 已验证 | 数据库集成测试仍使用真实 PostgreSQL/Redis，不能只做 mock |
 | D-025 | 每个完成阶段必须推送并创建版本标签 | 远程提交和标签提供稳定回滚点，避免故障时依赖某台开发机 | 检查通过后更新文档、sign-off 提交、推送 main、创建并推送注释标签 |
 | D-026 | 使用 Prisma 7 与 `@prisma/adapter-pg` | Node.js 24、PostgreSQL 18 Schema/迁移、Next.js standalone 和独立 Worker/CLI 构建已验证 | Prisma Client 使用 driver adapter；复杂 PostgreSQL 能力保留参数化 SQL 与手写迁移出口 |
+| D-027 | E2E 使用 Playwright，基础无障碍使用 axe | 已验证 Next.js 16 standalone、多视口、Radix 交互、截图和 CI 运行方式 | `pnpm test:e2e` 在构建后运行 Chromium；严重和致命 axe 问题阻止发布 |
 
 ## 2. 暂定方案
 
 | ID | 方案 | 验证点 | 最晚决定时间 |
 | --- | --- | --- | --- |
-| P-003 | Playwright 作为 E2E 工具 | Next.js 16、多视口、Web/Worker 完整链路和 CI 性能 | `v0.3.0` 开始前 |
 | P-004 | Markdown 作为内容源格式 | 编辑器体验、修订、引用和安全渲染 | 主题功能开发前 |
 | P-005 | PostgreSQL FTS + pg_trgm 作为 V1 搜索 | 中文分词质量、数据规模和部署成本 | 搜索里程碑前 |
 | P-006 | TL0-TL3 自动计算，TL4 人工确认 | 运营规则、滥用风险和降级机制 | 信任模块开发前 |

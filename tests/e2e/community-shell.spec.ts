@@ -1,0 +1,132 @@
+import { stat } from "node:fs/promises";
+import AxeBuilder from "@axe-core/playwright";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
+
+async function captureFullPage(page: Page, testInfo: TestInfo, name: string) {
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path, fullPage: true });
+  expect((await stat(path)).size).toBeGreaterThan(20_000);
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const dimensions = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+
+  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+}
+
+async function openHome(page: Page) {
+  await page.goto("/");
+  await expect(page.getByTestId("community-shell")).toBeVisible();
+  await expect(page.getByText("共 9 个话题", { exact: true })).toBeVisible();
+}
+
+test.describe("community shell", () => {
+  test("preserves the approved desktop grid and account interactions", async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await openHome(page);
+
+    const shell = page.getByTestId("community-shell");
+    const left = shell.locator(".left-column");
+    const main = shell.locator(".main-column");
+    const right = shell.locator(".right-column");
+    const [shellBox, leftBox, mainBox, rightBox] = await Promise.all([
+      shell.evaluate((element) => element.getBoundingClientRect().toJSON()),
+      left.evaluate((element) => element.getBoundingClientRect().toJSON()),
+      main.evaluate((element) => element.getBoundingClientRect().toJSON()),
+      right.evaluate((element) => element.getBoundingClientRect().toJSON()),
+    ]);
+
+    expect(shellBox.width).toBeLessThanOrEqual(1380);
+    expect(shellBox.width).toBeGreaterThanOrEqual(1379);
+    expect(leftBox.width).toBeCloseTo(230, 0);
+    expect(rightBox.width).toBeCloseTo(300, 0);
+    expect(mainBox.x - (leftBox.x + leftBox.width)).toBeCloseTo(16, 0);
+    expect(rightBox.x - (mainBox.x + mainBox.width)).toBeCloseTo(16, 0);
+
+    await page.getByLabel("账户菜单").click();
+    const accountMenu = page.getByRole("menu");
+    await expect(accountMenu.getByText("@linan", { exact: true })).toBeVisible();
+    await expect(accountMenu.getByText("UID 10086", { exact: true })).toBeVisible();
+    await expect(accountMenu.getByText("TL3", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("button", { name: /通知，3 条未读/ }).click();
+    await page.getByRole("button", { name: "全部已读" }).click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "通知" })).toBeVisible();
+
+    await expectNoHorizontalOverflow(page);
+    await captureFullPage(page, testInfo, "desktop-1440");
+  });
+
+  test("filters topics through search and node navigation", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await openHome(page);
+
+    await page.getByLabel("搜索话题、节点或作者").fill("DNS");
+    await expect(page.getByText("共 1 个话题", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /域名转入后 DNS 生效慢/ })).toBeVisible();
+
+    await page.getByLabel("搜索话题、节点或作者").fill("");
+    await page.getByRole("button", { name: /人工智能/ }).click();
+    await expect(page.getByText("共 2 个话题", { exact: true })).toBeVisible();
+  });
+
+  test("uses a two-column layout and right-rail dialog on tablet", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await openHome(page);
+
+    await expect(page.locator(".left-column")).toBeVisible();
+    await expect(page.locator(".right-column")).toBeHidden();
+    await page.getByRole("button", { name: "我的面板" }).click();
+    const dialog = page.getByRole("dialog", { name: "我的面板" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: "我的状态" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+
+    await expectNoHorizontalOverflow(page);
+    await captureFullPage(page, testInfo, "tablet-1024");
+  });
+
+  test("supports mobile search, publish validation and compact layout", async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openHome(page);
+
+    await page.getByRole("button", { name: "搜索" }).click();
+    await page.locator("#mobile-search").fill("DNS");
+    await expect(page.getByText("共 1 个话题", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "发帖" }).click();
+    const dialog = page.getByRole("dialog", { name: "发布新话题" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "发布" }).click();
+    await expect(dialog.getByText("标题至少需要 6 个字符")).toBeVisible();
+    await expect(dialog.getByText("请选择节点")).toBeVisible();
+    await expect(dialog.getByText("内容至少需要 12 个字符")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+
+    await expectNoHorizontalOverflow(page);
+    await captureFullPage(page, testInfo, "mobile-390");
+  });
+
+  test("has no serious or critical automated accessibility violations", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await openHome(page);
+
+    const results = await new AxeBuilder({ page }).analyze();
+    const blockingViolations = results.violations.filter(({ impact }) =>
+      ["serious", "critical"].includes(impact ?? ""),
+    );
+
+    expect(blockingViolations).toEqual([]);
+  });
+});

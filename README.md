@@ -2,7 +2,7 @@
 
 NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开源综合社区。
 
-当前版本为 `v0.2.0` 运行时基础：已经接入 PostgreSQL 18、Prisma 7、Redis 8、BullMQ、Outbox、独立 Worker 和运行诊断。注册、用户资料、主题、回复、通知、治理和管理后台仍将按照版本计划逐步实现。
+当前版本为 `v0.3.0` 设计系统与页面框架：在既有 PostgreSQL、Redis、Outbox 和独立 Worker 基础上，已经实现三栏响应式社区外壳、可复用 UI 原语、头像与通知菜单、发帖表单演示、状态页、真实页脚和 Playwright 多视口检查。当前页面使用只读演示 ViewModel，尚未实现注册、真实用户、节点/主题写入、回复、治理或管理后台业务。
 
 ## 技术基线
 
@@ -12,6 +12,8 @@ NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开
 - PostgreSQL 18、Prisma 7、Redis 8、BullMQ
 - 一个应用镜像，Web 与 Worker 分开运行
 - 事务性 Outbox、数据库内幂等任务和 Web/Worker 健康检查
+- Tailwind CSS、Radix UI 原语、Lucide 图标和可访问的响应式社区页面
+- Playwright 桌面/平板/手机 E2E、截图和 axe 严重问题检查
 
 ## 开始开发
 
@@ -42,9 +44,10 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm test:e2e
 ```
 
-真实 PostgreSQL/Redis 集成测试使用独立测试 Compose，步骤见 [本地开发手册](./docs/11-local-development.md)。
+`pnpm test:e2e` 运行已构建的 Next.js standalone 服务。真实 PostgreSQL/Redis 集成测试使用独立测试 Compose，完整步骤见 [本地开发手册](./docs/11-local-development.md)。
 
 ## 文档
 
