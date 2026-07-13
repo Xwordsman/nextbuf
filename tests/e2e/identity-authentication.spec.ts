@@ -102,7 +102,24 @@ test.describe.serial("identity authentication", () => {
     await expect(page.getByLabel("正文")).toHaveValue(/e2e-notes\.txt/);
     await page.getByRole("tab", { name: "预览" }).click();
     await expect(page.getByText("Markdown 主题正文", { exact: true })).toBeVisible();
+    const publishResponsePromise = page.waitForResponse(
+      (response) => {
+        const request = response.request();
+        return (
+          ["POST", "PATCH"].includes(request.method()) &&
+          /^\/api\/community\/topics(?:\/\d+)?$/.test(new URL(response.url()).pathname) &&
+          request.postData()?.includes('"action":"publish"') === true
+        );
+      },
+      { timeout: 10_000 },
+    );
     await page.getByRole("button", { name: "发布主题" }).click();
+    const publishResponse = await publishResponsePromise;
+    const publishBody = await publishResponse.text();
+    expect(
+      publishResponse.ok(),
+      `Topic publish returned ${publishResponse.status()}: ${publishBody}`,
+    ).toBeTruthy();
     await expect(page).toHaveURL(/\/topics\/\d+$/);
     await expect(page.getByRole("heading", { name: topicTitle })).toBeVisible();
     await expect(page.getByRole("link", { name: "e2e-notes.txt" })).toBeVisible();
