@@ -12,6 +12,7 @@ export default defineConfig({
   outDir: "dist",
   outExtension: () => ({ js: ".mjs" }),
   platform: "node",
+  noExternal: ["server-only"],
   sourcemap: true,
   splitting: false,
   target: "node24",
