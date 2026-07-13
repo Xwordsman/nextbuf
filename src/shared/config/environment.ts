@@ -29,7 +29,7 @@ const environmentSchema = z.object({
   TZ: z.string().min(1).default("Asia/Shanghai"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   LOG_FORMAT: z.enum(["pretty", "json"]).default("pretty"),
-  NEXTBUF_VERSION: z.string().min(1).default("0.6.0"),
+  NEXTBUF_VERSION: z.string().min(1).default("0.7.0"),
   NEXTBUF_COMMIT: z.string().min(1).default("development"),
   NEXTBUF_BUILD_TIME: z.string().default(""),
   DATABASE_URL: optionalUrl,
@@ -68,9 +68,31 @@ const environmentSchema = z.object({
   SMTP_USER: optionalString,
   SMTP_PASSWORD: optionalString,
   SMTP_FROM: z.string().min(3).default("NextBuf <noreply@localhost>"),
-  STORAGE_DRIVER: z.enum(["local"]).default("local"),
+  STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   STORAGE_LOCAL_PATH: z.string().min(1).default("data/uploads"),
   AVATAR_MAX_UPLOAD_BYTES: z.coerce.number().int().min(65_536).max(5_242_880).default(1_048_576),
+  ATTACHMENT_MAX_UPLOAD_BYTES: z.coerce
+    .number()
+    .int()
+    .min(65_536)
+    .max(52_428_800)
+    .default(20_971_520),
+  ATTACHMENT_MAX_IMAGE_PIXELS: z.coerce
+    .number()
+    .int()
+    .min(1_000_000)
+    .max(100_000_000)
+    .default(40_000_000),
+  ATTACHMENT_ORPHAN_GRACE_HOURS: z.coerce.number().int().min(1).max(720).default(24),
+  S3_ENDPOINT: optionalUrl,
+  S3_REGION: optionalString,
+  S3_BUCKET: optionalString,
+  S3_ACCESS_KEY_ID: optionalString,
+  S3_SECRET_ACCESS_KEY: optionalString,
+  S3_FORCE_PATH_STYLE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
   GITHUB_CLIENT_ID: optionalString,
   GITHUB_CLIENT_SECRET: optionalString,
 });
@@ -114,6 +136,23 @@ const authEnvironmentSchema = serviceEnvironmentSchema
         path: ["GITHUB_CLIENT_ID"],
         message: "GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET must be configured together",
       });
+    }
+
+    if (environment.STORAGE_DRIVER === "s3") {
+      for (const key of [
+        "S3_REGION",
+        "S3_BUCKET",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+      ] as const) {
+        if (!environment[key]) {
+          context.addIssue({
+            code: "custom",
+            path: [key],
+            message: `${key} is required when STORAGE_DRIVER=s3`,
+          });
+        }
+      }
     }
 
     if (environment.NODE_ENV === "production") {

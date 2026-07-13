@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma } from "@/generated/prisma/client";
 import { getPrismaClient } from "@/infrastructure/database/client";
 import { requireActiveCommunityActor } from "@/modules/community/authorization.server";
+import { syncPostContentReferences } from "@/modules/community/content-references.server";
 import { CommunityError } from "@/modules/community/errors";
 import {
   MAX_ACTIVE_TOPIC_DRAFTS,
@@ -114,7 +115,7 @@ export async function createTopic(
         bodySource: content.body,
       },
     });
-    await transaction.communityPostRevision.create({
+    const revision = await transaction.communityPostRevision.create({
       data: {
         postId: post.id,
         editorId: context.userId,
@@ -123,6 +124,12 @@ export async function createTopic(
         bodySource: content.body,
         source: "create",
       },
+    });
+    await syncPostContentReferences(transaction, {
+      actorId: context.userId,
+      postId: post.id,
+      revisionId: revision.id,
+      body: content.body,
     });
     await transaction.communityAuditEvent.create({
       data: {
@@ -189,7 +196,7 @@ export async function updateTopicContent(
     }
     if (contentChanged) {
       const nextVersion = post.revisionCount + 1;
-      await transaction.communityPostRevision.create({
+      const revision = await transaction.communityPostRevision.create({
         data: {
           postId: post.id,
           editorId: context.userId,
@@ -198,6 +205,12 @@ export async function updateTopicContent(
           bodySource: content.body,
           source: publishing ? "publish" : "edit",
         },
+      });
+      await syncPostContentReferences(transaction, {
+        actorId: context.userId,
+        postId: post.id,
+        revisionId: revision.id,
+        body: content.body,
       });
       await transaction.communityPost.update({
         where: { id: post.id },

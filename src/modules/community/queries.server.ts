@@ -13,10 +13,12 @@ import type {
   CommunityTopicView,
 } from "@/modules/community/contracts/home-view";
 import { CommunityError } from "@/modules/community/errors";
+import { renderCommunityMarkdown } from "@/modules/community/markdown.server";
 import { isHotTopic } from "@/modules/community/topic-policy";
 
 const publicTopicStatuses = ["published", "closed"];
 const pageSize = 20;
+const replyPageSize = 30;
 
 type FeedCursor = {
   pinned: boolean;
@@ -29,6 +31,12 @@ type FeedDirection = "next" | "previous";
 const topicInclude = {
   node: true,
   author: { select: { name: true, username: true, image: true } },
+  posts: {
+    where: { position: { gt: 1 }, status: "published" },
+    orderBy: { position: "desc" },
+    take: 1,
+    select: { author: { select: { name: true } } },
+  },
 } satisfies Prisma.CommunityTopicInclude;
 
 function validIcon(value: string): CommunityNodeIcon {
@@ -148,7 +156,7 @@ function toTopicView(
     authorInitials: topic.author.name.trim().slice(0, 1).toLocaleUpperCase("zh-CN") || "U",
     createdLabel: relativeTime(topic.publishedAt ?? topic.createdAt, now),
     lastReplyLabel: relativeTime(topic.lastActivityAt, now),
-    lastReplyBy: topic.author.name,
+    lastReplyBy: topic.posts[0]?.author.name ?? topic.author.name,
     views: topic.viewCount,
     replies: topic.replyCount,
     statuses: topicStatuses(topic),
@@ -241,7 +249,9 @@ export async function getCommunityHomeView(input: {
   const active = input.nodeSlug ? nodes.find((node) => node.slug === input.nodeSlug) : undefined;
   if (input.nodeSlug && !active) throw new CommunityError("node_unavailable", 404);
   const filter = input.filter ?? "latest";
-  const [feed, hotTopics, memberCount, topicCount] = await Promise.all([
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [feed, hotTopics, memberCount, topicCount, todayReplyCount] = await Promise.all([
     getFeedPage({
       nodeId: active?.id,
       filter,
@@ -259,6 +269,14 @@ export async function getCommunityHomeView(input: {
     }),
     prisma.user.count({ where: { status: "active" } }),
     prisma.communityTopic.count({ where: { status: { in: publicTopicStatuses } } }),
+    prisma.communityPost.count({
+      where: {
+        position: { gt: 1 },
+        status: "published",
+        createdAt: { gte: today },
+        topic: { status: { in: publicTopicStatuses } },
+      },
+    }),
   ]);
   const nodeViews: CommunityNodeView[] = [
     {
@@ -299,7 +317,7 @@ export async function getCommunityHomeView(input: {
       overview: [
         { label: "成员", value: memberCount.toLocaleString("zh-CN") },
         { label: "话题", value: topicCount.toLocaleString("zh-CN") },
-        { label: "今日回复", value: "0" },
+        { label: "今日回复", value: todayReplyCount.toLocaleString("zh-CN") },
         { label: "当前在线", value: "0" },
       ],
       onlineMembers: [],
@@ -326,7 +344,15 @@ export async function listWritableNodes() {
   });
 }
 
-export async function getTopicPageView(number: number, viewerId?: string) {
+export async function getPublicTopicTitle(number: number): Promise<string | null> {
+  const topic = await getPrismaClient().communityTopic.findUnique({
+    where: { number },
+    select: { title: true, status: true },
+  });
+  return topic && publicTopicStatuses.includes(topic.status) ? topic.title : null;
+}
+
+export async function getTopicPageView(number: number, viewerId?: string, requestedFrom = 2) {
   const prisma = getPrismaClient();
   const topic = await prisma.communityTopic.findUnique({
     where: { number },
@@ -352,6 +378,41 @@ export async function getTopicPageView(number: number, viewerId?: string) {
   if (!["published", "closed"].includes(topic.status) && !canEdit) return null;
   const post = topic.posts[0];
   if (!post) return null;
+  const canReply = Boolean(
+    permissions?.active &&
+    (topic.status === "published" || (topic.status === "closed" && canModerate)),
+  );
+  const replyFrom = Number.isSafeInteger(requestedFrom) && requestedFrom >= 2 ? requestedFrom : 2;
+  const [replyRows, draft] = await Promise.all([
+    ["published", "closed"].includes(topic.status)
+      ? prisma.communityPost.findMany({
+          where: { topicId: topic.id, position: { gte: replyFrom } },
+          orderBy: { position: "asc" },
+          take: replyPageSize + 1,
+          include: {
+            author: { select: { id: true, uid: true, username: true, name: true, image: true } },
+            quotedPost: {
+              select: {
+                position: true,
+                status: true,
+                bodySource: true,
+                author: { select: { username: true, name: true } },
+              },
+            },
+          },
+        })
+      : [],
+    viewerId && canReply
+      ? prisma.communityPostDraft.findUnique({
+          where: { topicId_authorId: { topicId: topic.id, authorId: viewerId } },
+          include: {
+            quotedPost: { select: { position: true, author: { select: { name: true } } } },
+          },
+        })
+      : null,
+  ]);
+  const hasNextReplies = replyRows.length > replyPageSize;
+  const visibleReplies = replyRows.slice(0, replyPageSize);
 
   return {
     id: topic.id,
@@ -363,6 +424,7 @@ export async function getTopicPageView(number: number, viewerId?: string) {
     isPinned: topic.isPinned,
     isEssence: topic.isEssence,
     body: post.bodySource,
+    bodyHtml: renderCommunityMarkdown(post.bodySource),
     revisionCount: post.revisionCount,
     revisions: post.revisions.map((revision) => ({
       version: revision.version,
@@ -386,6 +448,60 @@ export async function getTopicPageView(number: number, viewerId?: string) {
     canEdit,
     canModerate,
     canRestore: canEdit && topic.status === "deleted",
+    canReply,
+    replyDraft: draft
+      ? {
+          body: draft.bodySource,
+          quotedPosition: draft.quotedPost?.position ?? null,
+          quotedAuthorName: draft.quotedPost?.author.name ?? null,
+          updatedAt: draft.updatedAt,
+        }
+      : null,
+    replies: visibleReplies.map((reply) => {
+      const ownsReply = viewerId === reply.authorId;
+      const canManageReply = Boolean(permissions?.active && (ownsReply || canModerate));
+      const contentVisible =
+        reply.status === "published" || (canModerate && reply.status === "hidden");
+      return {
+        id: reply.id,
+        position: reply.position,
+        status: reply.status,
+        body: contentVisible ? reply.bodySource : "",
+        bodyHtml: contentVisible ? renderCommunityMarkdown(reply.bodySource) : "",
+        revisionCount: reply.revisionCount,
+        createdAt: reply.createdAt,
+        editedAt: reply.editedAt,
+        author: {
+          uid: reply.author.uid,
+          username: reply.author.username,
+          name: reply.author.name,
+          image: reply.author.image,
+          initials: reply.author.name.trim().slice(0, 1).toLocaleUpperCase("zh-CN") || "U",
+        },
+        quote: reply.quotedPost
+          ? {
+              position: reply.quotedPost.position,
+              authorName: reply.quotedPost.author.name,
+              authorUsername: reply.quotedPost.author.username,
+              excerpt:
+                reply.quotedPost.status === "deleted"
+                  ? "该回复已删除"
+                  : reply.quotedPost.bodySource.replace(/\s+/gu, " ").slice(0, 160),
+            }
+          : null,
+        canEdit: canManageReply && reply.status === "published",
+        canDelete: canManageReply && reply.status === "published",
+        canRestore: canManageReply && reply.status === "deleted",
+      };
+    }),
+    replyPagination: {
+      from: replyFrom,
+      previousFrom: replyFrom > 2 ? Math.max(2, replyFrom - replyPageSize) : null,
+      nextFrom:
+        hasNextReplies && visibleReplies.length > 0
+          ? (visibleReplies.at(-1)?.position ?? replyFrom) + 1
+          : null,
+    },
   };
 }
 

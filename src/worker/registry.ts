@@ -2,6 +2,12 @@ import type { Prisma } from "@/generated/prisma/client";
 import { RUNTIME_PROBE_TOPIC, type OutboxJobData } from "@/infrastructure/queue/contracts";
 import { IDENTITY_EMAIL_TOPIC } from "@/infrastructure/mail/queue";
 import { sendEmailDelivery } from "@/infrastructure/mail/smtp";
+import {
+  ATTACHMENT_COLLECT_TOPIC,
+  ATTACHMENT_PROCESS_TOPIC,
+  collectCommunityAttachment,
+  processCommunityAttachment,
+} from "@/modules/community/attachments.server";
 
 type OutboxHandler = (
   transaction: Prisma.TransactionClient,
@@ -39,6 +45,20 @@ handlers.set(handlerKey(IDENTITY_EMAIL_TOPIC, 1), async (transaction, job) => {
   await sendEmailDelivery(transaction, deliveryId);
   return { deliveryId };
 });
+
+function attachmentId(job: OutboxJobData): string {
+  const value = job.payload.attachmentId;
+  if (typeof value !== "string") throw new Error("Attachment job is missing attachmentId");
+  return value;
+}
+
+handlers.set(handlerKey(ATTACHMENT_PROCESS_TOPIC, 1), async (transaction, job) =>
+  processCommunityAttachment(transaction, attachmentId(job)),
+);
+
+handlers.set(handlerKey(ATTACHMENT_COLLECT_TOPIC, 1), async (transaction, job) =>
+  collectCommunityAttachment(transaction, attachmentId(job)),
+);
 
 export function getOutboxHandler(topic: string, version: number): OutboxHandler {
   const handler = handlers.get(handlerKey(topic, version));

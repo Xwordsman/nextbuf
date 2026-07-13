@@ -1,12 +1,12 @@
 "use client";
 
-import { Eye, LoaderCircle, RotateCcw, Save, Send, Trash2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { LoaderCircle, RotateCcw, Save, Send, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { MarkdownEditor } from "@/components/community/markdown-editor.client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Panel } from "@/components/ui/panel";
-import { Textarea } from "@/components/ui/textarea";
 
 type TopicEditorProps = {
   nodes: Array<{ slug: string; name: string }>;
@@ -33,7 +33,8 @@ type TopicEditorProps = {
 
 function errorMessage(code: string) {
   const messages: Record<string, string> = {
-    invalid_topic: "请检查标题、正文长度和链接数量。",
+    invalid_topic: "请检查标题、正文长度、链接数量和附件引用。",
+    invalid_attachment: "正文包含无效、失败或不属于你的附件。",
     node_unavailable: "该节点不可用或已经归档。",
     topic_rate_limited: "一小时内最多发布 3 个主题，请稍后再试。",
     draft_limit_reached: "最多保留 20 个草稿，请先处理已有草稿。",
@@ -46,73 +47,152 @@ function errorMessage(code: string) {
 
 export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
   const formRef = useRef<HTMLFormElement>(null);
+  const autosaveSequence = useRef(0);
+  const autosavePromise = useRef<Promise<unknown> | null>(null);
+  const autosaveTimer = useRef<number | null>(null);
   const [pending, setPending] = useState("");
   const [message, setMessage] = useState("");
-  const [preview, setPreview] = useState(false);
-  const [previewTitle, setPreviewTitle] = useState(topic?.title ?? "");
-  const [previewBody, setPreviewBody] = useState(topic?.body ?? "");
+  const [title, setTitle] = useState(topic?.title ?? "");
+  const [body, setBody] = useState(topic?.body ?? "");
+  const [nodeSlug, setNodeSlug] = useState(topic?.nodeSlug ?? "");
+  const [draftNumber, setDraftNumber] = useState<number | null>(topic?.number ?? null);
+  const draftNumberRef = useRef<number | null>(topic?.number ?? null);
+  const [status, setStatus] = useState(topic?.status ?? "draft");
+  const [autosaveStatus, setAutosaveStatus] = useState(
+    topic?.status === "draft" ? "已载入草稿" : "",
+  );
 
-  const request = async (action: string, body?: Record<string, unknown>) => {
-    setPending(action);
-    setMessage("");
-    const response = await fetch(
-      topic ? `/api/community/topics/${topic.number}` : "/api/community/topics",
-      {
-        method: topic ? "PATCH" : "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, ...body }),
-      },
-    );
-    const result = (await response.json().catch(() => ({}))) as {
-      code?: string;
-      number?: number;
-      status?: string;
+  const request = useCallback(
+    async (action: string, payload?: Record<string, unknown>, background = false) => {
+      if (!background) setPending(action);
+      setMessage("");
+      const response = await fetch(
+        draftNumberRef.current
+          ? `/api/community/topics/${draftNumberRef.current}`
+          : "/api/community/topics",
+        {
+          method: draftNumberRef.current ? "PATCH" : "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action, ...payload }),
+        },
+      ).catch(() => null);
+      if (!response) {
+        if (!background) setPending("");
+        setMessage("网络请求失败，请检查连接后重试。");
+        return null;
+      }
+      const result = (await response.json().catch(() => ({}))) as {
+        code?: string;
+        number?: number;
+        status?: string;
+      };
+      if (!response.ok) {
+        if (!background) setPending("");
+        setMessage(errorMessage(result.code ?? "request_failed"));
+        return null;
+      }
+      if (result.number) {
+        draftNumberRef.current = result.number;
+        setDraftNumber(result.number);
+      }
+      if (result.status) setStatus(result.status);
+      if (!background) setPending("");
+      return result;
+    },
+    [],
+  );
+
+  const persistContent = useCallback(
+    async (intent: "draft" | "publish" | "save", background = false) => {
+      const normalizedTitle = title.trim();
+      const normalizedBody = body.trim();
+      const requiresPublishRules =
+        intent === "publish" || (intent === "save" && status !== "draft");
+      if (
+        !nodeSlug ||
+        normalizedTitle.length < (requiresPublishRules ? limits.publishTitleMin : 1) ||
+        normalizedTitle.length > limits.titleMax ||
+        normalizedBody.length < (requiresPublishRules ? limits.publishBodyMin : 0) ||
+        normalizedBody.length > limits.bodyMax
+      ) {
+        if (!background) setMessage("请检查标题、正文长度和节点选择。");
+        return null;
+      }
+      const action = intent === "draft" && draftNumberRef.current ? "save" : intent;
+      const result = await request(
+        action,
+        { title: normalizedTitle, body: normalizedBody, nodeSlug },
+        background,
+      );
+      const number = result?.number ?? draftNumberRef.current;
+      if (!result || !number) return null;
+      if (background) {
+        window.history.replaceState(null, "", `/topics/${number}/edit?autosaved=1`);
+      } else if (intent === "draft") {
+        window.location.assign(`/topics/${number}/edit?created=draft`);
+      } else {
+        window.location.assign(`/topics/${number}`);
+      }
+      return result;
+    },
+    [body, limits, nodeSlug, request, status, title],
+  );
+
+  const runExplicitSave = async (intent: "draft" | "publish" | "save") => {
+    setPending(intent);
+    autosaveSequence.current += 1;
+    if (autosaveTimer.current !== null) {
+      window.clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = null;
+    }
+    await autosavePromise.current;
+    const result = await persistContent(intent);
+    if (!result) setPending("");
+    return result;
+  };
+
+  useEffect(() => {
+    if (status !== "draft" || !nodeSlug || title.trim().length < 1) return;
+    const sequence = ++autosaveSequence.current;
+    autosaveTimer.current = window.setTimeout(async () => {
+      autosaveTimer.current = null;
+      setAutosaveStatus("正在自动保存");
+      const operation = persistContent("draft", true);
+      autosavePromise.current = operation;
+      const result = await operation;
+      if (autosavePromise.current === operation) autosavePromise.current = null;
+      if (sequence === autosaveSequence.current) {
+        setAutosaveStatus(result ? "已自动保存" : "自动保存失败");
+      }
+    }, 1_500);
+    return () => {
+      if (autosaveTimer.current !== null) {
+        window.clearTimeout(autosaveTimer.current);
+        autosaveTimer.current = null;
+      }
     };
-    if (!response.ok) {
-      setPending("");
-      setMessage(errorMessage(result.code ?? "request_failed"));
-      return;
-    }
-    const number = result.number ?? topic?.number;
-    if (action === "delete") window.location.assign("/account/topics");
-    else if (action === "restore") window.location.assign(`/topics/${number}/edit`);
-    else if (action === "draft") window.location.assign(`/topics/${number}/edit?created=draft`);
-    else if (action === "moderate") window.location.reload();
-    else window.location.assign(`/topics/${number}`);
-  };
-
-  const saveContent = async (action: "draft" | "publish" | "save") => {
-    const form = formRef.current;
-    if (!form) return;
-    const data = new FormData(form);
-    const title = String(data.get("title") ?? "").trim();
-    const body = String(data.get("body") ?? "").trim();
-    const nodeSlug = String(data.get("nodeSlug") ?? "");
-    const requiresPublishRules =
-      action === "publish" || (action === "save" && topic?.status !== "draft");
-    if (
-      !nodeSlug ||
-      title.length < (requiresPublishRules ? limits.publishTitleMin : 1) ||
-      title.length > limits.titleMax ||
-      body.length < (requiresPublishRules ? limits.publishBodyMin : 0) ||
-      body.length > limits.bodyMax
-    ) {
-      setMessage("请检查标题、正文长度和节点选择。");
-      return;
-    }
-    await request(action, { title, body, nodeSlug });
-  };
+  }, [body, nodeSlug, persistContent, status, title]);
 
   const saveModeration = async () => {
     const form = formRef.current;
     if (!form) return;
     const data = new FormData(form);
-    await request("moderate", {
+    const result = await request("moderate", {
       isPinned: data.get("isPinned") === "on",
       isEssence: data.get("isEssence") === "on",
       isClosed: data.get("isClosed") === "on",
       isHidden: data.get("isHidden") === "on",
     });
+    if (result) window.location.reload();
+  };
+
+  const changeState = async (action: "delete" | "restore") => {
+    const result = await request(action);
+    if (!result) return;
+    const number = result.number ?? draftNumber;
+    window.location.assign(
+      action === "delete" ? "/account/topics" : `/topics/${number ?? ""}/edit`,
+    );
   };
 
   if (topic?.status === "deleted") {
@@ -120,7 +200,7 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
       <Panel className="topic-state-panel">
         <h2>主题已删除</h2>
         <p>主题编号、首帖、修订和审计记录仍然保留。</p>
-        <Button type="button" onClick={() => request("restore")} disabled={Boolean(pending)}>
+        <Button type="button" onClick={() => changeState("restore")} disabled={Boolean(pending)}>
           {pending === "restore" ? <LoaderCircle className="animate-spin" /> : <RotateCcw />}
           恢复主题
         </Button>
@@ -141,9 +221,12 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
           <Input
             id="topic-title"
             name="title"
-            defaultValue={topic?.title}
+            value={title}
             maxLength={limits.titleMax}
-            onChange={(event) => setPreviewTitle(event.target.value)}
+            onChange={(event) => {
+              setTitle(event.target.value);
+              if (status === "draft") setAutosaveStatus("等待自动保存");
+            }}
             placeholder="用一句话写清想讨论的问题"
             required
           />
@@ -154,7 +237,11 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
           <select
             id="topic-node"
             name="nodeSlug"
-            defaultValue={topic?.nodeSlug ?? ""}
+            value={nodeSlug}
+            onChange={(event) => {
+              setNodeSlug(event.target.value);
+              if (status === "draft") setAutosaveStatus("等待自动保存");
+            }}
             className="select-control"
             required
           >
@@ -170,46 +257,56 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
         </div>
         <div className="form-field">
           <Label htmlFor="topic-body">正文</Label>
-          <Textarea
+          <MarkdownEditor
             id="topic-body"
             name="body"
-            defaultValue={topic?.body}
+            value={body}
+            onChange={(value) => {
+              setBody(value);
+              if (status === "draft") setAutosaveStatus("等待自动保存");
+            }}
             maxLength={limits.bodyMax}
-            onChange={(event) => setPreviewBody(event.target.value)}
             placeholder="补充背景、尝试过的方法和期望得到的帮助"
+            disabled={Boolean(pending)}
           />
-          <p className="field-hint">发布时至少 20 个字符，最多 5 个 HTTP(S) 链接。</p>
+          <div className="editor-status-line">
+            <p className="field-hint">发布时至少 20 个字符，最多 5 个 HTTP(S) 链接。</p>
+            {autosaveStatus ? <span aria-live="polite">{autosaveStatus}</span> : null}
+          </div>
         </div>
         <div className="topic-editor-actions">
-          <Button type="button" variant="outline" onClick={() => setPreview(!preview)}>
-            <Eye /> {preview ? "关闭预览" : "预览"}
-          </Button>
-          {!topic ? (
+          {!topic || status === "draft" ? (
             <Button
               type="button"
               variant="outline"
-              onClick={() => saveContent("draft")}
+              onClick={() => runExplicitSave("draft")}
               disabled={Boolean(pending)}
             >
-              {pending === "draft" ? <LoaderCircle className="animate-spin" /> : <Save />} 保存草稿
+              {pending === "draft" || pending === "save" ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <Save />
+              )}
+              保存草稿
             </Button>
           ) : (
             <Button
               type="button"
               variant="outline"
-              onClick={() => saveContent("save")}
+              onClick={() => runExplicitSave("save")}
               disabled={Boolean(pending)}
             >
-              {pending === "save" ? <LoaderCircle className="animate-spin" /> : <Save />} 保存修改
+              {pending === "save" ? <LoaderCircle className="animate-spin" /> : <Save />}
+              保存修改
             </Button>
           )}
-          {!topic || topic.status === "draft" ? (
+          {!topic || status === "draft" ? (
             <Button
               type="button"
-              onClick={() => saveContent("publish")}
+              onClick={() => runExplicitSave("publish")}
               disabled={Boolean(pending)}
             >
-              {pending === "publish" ? <LoaderCircle className="animate-spin" /> : <Send />}{" "}
+              {pending === "publish" ? <LoaderCircle className="animate-spin" /> : <Send />}
               发布主题
             </Button>
           ) : null}
@@ -220,14 +317,6 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
           </p>
         ) : null}
       </Panel>
-
-      {preview ? (
-        <Panel className="topic-preview" aria-live="polite">
-          <span>正文预览</span>
-          <h2>{previewTitle || "未填写标题"}</h2>
-          <div>{previewBody || "未填写正文"}</div>
-        </Panel>
-      ) : null}
 
       {topic ? (
         <Panel className="topic-editor-secondary">
@@ -258,11 +347,11 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
           ) : null}
           <section className="topic-danger-zone">
             <h2>删除主题</h2>
-            <p>删除不会移除主题编号、首帖、修订或审计关系，可以从“我的主题”恢复。</p>
+            <p>删除不会移除主题编号、首帖、修订、回复或审计关系。</p>
             <Button
               type="button"
               variant="danger"
-              onClick={() => request("delete")}
+              onClick={() => changeState("delete")}
               disabled={Boolean(pending)}
             >
               <Trash2 /> 删除主题

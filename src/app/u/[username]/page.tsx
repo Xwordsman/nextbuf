@@ -69,7 +69,7 @@ export default async function UserPage({ params }: UserPageProps) {
                 </Panel>
                 <Panel>
                   <MessagesSquare />
-                  <strong>0</strong>
+                  <strong>{user._count.communityPosts}</strong>
                   <span>回复</span>
                 </Panel>
               </div>

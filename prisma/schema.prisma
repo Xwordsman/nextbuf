@@ -28,7 +28,11 @@ model User {
   usernameAliases       UsernameAlias[]
   communityTopics       CommunityTopic[]          @relation("CommunityTopicAuthor")
   communityPosts        CommunityPost[]           @relation("CommunityPostAuthor")
+  deletedCommunityPosts CommunityPost[]           @relation("CommunityPostDeleter")
   communityRevisions    CommunityPostRevision[]   @relation("CommunityRevisionEditor")
+  communityMentions     CommunityPostMention[]    @relation("CommunityMentionUser")
+  communityAttachments  CommunityAttachment[]     @relation("CommunityAttachmentUploader")
+  communityPostDrafts   CommunityPostDraft[]
   communityRoles        CommunityRoleAssignment[] @relation("CommunityRoleUser")
   grantedCommunityRoles CommunityRoleAssignment[] @relation("CommunityRoleGrantor")
   communityAuditEvents  CommunityAuditEvent[]     @relation("CommunityAuditActor")
@@ -70,6 +74,7 @@ model CommunityTopic {
   replyCount        Int                   @default(0) @map("reply_count")
   viewCount         Int                   @default(0) @map("view_count")
   bookmarkCount     Int                   @default(0) @map("bookmark_count")
+  nextPostPosition  Int                   @default(2) @map("next_post_position")
   lastActivityAt    DateTime              @default(now()) @map("last_activity_at") @db.Timestamptz(6)
   publishedAt       DateTime?             @map("published_at") @db.Timestamptz(6)
   editedAt          DateTime?             @map("edited_at") @db.Timestamptz(6)
@@ -80,6 +85,7 @@ model CommunityTopic {
   node              CommunityNode         @relation(fields: [nodeId], references: [id], onDelete: Restrict)
   author            User                  @relation("CommunityTopicAuthor", fields: [authorId], references: [id], onDelete: Restrict)
   posts             CommunityPost[]
+  postDrafts        CommunityPostDraft[]
   auditEvents       CommunityAuditEvent[]
 
   @@index([status, isPinned, lastActivityAt, number], map: "community_topics_feed_idx")
@@ -89,20 +95,30 @@ model CommunityTopic {
 }
 
 model CommunityPost {
-  id            String                  @id @default(uuid()) @db.Uuid
-  topicId       String                  @map("topic_id") @db.Uuid
-  authorId      String                  @map("author_id") @db.Uuid
+  id            String                    @id @default(uuid()) @db.Uuid
+  topicId       String                    @map("topic_id") @db.Uuid
+  authorId      String                    @map("author_id") @db.Uuid
   position      Int
-  status        String                  @default("draft") @db.VarChar(32)
-  bodySource    String                  @map("body_source") @db.Text
-  revisionCount Int                     @default(1) @map("revision_count")
-  editedAt      DateTime?               @map("edited_at") @db.Timestamptz(6)
-  deletedAt     DateTime?               @map("deleted_at") @db.Timestamptz(6)
-  createdAt     DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
-  topic         CommunityTopic          @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  author        User                    @relation("CommunityPostAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  status        String                    @default("draft") @db.VarChar(32)
+  bodySource    String                    @map("body_source") @db.Text
+  revisionCount Int                       @default(1) @map("revision_count")
+  quotedPostId  String?                   @map("quoted_post_id") @db.Uuid
+  deletedById   String?                   @map("deleted_by_id") @db.Uuid
+  deletedReason String?                   @map("deleted_reason") @db.VarChar(500)
+  editedAt      DateTime?                 @map("edited_at") @db.Timestamptz(6)
+  deletedAt     DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+  createdAt     DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  topic         CommunityTopic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author        User                      @relation("CommunityPostAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  quotedPost    CommunityPost?            @relation("CommunityPostQuote", fields: [quotedPostId], references: [id], onDelete: SetNull)
+  quotes        CommunityPost[]           @relation("CommunityPostQuote")
+  deletedBy     User?                     @relation("CommunityPostDeleter", fields: [deletedById], references: [id], onDelete: SetNull)
   revisions     CommunityPostRevision[]
+  mentions      CommunityPostMention[]
+  attachments   CommunityPostAttachment[]
+  quotedDrafts  CommunityPostDraft[]      @relation("CommunityPostDraftQuote")
+  auditEvents   CommunityAuditEvent[]
 
   @@unique([topicId, position], map: "community_posts_topic_position_key")
   @@index([authorId, createdAt], map: "community_posts_author_created_idx")
@@ -111,21 +127,118 @@ model CommunityPost {
 }
 
 model CommunityPostRevision {
-  id         String        @id @default(uuid()) @db.Uuid
-  postId     String        @map("post_id") @db.Uuid
-  editorId   String        @map("editor_id") @db.Uuid
-  version    Int
-  title      String        @db.VarChar(120)
-  bodySource String        @map("body_source") @db.Text
-  source     String        @db.VarChar(32)
-  reason     String?       @db.VarChar(500)
-  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  post       CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
-  editor     User          @relation("CommunityRevisionEditor", fields: [editorId], references: [id], onDelete: Restrict)
+  id          String                        @id @default(uuid()) @db.Uuid
+  postId      String                        @map("post_id") @db.Uuid
+  editorId    String                        @map("editor_id") @db.Uuid
+  version     Int
+  title       String?                       @db.VarChar(120)
+  bodySource  String                        @map("body_source") @db.Text
+  source      String                        @db.VarChar(32)
+  reason      String?                       @db.VarChar(500)
+  createdAt   DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  post        CommunityPost                 @relation(fields: [postId], references: [id], onDelete: Cascade)
+  editor      User                          @relation("CommunityRevisionEditor", fields: [editorId], references: [id], onDelete: Restrict)
+  attachments CommunityRevisionAttachment[]
 
   @@unique([postId, version], map: "community_post_revisions_post_version_key")
   @@index([editorId, createdAt], map: "community_post_revisions_editor_created_idx")
   @@map("community_post_revisions")
+}
+
+model CommunityPostDraft {
+  id           String                         @id @default(uuid()) @db.Uuid
+  topicId      String                         @map("topic_id") @db.Uuid
+  authorId     String                         @map("author_id") @db.Uuid
+  quotedPostId String?                        @map("quoted_post_id") @db.Uuid
+  bodySource   String                         @default("") @map("body_source") @db.Text
+  createdAt    DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime                       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  topic        CommunityTopic                 @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author       User                           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  quotedPost   CommunityPost?                 @relation("CommunityPostDraftQuote", fields: [quotedPostId], references: [id], onDelete: SetNull)
+  attachments  CommunityPostDraftAttachment[]
+
+  @@unique([topicId, authorId], map: "community_post_drafts_topic_author_key")
+  @@index([authorId, updatedAt], map: "community_post_drafts_author_updated_idx")
+  @@map("community_post_drafts")
+}
+
+model CommunityPostMention {
+  postId          String        @map("post_id") @db.Uuid
+  mentionedUserId String        @map("mentioned_user_id") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  post            CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  mentionedUser   User          @relation("CommunityMentionUser", fields: [mentionedUserId], references: [id], onDelete: Cascade)
+
+  @@id([postId, mentionedUserId], map: "community_post_mentions_pkey")
+  @@index([mentionedUserId, createdAt], map: "community_post_mentions_user_created_idx")
+  @@map("community_post_mentions")
+}
+
+model CommunityAttachment {
+  id              String                         @id @default(uuid()) @db.Uuid
+  uploaderId      String                         @map("uploader_id") @db.Uuid
+  storageDriver   String                         @map("storage_driver") @db.VarChar(16)
+  storageKey      String                         @map("storage_key") @db.VarChar(500)
+  processedKey    String?                        @map("processed_key") @db.VarChar(500)
+  originalName    String                         @map("original_name") @db.VarChar(255)
+  contentType     String                         @map("content_type") @db.VarChar(100)
+  processedType   String?                        @map("processed_type") @db.VarChar(100)
+  kind            String                         @db.VarChar(16)
+  status          String                         @default("pending") @db.VarChar(16)
+  sizeBytes       Int                            @map("size_bytes")
+  checksumSha256  String                         @map("checksum_sha256") @db.Char(64)
+  width           Int?
+  height          Int?
+  processingError String?                        @map("processing_error") @db.Text
+  orphanedAt      DateTime?                      @map("orphaned_at") @db.Timestamptz(6)
+  createdAt       DateTime                       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  uploader        User                           @relation("CommunityAttachmentUploader", fields: [uploaderId], references: [id], onDelete: Restrict)
+  posts           CommunityPostAttachment[]
+  revisions       CommunityRevisionAttachment[]
+  drafts          CommunityPostDraftAttachment[]
+
+  @@unique([storageDriver, storageKey], map: "community_attachments_storage_key")
+  @@index([uploaderId, createdAt], map: "community_attachments_uploader_created_idx")
+  @@index([status, orphanedAt], map: "community_attachments_status_orphaned_idx")
+  @@map("community_attachments")
+}
+
+model CommunityPostAttachment {
+  postId       String              @map("post_id") @db.Uuid
+  attachmentId String              @map("attachment_id") @db.Uuid
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  post         CommunityPost       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  attachment   CommunityAttachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+
+  @@id([postId, attachmentId], map: "community_post_attachments_pkey")
+  @@index([attachmentId], map: "community_post_attachments_attachment_idx")
+  @@map("community_post_attachments")
+}
+
+model CommunityRevisionAttachment {
+  revisionId   String                @map("revision_id") @db.Uuid
+  attachmentId String                @map("attachment_id") @db.Uuid
+  createdAt    DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  revision     CommunityPostRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  attachment   CommunityAttachment   @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+
+  @@id([revisionId, attachmentId], map: "community_revision_attachments_pkey")
+  @@index([attachmentId], map: "community_revision_attachments_attachment_idx")
+  @@map("community_revision_attachments")
+}
+
+model CommunityPostDraftAttachment {
+  draftId      String              @map("draft_id") @db.Uuid
+  attachmentId String              @map("attachment_id") @db.Uuid
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  draft        CommunityPostDraft  @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  attachment   CommunityAttachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+
+  @@id([draftId, attachmentId], map: "community_post_draft_attachments_pkey")
+  @@index([attachmentId], map: "community_post_draft_attachments_attachment_idx")
+  @@map("community_post_draft_attachments")
 }
 
 model CommunityRoleAssignment {
@@ -150,15 +263,18 @@ model CommunityAuditEvent {
   actorId   String?         @map("actor_id") @db.Uuid
   action    String          @db.VarChar(80)
   topicId   String?         @map("topic_id") @db.Uuid
+  postId    String?         @map("post_id") @db.Uuid
   nodeId    String?         @map("node_id") @db.Uuid
   requestId String?         @map("request_id") @db.VarChar(64)
   metadata  Json?           @db.JsonB
   createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   actor     User?           @relation("CommunityAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
   topic     CommunityTopic? @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  post      CommunityPost?  @relation(fields: [postId], references: [id], onDelete: SetNull)
   node      CommunityNode?  @relation(fields: [nodeId], references: [id], onDelete: SetNull)
 
   @@index([topicId, createdAt], map: "community_audit_topic_created_idx")
+  @@index([postId, createdAt], map: "community_audit_post_created_idx")
   @@index([actorId, createdAt], map: "community_audit_actor_created_idx")
   @@index([action, createdAt], map: "community_audit_action_created_idx")
   @@map("community_audit_events")

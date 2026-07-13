@@ -72,6 +72,44 @@ describe("environment configuration", () => {
     );
   });
 
+  it("requires a complete S3 storage configuration", () => {
+    const input: NodeJS.ProcessEnv = {
+      NODE_ENV: "test",
+      DATABASE_URL: "postgresql://nextbuf:secret@localhost:5432/nextbuf",
+      REDIS_URL: "redis://localhost:6379/0",
+      AUTH_SECRET: "nextbuf-test-auth-secret-at-least-32-characters",
+      MAIL_PAYLOAD_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+      SMTP_HOST: "localhost",
+      STORAGE_DRIVER: "s3",
+    };
+
+    expect(() => parseAuthEnvironment(input)).toThrow(
+      "S3_REGION is required when STORAGE_DRIVER=s3",
+    );
+  });
+
+  it("accepts a complete S3 storage configuration", () => {
+    const environment = parseAuthEnvironment({
+      NODE_ENV: "test",
+      DATABASE_URL: "postgresql://nextbuf:secret@localhost:5432/nextbuf",
+      REDIS_URL: "redis://localhost:6379/0",
+      AUTH_SECRET: "nextbuf-test-auth-secret-at-least-32-characters",
+      MAIL_PAYLOAD_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+      SMTP_HOST: "localhost",
+      STORAGE_DRIVER: "s3",
+      S3_ENDPOINT: "https://objects.example.com",
+      S3_REGION: "us-east-1",
+      S3_BUCKET: "nextbuf-test",
+      S3_ACCESS_KEY_ID: "test-access-key",
+      S3_SECRET_ACCESS_KEY: "test-secret-key",
+      S3_FORCE_PATH_STYLE: "true",
+    });
+
+    expect(environment.STORAGE_DRIVER).toBe("s3");
+    expect(environment.S3_BUCKET).toBe("nextbuf-test");
+    expect(environment.S3_FORCE_PATH_STYLE).toBe(true);
+  });
+
   it("rejects development identity defaults in production", () => {
     expect(() =>
       parseAuthEnvironment({

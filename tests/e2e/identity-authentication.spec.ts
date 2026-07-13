@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { expect, test, type Page } from "@playwright/test";
 
 const mailpitUrl = process.env.MAILPIT_API_URL ?? "http://127.0.0.1:8025";
@@ -92,16 +93,52 @@ test.describe.serial("identity authentication", () => {
     await page.getByLabel("节点", { exact: true }).selectOption("site");
     await page
       .getByLabel("正文")
-      .fill("这是通过真实浏览器发布的主题正文，用于验证创建、编辑、软删除和恢复流程。");
-    await page.getByRole("button", { name: "预览" }).click();
-    await expect(page.getByText("正文预览", { exact: true })).toBeVisible();
+      .fill("这是通过真实浏览器发布的 **Markdown 主题正文**，用于验证完整内容流程。");
+    await page.locator('.markdown-editor input[type="file"]').setInputFiles({
+      name: "e2e-notes.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("NextBuf E2E attachment"),
+    });
+    await expect(page.getByLabel("正文")).toHaveValue(/e2e-notes\.txt/);
+    await page.getByRole("tab", { name: "预览" }).click();
+    await expect(page.getByText("Markdown 主题正文", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "发布主题" }).click();
     await expect(page).toHaveURL(/\/topics\/\d+$/);
     await expect(page.getByRole("heading", { name: topicTitle })).toBeVisible();
+    await expect(page.getByRole("link", { name: "e2e-notes.txt" })).toBeVisible();
+
+    await page.getByLabel("回复正文").fill(`这是第一条浏览器回复，并提及 @${username} 验证解析。`);
+    await page.getByRole("button", { name: "发布回复" }).click();
+    await expect(page).toHaveURL(/\/topics\/\d+\?from=2#post-2$/);
+    const firstReply = page.locator("#post-2");
+    await expect(firstReply.getByText("这是第一条浏览器回复", { exact: false })).toBeVisible();
+    await firstReply.getByRole("button", { name: "引用" }).click();
+    await expect(page.getByText(/引用 #2/)).toBeVisible();
+    await page.getByLabel("回复正文").fill("这是引用第二楼后发布的第二条浏览器回复。");
+    await page.getByRole("button", { name: "发布回复" }).click();
+    await expect(page).toHaveURL(/#post-3$/);
+    const secondReply = page.locator("#post-3");
+    await expect(secondReply.getByText("#2 · 认证测试用户", { exact: true })).toBeVisible();
+    await secondReply.getByRole("button", { name: "编辑" }).click();
+    await page.getByLabel("编辑第 3 楼回复").fill("这是修改后的第二条浏览器回复。");
+    await secondReply.getByRole("button", { name: "保存修改" }).click();
+    await expect(
+      secondReply.getByText("这是修改后的第二条浏览器回复。", { exact: true }),
+    ).toBeVisible();
+    page.once("dialog", (dialog) => dialog.accept());
+    await secondReply.getByRole("button", { name: "删除" }).click();
+    await expect(
+      secondReply.getByText("该回复已删除，楼层号继续保留。", { exact: true }),
+    ).toBeVisible();
+    await secondReply.getByRole("button", { name: "恢复" }).click();
+    await expect(
+      secondReply.getByText("这是修改后的第二条浏览器回复。", { exact: true }),
+    ).toBeVisible();
+
     await page.getByRole("link", { name: "编辑主题" }).click();
     await page
       .getByLabel("正文")
-      .fill("这是修改后的主题正文，用于确认修订版本会被持久化并可以继续查看。");
+      .fill("这是修改后的 **主题正文**，用于确认 Markdown 修订版本会被持久化。");
     await page.getByRole("button", { name: "保存修改" }).click();
     await expect(page).toHaveURL(/\/topics\/\d+$/);
     await page.goto("/account/topics");

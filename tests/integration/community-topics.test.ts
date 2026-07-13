@@ -1,7 +1,14 @@
 import { randomUUID } from "node:crypto";
+import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setup } from "@/cli/commands/setup";
 import { disconnectPrismaClient, getPrismaClient } from "@/infrastructure/database/client";
+import { readStoredAttachment } from "@/infrastructure/storage/attachment-storage";
+import {
+  collectCommunityAttachment,
+  createCommunityAttachment,
+  processCommunityAttachment,
+} from "@/modules/community/attachments.server";
 import { updateCommunityNode } from "@/modules/community/nodes.server";
 import { getCommunityHomeView, getTopicPageView } from "@/modules/community/queries.server";
 import {
@@ -11,6 +18,13 @@ import {
   restoreTopic,
   updateTopicContent,
 } from "@/modules/community/topics.server";
+import {
+  createReply,
+  deleteReply,
+  restoreReply,
+  saveReplyDraft,
+  updateReply,
+} from "@/modules/community/replies.server";
 
 const emailPrefix = "community-integration+";
 const emailDomain = "@nextbuf.test";
@@ -43,6 +57,7 @@ describe("community topics integration", () => {
     });
     await prisma.communityRoleAssignment.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.communityTopic.deleteMany({ where: { authorId: { in: userIds } } });
+    await prisma.communityAttachment.deleteMany({ where: { uploaderId: { in: userIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   });
 
@@ -287,5 +302,210 @@ describe("community topics integration", () => {
       visibility: "public",
       archived: false,
     });
+  });
+
+  it("allocates stable floors and counts under concurrent replies", async () => {
+    const prisma = getPrismaClient();
+    const [topicAuthor, replier, mentioned] = await Promise.all([
+      createActor("Reply Topic Author"),
+      createActor("Concurrent Replier"),
+      createActor("Mention Target"),
+    ]);
+    const topic = await createTopic(
+      { userId: topicAuthor.id },
+      {
+        nodeSlug: "ai",
+        title: "并发回复楼层与计数验证主题",
+        body: "这是用于验证并发回复楼层分配、引用、提及和删除恢复的一段主题正文。",
+        action: "publish",
+      },
+    );
+
+    const concurrent = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        createReply({ userId: replier.id }, topic.number, {
+          body: `这是第 ${index + 1} 条并发回复，正文长度满足发布要求。`,
+        }),
+      ),
+    );
+    expect(concurrent.map(({ position }) => position).sort((a, b) => a - b)).toEqual([
+      2, 3, 4, 5, 6, 7, 8, 9,
+    ]);
+    await expect(
+      prisma.communityTopic.findUniqueOrThrow({ where: { id: topic.id } }),
+    ).resolves.toMatchObject({
+      replyCount: 8,
+      nextPostPosition: 10,
+    });
+
+    const quoted = await createReply({ userId: topicAuthor.id }, topic.number, {
+      body: `引用并提及 @${mentioned.username}，验证提及事实会被解析并持久化。`,
+      quotedPosition: 2,
+    });
+    expect(quoted.position).toBe(10);
+    await expect(
+      prisma.communityPostMention.findUnique({
+        where: {
+          postId_mentionedUserId: { postId: quoted.id, mentionedUserId: mentioned.id },
+        },
+      }),
+    ).resolves.toBeTruthy();
+    await updateReply({ userId: topicAuthor.id }, topic.number, quoted.position, {
+      body: `修改后的回复仍然提及 @${mentioned.username}，并保留对第二楼的引用关系。`,
+      quotedPosition: 2,
+    });
+    await expect(
+      prisma.communityPost.findUniqueOrThrow({ where: { id: quoted.id } }),
+    ).resolves.toMatchObject({
+      revisionCount: 2,
+      quotedPostId: concurrent.find(({ position }) => position === 2)?.id,
+    });
+
+    await deleteReply({ userId: topicAuthor.id }, topic.number, quoted.position);
+    const deletedView = await getTopicPageView(topic.number, topicAuthor.id, 2);
+    expect(deletedView?.replies.find(({ position }) => position === quoted.position)).toMatchObject(
+      {
+        status: "deleted",
+        body: "",
+        canRestore: true,
+      },
+    );
+    await restoreReply({ userId: topicAuthor.id }, topic.number, quoted.position);
+    await expect(
+      prisma.communityTopic.findUniqueOrThrow({ where: { id: topic.id } }),
+    ).resolves.toMatchObject({
+      replyCount: 9,
+      nextPostPosition: 11,
+    });
+  });
+
+  it("autosaves one reply draft and enforces closed-topic permissions", async () => {
+    const prisma = getPrismaClient();
+    const [author, member, moderator] = await Promise.all([
+      createActor("Draft Topic Author"),
+      createActor("Draft Member"),
+      createActor("Draft Moderator"),
+    ]);
+    const node = await prisma.communityNode.findUniqueOrThrow({ where: { slug: "site" } });
+    await prisma.communityRoleAssignment.create({
+      data: {
+        userId: moderator.id,
+        role: "node_moderator",
+        nodeId: node.id,
+        scopeKey: node.id,
+      },
+    });
+    const topic = await createTopic(
+      { userId: author.id },
+      {
+        nodeSlug: "site",
+        title: "回复草稿和关闭权限验证主题",
+        body: "这是用于验证回复草稿覆盖保存以及主题关闭后权限限制的一段正文。",
+        action: "publish",
+      },
+    );
+    await saveReplyDraft({ userId: member.id }, topic.number, { body: "第一次自动保存的回复草稿" });
+    await saveReplyDraft({ userId: member.id }, topic.number, {
+      body: "第二次自动保存会覆盖同一份回复草稿",
+    });
+    await expect(
+      prisma.communityPostDraft.findMany({ where: { topicId: topic.id, authorId: member.id } }),
+    ).resolves.toMatchObject([{ bodySource: "第二次自动保存会覆盖同一份回复草稿" }]);
+    await moderateTopic({ userId: moderator.id }, topic.number, {
+      isPinned: false,
+      isEssence: false,
+      isClosed: true,
+      isHidden: false,
+    });
+    await expect(
+      createReply({ userId: member.id }, topic.number, {
+        body: "普通成员不能回复已经关闭的主题。",
+      }),
+    ).rejects.toMatchObject({ code: "topic_closed" });
+    await expect(
+      createReply({ userId: moderator.id }, topic.number, {
+        body: "节点版主可以在关闭主题后继续回复。",
+      }),
+    ).resolves.toMatchObject({ position: 2 });
+  });
+
+  it("tracks attachment processing failures and immutable revision references", async () => {
+    const prisma = getPrismaClient();
+    const author = await createActor("Attachment Author");
+    const textAttachment = await createCommunityAttachment({
+      uploaderId: author.id,
+      bytes: new TextEncoder().encode("NextBuf attachment integration fixture"),
+      declaredType: "text/plain",
+      originalName: "fixture.txt",
+    });
+    await prisma.$transaction((transaction) =>
+      processCommunityAttachment(transaction, textAttachment.id),
+    );
+    const topic = await createTopic(
+      { userId: author.id },
+      {
+        nodeSlug: "showcase",
+        title: "附件处理和修订引用验证主题",
+        body: `这是包含附件引用的主题正文。[fixture.txt](/api/media/attachments/${textAttachment.id})`,
+        action: "publish",
+      },
+    );
+    await updateTopicContent({ userId: author.id }, topic.number, {
+      nodeSlug: "showcase",
+      title: "附件处理和修订引用验证主题",
+      body: "修改后的主题正文不再直接显示附件，但历史修订仍然保留附件引用。",
+      action: "save",
+    });
+    await expect(
+      prisma.communityRevisionAttachment.count({ where: { attachmentId: textAttachment.id } }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.$transaction((transaction) =>
+        collectCommunityAttachment(transaction, textAttachment.id),
+      ),
+    ).resolves.toMatchObject({ status: "retained" });
+
+    const validImageBytes = await sharp({
+      create: { width: 2, height: 2, channels: 3, background: "#2563eb" },
+    })
+      .png()
+      .toBuffer();
+    const validImage = await createCommunityAttachment({
+      uploaderId: author.id,
+      bytes: validImageBytes,
+      declaredType: "image/png",
+      originalName: "valid.png",
+    });
+    await expect(
+      prisma.$transaction((transaction) => processCommunityAttachment(transaction, validImage.id)),
+    ).resolves.toMatchObject({ status: "ready" });
+    await expect(
+      prisma.communityAttachment.findUniqueOrThrow({ where: { id: validImage.id } }),
+    ).resolves.toMatchObject({
+      status: "ready",
+      processedType: "image/webp",
+      width: 2,
+      height: 2,
+      processedKey: expect.stringContaining("attachments/processed/"),
+    });
+
+    const invalidImage = await createCommunityAttachment({
+      uploaderId: author.id,
+      bytes: Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]),
+      declaredType: "image/png",
+      originalName: "broken.png",
+    });
+    await expect(
+      prisma.$transaction((transaction) =>
+        processCommunityAttachment(transaction, invalidImage.id),
+      ),
+    ).resolves.toMatchObject({ status: "failed" });
+    const failed = await prisma.communityAttachment.findUniqueOrThrow({
+      where: { id: invalidImage.id },
+    });
+    expect(failed.processingError).toBeTruthy();
+    await expect(
+      readStoredAttachment(failed.storageDriver as "local" | "s3", failed.storageKey),
+    ).resolves.toBeTruthy();
   });
 });
