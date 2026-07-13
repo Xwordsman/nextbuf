@@ -115,7 +115,9 @@ test.describe.serial("identity authentication", () => {
     );
     await page.getByRole("button", { name: "发布主题" }).click();
     const publishResponse = await publishResponsePromise;
-    const publishBody = await publishResponse.text();
+    const publishBody = publishResponse.ok()
+      ? ""
+      : await publishResponse.text().catch(() => "response body unavailable");
     expect(
       publishResponse.ok(),
       `Topic publish returned ${publishResponse.status()}: ${publishBody}`,

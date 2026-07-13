@@ -27,7 +27,7 @@
     "prepare:standalone": "node scripts/prepare-standalone.mjs",
     "start": "pnpm start:web",
     "start:e2e": "concurrently --kill-others --names web,worker \"pnpm start:web\" \"pnpm start:worker\"",
-    "start:web": "node .next/standalone/server.js",
+    "start:web": "node scripts/start-standalone.mjs",
     "start:worker": "node dist/worker/index.mjs",
     "nextbuf": "tsx src/cli/index.ts",
     "nextbuf:built": "node dist/cli/index.mjs",

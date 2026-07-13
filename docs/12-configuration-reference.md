@@ -113,7 +113,7 @@ openssl rand -base64 32
 | 变量 | 必需 | 默认值 | 适用进程 | 敏感 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | `STORAGE_DRIVER` | 否 | `local` | Web、Worker | 否 | `local` 或 `s3`；Web 与 Worker 必须一致 |
-| `STORAGE_LOCAL_PATH` | local 时必需 | `data/uploads` | Web、Worker | 否 | 本地持久化根目录，包含 `avatars/` 和 `attachments/` |
+| `STORAGE_LOCAL_PATH` | local 时必需 | `data/uploads` | Web、Worker | 否 | 本地持久化根目录，包含 `avatars/` 和 `attachments/`；相对路径由官方启动入口按启动目录固定 |
 | `AVATAR_MAX_UPLOAD_BYTES` | 否 | `1048576` | Web | 否 | 裁剪后头像最大字节数；范围 65536 至 5242880 |
 | `ATTACHMENT_MAX_UPLOAD_BYTES` | 否 | `20971520` | Web | 否 | 单个附件上限；范围 65536 至 52428800 |
 | `ATTACHMENT_MAX_IMAGE_PIXELS` | 否 | `40000000` | Worker | 否 | 图片解码像素上限；范围 100 万至 1 亿 |
@@ -128,6 +128,8 @@ openssl rand -base64 32
 头像与附件都使用随机不可变对象键，用户文件名只作为经过清洗的下载名称。附件原件保留，Worker 为图片生成 WebP 派生文件；数据库保存实际 storage driver、对象键、校验和、处理状态和引用。`STORAGE_LOCAL_PATH` 是必须随 PostgreSQL 一起备份的事实数据，不属于 `.next`、`dist` 或可重建缓存。
 
 `STORAGE_DRIVER=s3` 时缺少 Region、Bucket 或任一凭据会导致启动配置校验失败；AWS S3 可以留空 `S3_ENDPOINT`，兼容服务按供应商要求设置 Endpoint 和 path-style。Bucket 应保持私有，附件通过应用媒体路由授权交付。多 Web 实例必须使用 S3 或经过验证的共享文件系统，不能各自保存独立本地目录。切换 driver 前必须迁移并核对全部头像、原件和派生对象。
+
+Next.js standalone 会在启动时把进程工作目录切换到 `.next/standalone`。`pnpm start:web` 因此先加载启动目录下的 `.env`，再把相对 `STORAGE_LOCAL_PATH` 转成绝对路径；独立 Worker 继续以同一启动目录解析配置。源码部署和 E2E 必须使用这个官方入口，生产环境优先使用 `/var/lib/nextbuf/uploads` 一类绝对持久卷路径。
 
 ## 8. OAuth
 

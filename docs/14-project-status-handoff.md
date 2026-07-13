@@ -89,6 +89,7 @@
 - 新增 local/S3 对象存储 Provider，头像复用同一存储边界。附件按签名识别 PNG/JPEG/WebP/PDF/UTF-8 文本/ZIP，检查 MIME、SHA-256、字节/像素限制和 active 上传者；每用户每小时最多 20 个上传。
 - 原始附件永久保留到引用安全回收；图片由 Outbox Worker 生成去元数据 WebP 派生文件，失败状态和原因可追踪。
 - 当前 Post、不可变 Revision 和 Draft 分别持久化附件引用；引用写入与延迟回收锁定同一 Attachment 行，无引用文件默认 24 小时后复查并回收。
+- standalone Web 通过 `scripts/start-standalone.mjs` 启动：在 Next.js 改变工作目录前加载根 `.env` 并固定相对本地存储路径，保证 Web 与独立 Worker 共享同一附件目录。
 - 主题页按实际 Post 每页 30 楼分页；首页“今日回复”、最新回复者和公开用户页回复统计读取真实 PostgreSQL 数据，在线成员仍保持明确空状态。
 - 决策与回退边界见 [ADR-0010](./adr/0010-replies-markdown-attachment-pipeline.md)。
 
