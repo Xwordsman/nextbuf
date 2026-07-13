@@ -36,7 +36,16 @@ export function ReplyEditor({ topicNumber, initialDraft, bodyMax }: ReplyEditorP
   const autosavePromise = useRef<Promise<void> | null>(null);
   const autosaveTimer = useRef<number | null>(null);
   const [body, setBody] = useState(initialDraft?.body ?? "");
+  const bodyRef = useRef(initialDraft?.body ?? "");
   const [quote, setQuote] = useState<QuoteDetail | null>(
+    initialDraft?.quotedPosition
+      ? {
+          position: initialDraft.quotedPosition,
+          authorName: initialDraft.quotedAuthorName ?? "社区成员",
+        }
+      : null,
+  );
+  const quoteRef = useRef<QuoteDetail | null>(
     initialDraft?.quotedPosition
       ? {
           position: initialDraft.quotedPosition,
@@ -52,6 +61,7 @@ export function ReplyEditor({ topicNumber, initialDraft, bodyMax }: ReplyEditorP
     const listener = (event: Event) => {
       const detail = (event as CustomEvent<QuoteDetail>).detail;
       dirty.current = true;
+      quoteRef.current = detail;
       setQuote(detail);
       setSaveStatus("等待自动保存");
       sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -110,7 +120,10 @@ export function ReplyEditor({ topicNumber, initialDraft, bodyMax }: ReplyEditorP
     const response = await fetch(`/api/community/topics/${topicNumber}/replies`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ body, quotedPosition: quote?.position ?? null }),
+      body: JSON.stringify({
+        body: bodyRef.current,
+        quotedPosition: quoteRef.current?.position ?? null,
+      }),
     }).catch(() => null);
     if (!response) {
       setMessage("回复发布失败，请检查网络后重试。");
@@ -150,6 +163,7 @@ export function ReplyEditor({ topicNumber, initialDraft, bodyMax }: ReplyEditorP
                 aria-label="取消引用"
                 onClick={() => {
                   dirty.current = true;
+                  quoteRef.current = null;
                   setQuote(null);
                   setSaveStatus("等待自动保存");
                 }}
@@ -165,6 +179,7 @@ export function ReplyEditor({ topicNumber, initialDraft, bodyMax }: ReplyEditorP
           value={body}
           onChange={(value) => {
             dirty.current = true;
+            bodyRef.current = value;
             setBody(value);
             setSaveStatus("等待自动保存");
           }}

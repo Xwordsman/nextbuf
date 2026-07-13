@@ -134,7 +134,15 @@ test.describe.serial("identity authentication", () => {
     await firstReply.getByRole("button", { name: "引用" }).click();
     await expect(page.getByText(/引用 #2/)).toBeVisible();
     await page.getByLabel("回复正文").fill("这是引用第二楼后发布的第二条浏览器回复。");
+    const quotedReplyRequestPromise = page.waitForRequest((request) => {
+      return (
+        request.method() === "POST" &&
+        /\/api\/community\/topics\/\d+\/replies$/.test(new URL(request.url()).pathname)
+      );
+    });
     await page.getByRole("button", { name: "发布回复" }).click();
+    const quotedReplyRequest = await quotedReplyRequestPromise;
+    expect(quotedReplyRequest.postDataJSON()).toMatchObject({ quotedPosition: 2 });
     await expect(page).toHaveURL(/#post-3$/);
     const secondReply = page.locator("#post-3");
     const secondReplyQuote = secondReply.locator(".reply-quote");
