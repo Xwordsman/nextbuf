@@ -4,10 +4,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setup } from "@/cli/commands/setup";
 import { disconnectPrismaClient, getPrismaClient } from "@/infrastructure/database/client";
 import { readStoredAttachment } from "@/infrastructure/storage/attachment-storage";
+import { processCommunityAttachment } from "@/modules/community/attachment-worker.server";
 import {
   collectCommunityAttachment,
   createCommunityAttachment,
-  processCommunityAttachment,
 } from "@/modules/community/attachments.server";
 import { updateCommunityNode } from "@/modules/community/nodes.server";
 import { getCommunityHomeView, getTopicPageView } from "@/modules/community/queries.server";

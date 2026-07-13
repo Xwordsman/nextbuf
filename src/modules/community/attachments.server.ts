@@ -2,17 +2,14 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 import { Buffer } from "node:buffer";
-import sharp from "sharp";
 import { Prisma } from "@/generated/prisma/client";
 import { getPrismaClient } from "@/infrastructure/database/client";
 import { createOutboxEvent } from "@/infrastructure/outbox/create-event";
 import {
   createAttachmentObjectKey,
-  createProcessedImageKey,
   deleteStoredAttachment,
   readStoredAttachment,
   storeAttachment,
-  storeProcessedAttachment,
 } from "@/infrastructure/storage/attachment-storage";
 import {
   declaredTypeMatches,
@@ -22,7 +19,6 @@ import {
 import { CommunityError } from "@/modules/community/errors";
 import { requireActiveCommunityActor } from "@/modules/community/authorization.server";
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
-import { getErrorMessage } from "@/shared/errors/error-message";
 
 export const ATTACHMENT_PROCESS_TOPIC = "nextbuf.community.attachment.process";
 export const ATTACHMENT_COLLECT_TOPIC = "nextbuf.community.attachment.collect";
@@ -120,65 +116,6 @@ export async function createCommunityAttachment(input: {
   } catch (error) {
     if (storedDriver) await deleteStoredAttachment(storedDriver, storageKey);
     throw error;
-  }
-}
-
-export async function processCommunityAttachment(
-  transaction: AttachmentDatabase,
-  attachmentId: string,
-): Promise<Prisma.InputJsonObject> {
-  await lockAttachment(transaction, attachmentId);
-  const attachment = await transaction.communityAttachment.findUnique({
-    where: { id: attachmentId },
-  });
-  if (!attachment) return { attachmentId, status: "missing" };
-  if (attachment.status === "ready") return { attachmentId, status: "ready" };
-  const driver = attachment.storageDriver as "local" | "s3";
-  const original = await readStoredAttachment(driver, attachment.storageKey);
-  if (!original) {
-    await transaction.communityAttachment.update({
-      where: { id: attachment.id },
-      data: { status: "failed", processingError: "Original object is missing" },
-    });
-    return { attachmentId, status: "failed" };
-  }
-
-  try {
-    if (attachment.kind === "file") {
-      await transaction.communityAttachment.update({
-        where: { id: attachment.id },
-        data: { status: "ready", processingError: null },
-      });
-      return { attachmentId, status: "ready" };
-    }
-
-    const processedKey = createProcessedImageKey(attachment.id);
-    const result = await sharp(Buffer.from(original), {
-      limitInputPixels: getAuthEnvironment().ATTACHMENT_MAX_IMAGE_PIXELS,
-      failOn: "warning",
-    })
-      .rotate()
-      .webp({ quality: 85, effort: 4 })
-      .toBuffer({ resolveWithObject: true });
-    await storeProcessedAttachment(driver, processedKey, result.data);
-    await transaction.communityAttachment.update({
-      where: { id: attachment.id },
-      data: {
-        status: "ready",
-        processedKey,
-        processedType: "image/webp",
-        width: result.info.width,
-        height: result.info.height,
-        processingError: null,
-      },
-    });
-    return { attachmentId, status: "ready" };
-  } catch (error) {
-    await transaction.communityAttachment.update({
-      where: { id: attachment.id },
-      data: { status: "failed", processingError: getErrorMessage(error).slice(0, 4_000) },
-    });
-    return { attachmentId, status: "failed" };
   }
 }
 

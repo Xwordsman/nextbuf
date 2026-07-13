@@ -6,8 +6,8 @@ import {
   ATTACHMENT_COLLECT_TOPIC,
   ATTACHMENT_PROCESS_TOPIC,
   collectCommunityAttachment,
-  processCommunityAttachment,
 } from "@/modules/community/attachments.server";
+import { processCommunityAttachment } from "@/modules/community/attachment-worker.server";
 
 type OutboxHandler = (
   transaction: Prisma.TransactionClient,
