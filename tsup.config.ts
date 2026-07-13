@@ -1,3 +1,4 @@
+import path from "node:path";
 import { defineConfig } from "tsup";
 
 export default defineConfig({
@@ -14,4 +15,10 @@ export default defineConfig({
   sourcemap: true,
   splitting: false,
   target: "node24",
+  esbuildOptions(options) {
+    options.alias = {
+      ...options.alias,
+      "server-only": path.resolve("src/shared/server-only-runtime.ts"),
+    };
+  },
 });
