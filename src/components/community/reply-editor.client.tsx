@@ -29,6 +29,18 @@ function replyError(code?: string): string {
   return messages[code ?? ""] ?? "回复操作失败，请稍后再试。";
 }
 
+function navigateToReply(topicNumber: number, position: number): void {
+  const from = Math.floor((position - 2) / 30) * 30 + 2;
+  const pagePath = `/topics/${topicNumber}?from=${from}`;
+  const hash = `#post-${position}`;
+  if (`${window.location.pathname}${window.location.search}` === pagePath) {
+    window.location.hash = hash;
+    window.location.reload();
+    return;
+  }
+  window.location.assign(`${pagePath}${hash}`);
+}
+
 export function ReplyEditor({ topicNumber, initialDraft, bodyMax }: ReplyEditorProps) {
   const sectionRef = useRef<HTMLElement>(null);
   const dirty = useRef(false);
@@ -139,8 +151,7 @@ export function ReplyEditor({ topicNumber, initialDraft, bodyMax }: ReplyEditorP
       setPending(false);
       return;
     }
-    const from = Math.floor((result.position - 2) / 30) * 30 + 2;
-    window.location.assign(`/topics/${topicNumber}?from=${from}#post-${result.position}`);
+    navigateToReply(topicNumber, result.position);
   };
 
   return (
