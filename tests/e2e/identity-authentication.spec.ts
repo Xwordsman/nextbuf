@@ -137,7 +137,10 @@ test.describe.serial("identity authentication", () => {
     await page.getByRole("button", { name: "发布回复" }).click();
     await expect(page).toHaveURL(/#post-3$/);
     const secondReply = page.locator("#post-3");
-    await expect(secondReply.getByText("#2 · 认证测试用户", { exact: true })).toBeVisible();
+    const secondReplyQuote = secondReply.locator(".reply-quote");
+    await expect(secondReplyQuote).toContainText("#2");
+    await expect(secondReplyQuote).toContainText("认证测试用户");
+    await expect(secondReplyQuote).toContainText("这是第一条浏览器回复");
     await secondReply.getByRole("button", { name: "编辑" }).click();
     await page.getByLabel("编辑第 3 楼回复").fill("这是修改后的第二条浏览器回复。");
     await secondReply.getByRole("button", { name: "保存修改" }).click();

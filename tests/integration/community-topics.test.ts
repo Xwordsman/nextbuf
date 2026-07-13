@@ -360,6 +360,12 @@ describe("community topics integration", () => {
       revisionCount: 2,
       quotedPostId: concurrent.find(({ position }) => position === 2)?.id,
     });
+    const quotedView = await getTopicPageView(topic.number, topicAuthor.id, 2);
+    expect(quotedView?.replies.find(({ id }) => id === quoted.id)?.quote).toMatchObject({
+      position: 2,
+      authorName: replier.name,
+      excerpt: expect.stringContaining("这是第"),
+    });
 
     await deleteReply({ userId: topicAuthor.id }, topic.number, quoted.position);
     const deletedView = await getTopicPageView(topic.number, topicAuthor.id, 2);
