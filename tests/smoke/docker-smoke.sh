@@ -10,10 +10,32 @@ ENV_FILE=.env.smoke
 COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml -f deploy/compose/compose.smoke.yml"
 BASE_COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml"
 
+diagnose_failure() {
+  diagnostics=$(
+    printf '%s\n' 'Compose status:'
+    NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE ps -a 2>&1 || true
+    printf '%s\n' 'Container logs:'
+    NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE logs --no-color --tail=80 \
+      postgres redis mailpit setup web worker 2>&1 || true
+  )
+  printf '%s\n' "$diagnostics" >&2
+
+  if [ "${GITHUB_ACTIONS:-}" = true ]; then
+    annotation=$(printf '%s' "$diagnostics" | tr '\n' ' ' | cut -c1-12000 | sed 's/%/%25/g')
+    printf '::error title=NextBuf container smoke diagnostics::%s\n' "$annotation"
+  fi
+}
+
 cleanup() {
+  status=$?
+  trap - EXIT HUP INT TERM
+  if [ "$status" -ne 0 ]; then
+    diagnose_failure
+  fi
   NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true
   rm -f "$ENV_FILE"
   rm -rf backups
+  exit "$status"
 }
 trap cleanup EXIT HUP INT TERM
 
