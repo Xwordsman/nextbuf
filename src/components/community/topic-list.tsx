@@ -42,6 +42,7 @@ export function TopicList({ topics }: { topics: CommunityTopicView[] }) {
               <h2 className="topic-title">
                 <Link href={`/topics/${topic.id}`}>{topic.title}</Link>
               </h2>
+              {topic.isUnread ? <span className="topic-unread">有新内容</span> : null}
               {topic.statuses.length > 0 ? (
                 <div className="topic-flags" aria-label="话题状态">
                   {topic.statuses.map((status) => (

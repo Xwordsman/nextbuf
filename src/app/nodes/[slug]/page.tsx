@@ -3,7 +3,7 @@ import { CommunityHome } from "@/components/community/community-home.client";
 import type { CommunityFeedFilter } from "@/modules/community/contracts/home-view";
 import { CommunityError } from "@/modules/community/errors";
 import { getCommunityHomeView } from "@/modules/community/queries.server";
-import { getCurrentAccount } from "@/modules/identity/session.server";
+import { getCurrentAccount, getCurrentUserId } from "@/modules/identity/session.server";
 
 type NodePageProps = {
   params: Promise<{ slug: string }>;
@@ -22,11 +22,13 @@ export default async function NodePage({ params, searchParams }: NodePageProps) 
     : "latest";
   let result;
   try {
+    const viewerId = await getCurrentUserId();
     result = await getCommunityHomeView({
       nodeSlug: slug,
       filter,
       cursor: single(query.cursor),
       direction: single(query.direction) === "previous" ? "previous" : "next",
+      viewerId: viewerId ?? undefined,
     });
   } catch (error) {
     if (error instanceof CommunityError && error.status === 404) notFound();

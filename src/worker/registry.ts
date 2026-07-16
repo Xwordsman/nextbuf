@@ -8,6 +8,8 @@ import {
   collectCommunityAttachment,
 } from "@/modules/community/attachments.server";
 import { processCommunityAttachment } from "@/modules/community/attachment-worker.server";
+import { TOPIC_VIEW_AGGREGATE_TOPIC } from "@/modules/interactions/interactions.server";
+import { aggregateTopicView } from "@/modules/interactions/view-worker.server";
 
 type OutboxHandler = (
   transaction: Prisma.TransactionClient,
@@ -59,6 +61,12 @@ handlers.set(handlerKey(ATTACHMENT_PROCESS_TOPIC, 1), async (transaction, job) =
 handlers.set(handlerKey(ATTACHMENT_COLLECT_TOPIC, 1), async (transaction, job) =>
   collectCommunityAttachment(transaction, attachmentId(job)),
 );
+
+handlers.set(handlerKey(TOPIC_VIEW_AGGREGATE_TOPIC, 1), async (transaction, job) => {
+  const viewId = job.payload.viewId;
+  if (typeof viewId !== "string") throw new Error("Topic view job is missing viewId");
+  return aggregateTopicView(transaction, viewId);
+});
 
 export function getOutboxHandler(topic: string, version: number): OutboxHandler {
   const handler = handlers.get(handlerKey(topic, version));

@@ -1,11 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarDays, ExternalLink, MessageSquareText, MessagesSquare } from "lucide-react";
+import {
+  CalendarDays,
+  ExternalLink,
+  MessageSquareText,
+  MessagesSquare,
+  UserRoundCheck,
+  UsersRound,
+} from "lucide-react";
 import { notFound, redirect } from "next/navigation";
+import { UserFollowButton } from "@/components/interactions/user-follow-button.client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
 import { resolvePublicProfile } from "@/modules/profiles/profile.server";
+import { getUserFollowSummary } from "@/modules/interactions/queries.server";
+import { getCurrentUserId } from "@/modules/identity/session.server";
 
 type UserPageProps = { params: Promise<{ username: string }> };
 
@@ -24,6 +34,8 @@ export default async function UserPage({ params }: UserPageProps) {
   const { user } = result;
   const profile = user.profile;
   const initials = user.name.trim().slice(0, 1).toLocaleUpperCase("zh-CN") || "U";
+  const viewerId = await getCurrentUserId();
+  const follow = await getUserFollowSummary(viewerId, user.id);
 
   return (
     <main className="profile-page">
@@ -41,6 +53,14 @@ export default async function UserPage({ params }: UserPageProps) {
             <span>UID {user.uid}</span>
             <Badge variant="trust">TL0</Badge>
           </div>
+        </div>
+        <div className="profile-follow-action">
+          <UserFollowButton
+            username={user.username}
+            initialFollowed={follow.followedByViewer}
+            canFollow={follow.canFollow}
+            signedIn={Boolean(viewerId)}
+          />
         </div>
       </header>
       {profile?.isPublic === false ? (
@@ -71,6 +91,16 @@ export default async function UserPage({ params }: UserPageProps) {
                   <MessagesSquare />
                   <strong>{user._count.communityPosts}</strong>
                   <span>回复</span>
+                </Panel>
+                <Panel>
+                  <UsersRound />
+                  <strong>{follow.followers}</strong>
+                  <span>关注者</span>
+                </Panel>
+                <Panel>
+                  <UserRoundCheck />
+                  <strong>{follow.following}</strong>
+                  <span>正在关注</span>
                 </Panel>
               </div>
             ) : null}

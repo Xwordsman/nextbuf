@@ -43,6 +43,7 @@ export type CommunityTopicView = {
   views: number;
   replies: number;
   statuses: CommunityTopicStatus[];
+  isUnread: boolean;
 };
 
 export type CommunityFeedFilter = "latest" | "hot" | "essence";

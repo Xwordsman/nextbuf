@@ -8,34 +8,40 @@ datasource db {
 }
 
 model User {
-  id                    String                    @id @default(uuid()) @db.Uuid
-  uid                   Int                       @unique(map: "users_uid_key") @default(autoincrement())
-  username              String                    @unique(map: "users_username_key") @db.VarChar(24)
-  name                  String                    @db.VarChar(80)
-  email                 String                    @unique(map: "users_email_key") @db.VarChar(320)
-  emailVerified         Boolean                   @default(false) @map("email_verified")
-  image                 String?                   @db.Text
-  status                String                    @default("pending") @db.VarChar(32)
-  activatedAt           DateTime?                 @map("activated_at") @db.Timestamptz(6)
-  usernameChangedAt     DateTime?                 @map("username_changed_at") @db.Timestamptz(6)
-  deletionRequestedAt   DateTime?                 @map("deletion_requested_at") @db.Timestamptz(6)
-  deletionScheduledAt   DateTime?                 @map("deletion_scheduled_at") @db.Timestamptz(6)
-  createdAt             DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sessions              Session[]
-  accounts              Account[]
-  profile               Profile?
-  usernameAliases       UsernameAlias[]
-  communityTopics       CommunityTopic[]          @relation("CommunityTopicAuthor")
-  communityPosts        CommunityPost[]           @relation("CommunityPostAuthor")
-  deletedCommunityPosts CommunityPost[]           @relation("CommunityPostDeleter")
-  communityRevisions    CommunityPostRevision[]   @relation("CommunityRevisionEditor")
-  communityMentions     CommunityPostMention[]    @relation("CommunityMentionUser")
-  communityAttachments  CommunityAttachment[]     @relation("CommunityAttachmentUploader")
-  communityPostDrafts   CommunityPostDraft[]
-  communityRoles        CommunityRoleAssignment[] @relation("CommunityRoleUser")
-  grantedCommunityRoles CommunityRoleAssignment[] @relation("CommunityRoleGrantor")
-  communityAuditEvents  CommunityAuditEvent[]     @relation("CommunityAuditActor")
+  id                      String                      @id @default(uuid()) @db.Uuid
+  uid                     Int                         @unique(map: "users_uid_key") @default(autoincrement())
+  username                String                      @unique(map: "users_username_key") @db.VarChar(24)
+  name                    String                      @db.VarChar(80)
+  email                   String                      @unique(map: "users_email_key") @db.VarChar(320)
+  emailVerified           Boolean                     @default(false) @map("email_verified")
+  image                   String?                     @db.Text
+  status                  String                      @default("pending") @db.VarChar(32)
+  activatedAt             DateTime?                   @map("activated_at") @db.Timestamptz(6)
+  usernameChangedAt       DateTime?                   @map("username_changed_at") @db.Timestamptz(6)
+  deletionRequestedAt     DateTime?                   @map("deletion_requested_at") @db.Timestamptz(6)
+  deletionScheduledAt     DateTime?                   @map("deletion_scheduled_at") @db.Timestamptz(6)
+  createdAt               DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sessions                Session[]
+  accounts                Account[]
+  profile                 Profile?
+  usernameAliases         UsernameAlias[]
+  communityTopics         CommunityTopic[]            @relation("CommunityTopicAuthor")
+  communityPosts          CommunityPost[]             @relation("CommunityPostAuthor")
+  deletedCommunityPosts   CommunityPost[]             @relation("CommunityPostDeleter")
+  communityRevisions      CommunityPostRevision[]     @relation("CommunityRevisionEditor")
+  communityMentions       CommunityPostMention[]      @relation("CommunityMentionUser")
+  communityAttachments    CommunityAttachment[]       @relation("CommunityAttachmentUploader")
+  communityPostDrafts     CommunityPostDraft[]
+  communityRoles          CommunityRoleAssignment[]   @relation("CommunityRoleUser")
+  grantedCommunityRoles   CommunityRoleAssignment[]   @relation("CommunityRoleGrantor")
+  communityAuditEvents    CommunityAuditEvent[]       @relation("CommunityAuditActor")
+  interactionPostLikes    InteractionPostLike[]
+  interactionBookmarks    InteractionTopicBookmark[]
+  interactionFollowing    InteractionUserFollow[]     @relation("InteractionFollower")
+  interactionFollowers    InteractionUserFollow[]     @relation("InteractionFollowed")
+  interactionTopicFollows InteractionTopicFollow[]
+  interactionReadStates   InteractionTopicReadState[]
 
   @@index([status], map: "users_status_idx")
   @@map("users")
@@ -62,31 +68,35 @@ model CommunityNode {
 }
 
 model CommunityTopic {
-  id                String                @id @default(uuid()) @db.Uuid
-  number            Int                   @unique(map: "community_topics_number_key") @default(autoincrement())
-  nodeId            String                @map("node_id") @db.Uuid
-  authorId          String                @map("author_id") @db.Uuid
-  title             String                @db.VarChar(120)
-  status            String                @default("draft") @db.VarChar(32)
-  deletedFromStatus String?               @map("deleted_from_status") @db.VarChar(32)
-  isPinned          Boolean               @default(false) @map("is_pinned")
-  isEssence         Boolean               @default(false) @map("is_essence")
-  replyCount        Int                   @default(0) @map("reply_count")
-  viewCount         Int                   @default(0) @map("view_count")
-  bookmarkCount     Int                   @default(0) @map("bookmark_count")
-  nextPostPosition  Int                   @default(2) @map("next_post_position")
-  lastActivityAt    DateTime              @default(now()) @map("last_activity_at") @db.Timestamptz(6)
-  publishedAt       DateTime?             @map("published_at") @db.Timestamptz(6)
-  editedAt          DateTime?             @map("edited_at") @db.Timestamptz(6)
-  closedAt          DateTime?             @map("closed_at") @db.Timestamptz(6)
-  deletedAt         DateTime?             @map("deleted_at") @db.Timestamptz(6)
-  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
-  node              CommunityNode         @relation(fields: [nodeId], references: [id], onDelete: Restrict)
-  author            User                  @relation("CommunityTopicAuthor", fields: [authorId], references: [id], onDelete: Restrict)
-  posts             CommunityPost[]
-  postDrafts        CommunityPostDraft[]
-  auditEvents       CommunityAuditEvent[]
+  id                    String                      @id @default(uuid()) @db.Uuid
+  number                Int                         @unique(map: "community_topics_number_key") @default(autoincrement())
+  nodeId                String                      @map("node_id") @db.Uuid
+  authorId              String                      @map("author_id") @db.Uuid
+  title                 String                      @db.VarChar(120)
+  status                String                      @default("draft") @db.VarChar(32)
+  deletedFromStatus     String?                     @map("deleted_from_status") @db.VarChar(32)
+  isPinned              Boolean                     @default(false) @map("is_pinned")
+  isEssence             Boolean                     @default(false) @map("is_essence")
+  replyCount            Int                         @default(0) @map("reply_count")
+  viewCount             Int                         @default(0) @map("view_count")
+  bookmarkCount         Int                         @default(0) @map("bookmark_count")
+  nextPostPosition      Int                         @default(2) @map("next_post_position")
+  lastActivityAt        DateTime                    @default(now()) @map("last_activity_at") @db.Timestamptz(6)
+  publishedAt           DateTime?                   @map("published_at") @db.Timestamptz(6)
+  editedAt              DateTime?                   @map("edited_at") @db.Timestamptz(6)
+  closedAt              DateTime?                   @map("closed_at") @db.Timestamptz(6)
+  deletedAt             DateTime?                   @map("deleted_at") @db.Timestamptz(6)
+  createdAt             DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  node                  CommunityNode               @relation(fields: [nodeId], references: [id], onDelete: Restrict)
+  author                User                        @relation("CommunityTopicAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  posts                 CommunityPost[]
+  postDrafts            CommunityPostDraft[]
+  auditEvents           CommunityAuditEvent[]
+  interactionBookmarks  InteractionTopicBookmark[]
+  interactionFollows    InteractionTopicFollow[]
+  interactionReadStates InteractionTopicReadState[]
+  interactionViews      InteractionTopicView[]
 
   @@index([status, isPinned, lastActivityAt, number], map: "community_topics_feed_idx")
   @@index([nodeId, status, isPinned, lastActivityAt, number], map: "community_topics_node_feed_idx")
@@ -95,30 +105,32 @@ model CommunityTopic {
 }
 
 model CommunityPost {
-  id            String                    @id @default(uuid()) @db.Uuid
-  topicId       String                    @map("topic_id") @db.Uuid
-  authorId      String                    @map("author_id") @db.Uuid
-  position      Int
-  status        String                    @default("draft") @db.VarChar(32)
-  bodySource    String                    @map("body_source") @db.Text
-  revisionCount Int                       @default(1) @map("revision_count")
-  quotedPostId  String?                   @map("quoted_post_id") @db.Uuid
-  deletedById   String?                   @map("deleted_by_id") @db.Uuid
-  deletedReason String?                   @map("deleted_reason") @db.VarChar(500)
-  editedAt      DateTime?                 @map("edited_at") @db.Timestamptz(6)
-  deletedAt     DateTime?                 @map("deleted_at") @db.Timestamptz(6)
-  createdAt     DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  topic         CommunityTopic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  author        User                      @relation("CommunityPostAuthor", fields: [authorId], references: [id], onDelete: Restrict)
-  quotedPost    CommunityPost?            @relation("CommunityPostQuote", fields: [quotedPostId], references: [id], onDelete: SetNull)
-  quotes        CommunityPost[]           @relation("CommunityPostQuote")
-  deletedBy     User?                     @relation("CommunityPostDeleter", fields: [deletedById], references: [id], onDelete: SetNull)
-  revisions     CommunityPostRevision[]
-  mentions      CommunityPostMention[]
-  attachments   CommunityPostAttachment[]
-  quotedDrafts  CommunityPostDraft[]      @relation("CommunityPostDraftQuote")
-  auditEvents   CommunityAuditEvent[]
+  id               String                    @id @default(uuid()) @db.Uuid
+  topicId          String                    @map("topic_id") @db.Uuid
+  authorId         String                    @map("author_id") @db.Uuid
+  position         Int
+  status           String                    @default("draft") @db.VarChar(32)
+  bodySource       String                    @map("body_source") @db.Text
+  revisionCount    Int                       @default(1) @map("revision_count")
+  likeCount        Int                       @default(0) @map("like_count")
+  quotedPostId     String?                   @map("quoted_post_id") @db.Uuid
+  deletedById      String?                   @map("deleted_by_id") @db.Uuid
+  deletedReason    String?                   @map("deleted_reason") @db.VarChar(500)
+  editedAt         DateTime?                 @map("edited_at") @db.Timestamptz(6)
+  deletedAt        DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+  createdAt        DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  topic            CommunityTopic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author           User                      @relation("CommunityPostAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  quotedPost       CommunityPost?            @relation("CommunityPostQuote", fields: [quotedPostId], references: [id], onDelete: SetNull)
+  quotes           CommunityPost[]           @relation("CommunityPostQuote")
+  deletedBy        User?                     @relation("CommunityPostDeleter", fields: [deletedById], references: [id], onDelete: SetNull)
+  revisions        CommunityPostRevision[]
+  mentions         CommunityPostMention[]
+  attachments      CommunityPostAttachment[]
+  quotedDrafts     CommunityPostDraft[]      @relation("CommunityPostDraftQuote")
+  auditEvents      CommunityAuditEvent[]
+  interactionLikes InteractionPostLike[]
 
   @@unique([topicId, position], map: "community_posts_topic_position_key")
   @@index([authorId, createdAt], map: "community_posts_author_created_idx")
@@ -278,6 +290,85 @@ model CommunityAuditEvent {
   @@index([actorId, createdAt], map: "community_audit_actor_created_idx")
   @@index([action, createdAt], map: "community_audit_action_created_idx")
   @@map("community_audit_events")
+}
+
+model InteractionPostLike {
+  userId    String        @map("user_id") @db.Uuid
+  postId    String        @map("post_id") @db.Uuid
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId], map: "interaction_post_likes_pkey")
+  @@index([postId, createdAt], map: "interaction_post_likes_post_created_idx")
+  @@map("interaction_post_likes")
+}
+
+model InteractionTopicBookmark {
+  userId    String         @map("user_id") @db.Uuid
+  topicId   String         @map("topic_id") @db.Uuid
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic     CommunityTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@id([userId, topicId], map: "interaction_topic_bookmarks_pkey")
+  @@index([userId, createdAt], map: "interaction_topic_bookmarks_user_created_idx")
+  @@index([topicId, createdAt], map: "interaction_topic_bookmarks_topic_created_idx")
+  @@map("interaction_topic_bookmarks")
+}
+
+model InteractionUserFollow {
+  followerId String   @map("follower_id") @db.Uuid
+  followedId String   @map("followed_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  follower   User     @relation("InteractionFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  followed   User     @relation("InteractionFollowed", fields: [followedId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followedId], map: "interaction_user_follows_pkey")
+  @@index([followerId, createdAt], map: "interaction_user_follows_follower_created_idx")
+  @@index([followedId, createdAt], map: "interaction_user_follows_followed_created_idx")
+  @@map("interaction_user_follows")
+}
+
+model InteractionTopicFollow {
+  userId    String         @map("user_id") @db.Uuid
+  topicId   String         @map("topic_id") @db.Uuid
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic     CommunityTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@id([userId, topicId], map: "interaction_topic_follows_pkey")
+  @@index([userId, createdAt], map: "interaction_topic_follows_user_created_idx")
+  @@index([topicId, createdAt], map: "interaction_topic_follows_topic_created_idx")
+  @@map("interaction_topic_follows")
+}
+
+model InteractionTopicReadState {
+  userId           String         @map("user_id") @db.Uuid
+  topicId          String         @map("topic_id") @db.Uuid
+  lastReadPosition Int            @default(1) @map("last_read_position")
+  lastReadAt       DateTime       @default(now()) @map("last_read_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic            CommunityTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@id([userId, topicId], map: "interaction_topic_read_states_pkey")
+  @@index([userId, lastReadAt], map: "interaction_topic_read_states_user_read_idx")
+  @@map("interaction_topic_read_states")
+}
+
+model InteractionTopicView {
+  id              String         @id @default(uuid()) @db.Uuid
+  topicId         String         @map("topic_id") @db.Uuid
+  viewerKeyHash   String         @map("viewer_key_hash") @db.Char(64)
+  bucketStartedAt DateTime       @map("bucket_started_at") @db.Timestamptz(6)
+  countedAt       DateTime?      @map("counted_at") @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  topic           CommunityTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([topicId, viewerKeyHash, bucketStartedAt], map: "interaction_topic_views_dedupe_key")
+  @@index([countedAt, createdAt], map: "interaction_topic_views_counted_created_idx")
+  @@map("interaction_topic_views")
 }
 
 model Profile {

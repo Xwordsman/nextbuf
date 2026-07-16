@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   Bell,
   Bookmark,
@@ -17,6 +17,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { authClient } from "@/components/auth/auth-client";
+import { useEffect } from "react";
 import { useCommunityUi } from "@/components/community/community-ui-provider.client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +49,12 @@ type SiteHeaderProps = {
 
 export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { query, setQuery, mobileSearchOpen, setMobileSearchOpen, setRailOpen } = useCommunityUi();
+  const routedQuery = pathname === "/search" ? (searchParams.get("q") ?? "") : "";
+  useEffect(() => {
+    if (pathname === "/search") setQuery(routedQuery);
+  }, [pathname, routedQuery, setQuery]);
   const signOut = async () => {
     await authClient.signOut();
     window.location.assign("/");
@@ -67,18 +73,21 @@ export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
           </span>
         </Link>
 
-        <label className="header-search" htmlFor="desktop-search">
+        <form className="header-search" action="/search" role="search">
           <Search aria-hidden="true" />
-          <span className="sr-only">搜索话题、节点或作者</span>
+          <label className="sr-only" htmlFor="desktop-search">
+            搜索话题、节点或作者
+          </label>
           <Input
             id="desktop-search"
+            name="q"
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索话题、节点或作者..."
             autoComplete="off"
           />
-        </label>
+        </form>
 
         <div className="header-actions">
           <Tooltip content="搜索">
@@ -176,7 +185,7 @@ export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
-                      <Link href="/status/unavailable?from=bookmarks">
+                      <Link href="/account/bookmarks">
                         <Bookmark /> 我的收藏
                       </Link>
                     </DropdownMenuItem>
@@ -209,18 +218,21 @@ export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
 
       {mobileSearchOpen ? (
         <div className="mobile-search-row">
-          <label htmlFor="mobile-search" className="mobile-search-field">
+          <form action="/search" role="search" className="mobile-search-field">
             <Search aria-hidden="true" />
-            <span className="sr-only">搜索话题、节点或作者</span>
+            <label className="sr-only" htmlFor="mobile-search">
+              搜索话题、节点或作者
+            </label>
             <Input
               id="mobile-search"
+              name="q"
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索话题、节点或作者..."
               autoFocus
             />
-          </label>
+          </form>
         </div>
       ) : null}
     </header>

@@ -157,6 +157,8 @@ authorize(actor, "topic.close", topic)
 
 Redis 用于快速计数，关键封禁与制裁保存在 PostgreSQL。代理和 CDN IP 头只接受明确配置的可信来源。
 
+`v0.8.0` 的互动写入要求 active 登录用户和同源请求，复合主键负责点赞、收藏和关注最终唯一性。匿名浏览只保存登录用户 ID 或 IP/用户代理组合的领域分离 HMAC，不保存原始识别信息；同一 Topic/访问者/30 分钟桶只接受一次。搜索 SQL 全部参数化，并在查询层过滤隐藏、删除和非公开内容。详细边界见 [ADR-0011](./adr/0011-interactions-search-discovery.md)。
+
 `v0.4.0` 的注册入口按 IP 和邮箱限制，Better Auth 的登录、重新验证、申请重置和执行重置使用 Redis 原子 Lua 计数。限流 key 中的邮箱、IP 和 Better Auth 标识先做 HMAC，不以明文写入 Redis。
 
 反滥用策略要提供可解释错误码和重试时间，不能只返回模糊的 500。

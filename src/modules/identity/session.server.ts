@@ -18,6 +18,18 @@ export type CurrentAccountView = {
   emailVerified: boolean;
 };
 
+const getCurrentSession = cache(async () => {
+  if (
+    runtimeEnv.NODE_ENV === "development" &&
+    (!process.env.DATABASE_URL || !process.env.REDIS_URL || !process.env.AUTH_SECRET)
+  ) {
+    return null;
+  }
+  return getAuth().api.getSession({ headers: await headers() });
+});
+
+export const getCurrentUserId = cache(async () => (await getCurrentSession())?.user.id ?? null);
+
 export const getCurrentAccount = cache(async (): Promise<CurrentAccountView | null> => {
   if (
     runtimeEnv.NODE_ENV === "development" &&
@@ -27,7 +39,7 @@ export const getCurrentAccount = cache(async (): Promise<CurrentAccountView | nu
   }
 
   try {
-    const session = await getAuth().api.getSession({ headers: await headers() });
+    const session = await getCurrentSession();
     if (!session) return null;
     const user = await getPrismaClient().user.findUniqueOrThrow({ where: { id: session.user.id } });
 

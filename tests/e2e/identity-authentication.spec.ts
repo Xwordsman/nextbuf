@@ -125,6 +125,25 @@ test.describe.serial("identity authentication", () => {
     await expect(page).toHaveURL(/\/topics\/\d+$/);
     await expect(page.getByRole("heading", { name: topicTitle })).toBeVisible();
     await expect(page.getByRole("link", { name: "e2e-notes.txt" })).toBeVisible();
+    const topicUrl = new URL(page.url()).pathname;
+    await page.getByRole("button", { name: /^收藏 0$/ }).click();
+    await expect(page.getByRole("button", { name: /^已收藏 1$/ })).toBeVisible();
+    await page.getByRole("button", { name: "关注主题" }).click();
+    await expect(page.getByRole("button", { name: "已关注" })).toBeVisible();
+    await page.getByRole("button", { name: "点赞，当前 0 个赞" }).first().click();
+    await expect(page.getByRole("button", { name: "取消点赞，当前 1 个赞" }).first()).toBeVisible();
+    await page.goto("/account/bookmarks");
+    await expect(page.getByRole("link", { name: topicTitle })).toBeVisible();
+    await page.goto("/account/following");
+    await expect(page.getByRole("link", { name: topicTitle })).toBeVisible();
+    await page.goto("/u/community_fixture");
+    await page.getByRole("button", { name: "关注", exact: true }).click();
+    await expect(page.getByRole("button", { name: "已关注" })).toBeVisible();
+    await page.goto("/account/following");
+    await expect(page.getByRole("link", { name: "社区示例用户" })).toBeVisible();
+    await page.goto(`/search?q=${encodeURIComponent(topicTitle)}`);
+    await expect(page.getByRole("link", { name: topicTitle })).toBeVisible();
+    await page.goto(topicUrl);
 
     await page.getByLabel("回复正文").fill(`这是第一条浏览器回复，并提及 @${username} 验证解析。`);
     await page.getByRole("button", { name: "发布回复" }).click();

@@ -24,12 +24,20 @@ export async function resolvePublicProfile(handle: string) {
       profile: true,
       _count: {
         select: {
-          communityTopics: { where: { status: { in: ["published", "closed"] } } },
+          communityTopics: {
+            where: {
+              status: { in: ["published", "closed"] },
+              node: { visibility: "public" },
+            },
+          },
           communityPosts: {
             where: {
               position: { gt: 1 },
               status: "published",
-              topic: { status: { in: ["published", "closed"] } },
+              topic: {
+                status: { in: ["published", "closed"] },
+                node: { visibility: "public" },
+              },
             },
           },
         },
@@ -46,12 +54,20 @@ export async function resolvePublicProfile(handle: string) {
           profile: true,
           _count: {
             select: {
-              communityTopics: { where: { status: { in: ["published", "closed"] } } },
+              communityTopics: {
+                where: {
+                  status: { in: ["published", "closed"] },
+                  node: { visibility: "public" },
+                },
+              },
               communityPosts: {
                 where: {
                   position: { gt: 1 },
                   status: "published",
-                  topic: { status: { in: ["published", "closed"] } },
+                  topic: {
+                    status: { in: ["published", "closed"] },
+                    node: { visibility: "public" },
+                  },
                 },
               },
             },

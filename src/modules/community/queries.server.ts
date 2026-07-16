@@ -15,6 +15,7 @@ import type {
 import { CommunityError } from "@/modules/community/errors";
 import { renderCommunityMarkdown } from "@/modules/community/markdown.server";
 import { isHotTopic } from "@/modules/community/topic-policy";
+import { listHotTopicIds } from "@/modules/interactions/discovery.server";
 
 const publicTopicStatuses = ["published", "closed"];
 const pageSize = 20;
@@ -27,6 +28,11 @@ type FeedCursor = {
 };
 
 type FeedDirection = "next" | "previous";
+
+type HotFeedCursor = {
+  offset: number;
+  asOf: string;
+};
 
 const topicInclude = {
   node: true,
@@ -143,6 +149,7 @@ function topicStatuses(topic: {
 function toTopicView(
   topic: Prisma.CommunityTopicGetPayload<{ include: typeof topicInclude }>,
   now: Date,
+  isUnread = false,
 ): CommunityTopicView {
   return {
     id: topic.number,
@@ -160,6 +167,7 @@ function toTopicView(
     views: topic.viewCount,
     replies: topic.replyCount,
     statuses: topicStatuses(topic),
+    isUnread,
   };
 }
 
@@ -179,12 +187,15 @@ async function getFeedPage(input: {
   filter: CommunityFeedFilter;
   cursor?: string;
   direction: FeedDirection;
+  viewerId?: string;
 }) {
+  if (input.filter === "hot") return getHotFeedPage(input);
   const prisma = getPrismaClient();
   const now = new Date();
   const cursor = decodeCursor(input.cursor);
   const baseWhere: Prisma.CommunityTopicWhereInput = {
     status: { in: publicTopicStatuses },
+    node: { visibility: "public" },
     ...(input.nodeId ? { nodeId: input.nodeId } : {}),
     ...filterWhere(input.filter, now),
   };
@@ -222,12 +233,108 @@ async function getFeedPage(input: {
     prisma.communityTopic.count({ where: baseWhere }),
   ]);
 
+  const readStates = input.viewerId
+    ? await prisma.interactionTopicReadState.findMany({
+        where: { userId: input.viewerId, topicId: { in: topics.map((topic) => topic.id) } },
+        select: { topicId: true, lastReadAt: true },
+      })
+    : [];
+  const readByTopic = new Map(readStates.map((state) => [state.topicId, state.lastReadAt]));
+
   return {
-    topics: topics.map((topic) => toTopicView(topic, now)),
+    topics: topics.map((topic) => {
+      const lastReadAt = readByTopic.get(topic.id);
+      return toTopicView(
+        topic,
+        now,
+        Boolean(input.viewerId && (!lastReadAt || lastReadAt < topic.lastActivityAt)),
+      );
+    }),
     total,
     pagination: {
       previousCursor: first && hasPrevious ? encodeCursor(first) : null,
       nextCursor: last && hasNext ? encodeCursor(last) : null,
+    },
+  };
+}
+
+function encodeHotCursor(cursor: HotFeedCursor): string {
+  return Buffer.from(JSON.stringify(cursor)).toString("base64url");
+}
+
+function decodeHotCursor(value?: string): HotFeedCursor | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as HotFeedCursor;
+    if (
+      !Number.isSafeInteger(parsed.offset) ||
+      parsed.offset < 0 ||
+      Number.isNaN(Date.parse(parsed.asOf))
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function getHotFeedPage(input: { nodeId?: string; cursor?: string; viewerId?: string }) {
+  const prisma = getPrismaClient();
+  const parsed = decodeHotCursor(input.cursor);
+  const asOf = parsed ? new Date(parsed.asOf) : new Date();
+  const offset = parsed?.offset ?? 0;
+  const ranked = await listHotTopicIds({
+    nodeId: input.nodeId,
+    asOf,
+    offset,
+    limit: pageSize + 1,
+  });
+  const pageRows = ranked.slice(0, pageSize);
+  const ids = pageRows.map((row) => row.id);
+  const [unorderedTopics, total, readStates] = await Promise.all([
+    prisma.communityTopic.findMany({ where: { id: { in: ids } }, include: topicInclude }),
+    prisma.communityTopic.count({
+      where: {
+        status: { in: publicTopicStatuses },
+        node: { visibility: "public" },
+        ...(input.nodeId ? { nodeId: input.nodeId } : {}),
+      },
+    }),
+    input.viewerId
+      ? prisma.interactionTopicReadState.findMany({
+          where: { userId: input.viewerId, topicId: { in: ids } },
+          select: { topicId: true, lastReadAt: true },
+        })
+      : [],
+  ]);
+  const topicById = new Map(unorderedTopics.map((topic) => [topic.id, topic]));
+  const readByTopic = new Map(readStates.map((state) => [state.topicId, state.lastReadAt]));
+  const topics = ids.flatMap((id) => {
+    const topic = topicById.get(id);
+    if (!topic) return [];
+    const lastReadAt = readByTopic.get(id);
+    return [
+      toTopicView(
+        topic,
+        asOf,
+        Boolean(input.viewerId && (!lastReadAt || lastReadAt < topic.lastActivityAt)),
+      ),
+    ];
+  });
+
+  return {
+    topics,
+    total,
+    pagination: {
+      previousCursor:
+        offset > 0
+          ? encodeHotCursor({ offset: Math.max(0, offset - pageSize), asOf: asOf.toISOString() })
+          : null,
+      nextCursor:
+        ranked.length > pageSize
+          ? encodeHotCursor({ offset: offset + pageSize, asOf: asOf.toISOString() })
+          : null,
     },
   };
 }
@@ -237,6 +344,7 @@ export async function getCommunityHomeView(input: {
   filter?: CommunityFeedFilter;
   cursor?: string;
   direction?: FeedDirection;
+  viewerId?: string;
 }): Promise<{ view: CommunityHomeView; activeNode: CommunityNodeView | null }> {
   const prisma = getPrismaClient();
   const nodes = await prisma.communityNode.findMany({
@@ -257,27 +365,27 @@ export async function getCommunityHomeView(input: {
       filter,
       cursor: input.cursor,
       direction: input.direction ?? "next",
+      viewerId: input.viewerId,
     }),
-    prisma.communityTopic.findMany({
-      where: {
-        status: { in: publicTopicStatuses },
-        ...filterWhere("hot", new Date()),
-      },
-      include: topicInclude,
-      orderBy: [{ replyCount: "desc" }, { viewCount: "desc" }, { lastActivityAt: "desc" }],
-      take: 3,
-    }),
+    listHotTopicIds({ asOf: new Date(), limit: 3 }),
     prisma.user.count({ where: { status: "active" } }),
-    prisma.communityTopic.count({ where: { status: { in: publicTopicStatuses } } }),
+    prisma.communityTopic.count({
+      where: { status: { in: publicTopicStatuses }, node: { visibility: "public" } },
+    }),
     prisma.communityPost.count({
       where: {
         position: { gt: 1 },
         status: "published",
         createdAt: { gte: today },
-        topic: { status: { in: publicTopicStatuses } },
+        topic: { status: { in: publicTopicStatuses }, node: { visibility: "public" } },
       },
     }),
   ]);
+  const hotTopicRows = await prisma.communityTopic.findMany({
+    where: { id: { in: hotTopics.map((topic) => topic.id) } },
+    include: topicInclude,
+  });
+  const hotTopicById = new Map(hotTopicRows.map((topic) => [topic.id, topic]));
   const nodeViews: CommunityNodeView[] = [
     {
       id: "all",
@@ -312,7 +420,10 @@ export async function getCommunityHomeView(input: {
       nodes: nodeViews,
       topics: feed.topics,
       topicTotal: feed.total,
-      hotTopics: hotTopics.map((topic) => toTopicView(topic, new Date())),
+      hotTopics: hotTopics.flatMap((ranked) => {
+        const topic = hotTopicById.get(ranked.id);
+        return topic ? [toTopicView(topic, new Date())] : [];
+      }),
       pagination: feed.pagination,
       overview: [
         { label: "成员", value: memberCount.toLocaleString("zh-CN") },
@@ -383,7 +494,7 @@ export async function getTopicPageView(number: number, viewerId?: string, reques
     (topic.status === "published" || (topic.status === "closed" && canModerate)),
   );
   const replyFrom = Number.isSafeInteger(requestedFrom) && requestedFrom >= 2 ? requestedFrom : 2;
-  const [replyRows, draft] = await Promise.all([
+  const [replyRows, draft, topicInteractions] = await Promise.all([
     ["published", "closed"].includes(topic.status)
       ? prisma.communityPost.findMany({
           where: { topicId: topic.id, position: { gte: replyFrom } },
@@ -410,9 +521,29 @@ export async function getTopicPageView(number: number, viewerId?: string, reques
           },
         })
       : null,
+    viewerId
+      ? Promise.all([
+          prisma.interactionTopicBookmark.findUnique({
+            where: { userId_topicId: { userId: viewerId, topicId: topic.id } },
+            select: { userId: true },
+          }),
+          prisma.interactionTopicFollow.findUnique({
+            where: { userId_topicId: { userId: viewerId, topicId: topic.id } },
+            select: { userId: true },
+          }),
+        ])
+      : Promise.resolve([null, null] as const),
   ]);
   const hasNextReplies = replyRows.length > replyPageSize;
   const visibleReplies = replyRows.slice(0, replyPageSize);
+  const visiblePostIds = [post.id, ...visibleReplies.map((reply) => reply.id)];
+  const viewerLikes = viewerId
+    ? await prisma.interactionPostLike.findMany({
+        where: { userId: viewerId, postId: { in: visiblePostIds } },
+        select: { postId: true },
+      })
+    : [];
+  const likedPostIds = new Set(viewerLikes.map((like) => like.postId));
 
   return {
     id: topic.id,
@@ -425,6 +556,9 @@ export async function getTopicPageView(number: number, viewerId?: string, reques
     isEssence: topic.isEssence,
     body: post.bodySource,
     bodyHtml: renderCommunityMarkdown(post.bodySource),
+    postId: post.id,
+    likeCount: post.likeCount,
+    liked: likedPostIds.has(post.id),
     revisionCount: post.revisionCount,
     revisions: post.revisions.map((revision) => ({
       version: revision.version,
@@ -445,6 +579,11 @@ export async function getTopicPageView(number: number, viewerId?: string, reques
     editedAt: topic.editedAt,
     replyCount: topic.replyCount,
     viewCount: topic.viewCount,
+    bookmarkCount: topic.bookmarkCount,
+    bookmarked: Boolean(topicInteractions[0]),
+    followed: Boolean(topicInteractions[1]),
+    canInteract: permissions?.active === true && publicTopicStatuses.includes(topic.status),
+    lastVisiblePosition: visibleReplies.at(-1)?.position ?? 1,
     canEdit,
     canModerate,
     canRestore: canEdit && topic.status === "deleted",
@@ -469,6 +608,8 @@ export async function getTopicPageView(number: number, viewerId?: string, reques
         body: contentVisible ? reply.bodySource : "",
         bodyHtml: contentVisible ? renderCommunityMarkdown(reply.bodySource) : "",
         revisionCount: reply.revisionCount,
+        likeCount: reply.likeCount,
+        liked: likedPostIds.has(reply.id),
         createdAt: reply.createdAt,
         editedAt: reply.editedAt,
         author: {

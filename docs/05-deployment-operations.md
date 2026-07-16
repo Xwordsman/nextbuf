@@ -2,7 +2,7 @@
 
 本文件定义部署架构和运维原则。逐步安装、升级、备份、恢复和故障排查见 [安装与运维运行手册](./13-installation-operations-runbook.md)。
 
-> 当前实现状态：截至 `v0.7.0`，已提供 PostgreSQL/Redis/Mailpit 开发与测试 Compose、Web/Worker/migrate/setup/doctor/invite 入口、Next.js standalone Web、Better Auth、SMTP/附件 Worker、本地/S3 对象存储和真实节点/主题/回复持久化；尚未提供生产应用镜像和四容器生产 Compose。本文其余发布流程仍是 `v0.12.0` 必须实现的合同。Mailpit 只用于开发、测试和 CI，不是第五个生产容器。
+> 当前实现状态：截至 `v0.8.0`，已提供 PostgreSQL/Redis/Mailpit 开发与测试 Compose、Web/Worker/migrate/setup/doctor/invite 入口、Next.js standalone Web、Better Auth、SMTP/附件/浏览聚合 Worker、本地/S3 对象存储、真实社区互动和 PostgreSQL 搜索；尚未提供生产应用镜像和四容器生产 Compose。本文其余发布流程仍是 `v0.12.0` 必须实现的合同。Mailpit 只用于开发、测试和 CI，不是第五个生产容器。
 
 ## 1. 部署目标
 

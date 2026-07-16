@@ -130,7 +130,7 @@ worker: node worker.js
 
 ### 搜索
 
-V1 使用 PostgreSQL 全文检索和 `pg_trgm` 满足标题、正文和用户名的基础搜索。搜索模块通过内部接口封装，V2 及以后可增加 Meilisearch 或 OpenSearch Provider。
+`v0.8.0` 已使用 PostgreSQL `simple` FTS、`pg_trgm`、表达式 GIN 索引和参数化 SQL 实现标题、Markdown 源正文、用户公开身份/简介和节点搜索。搜索模块通过 `SearchProvider` 内部接口封装，并统一过滤非公开节点、软删除/隐藏内容和非 active 用户。V2 及以后可增加 Meilisearch 或 OpenSearch Provider，但不能移除 PostgreSQL 降级路径或改变可见性语义。
 
 ### 文件存储
 

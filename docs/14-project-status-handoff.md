@@ -2,9 +2,9 @@
 
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
-- 最后更新：2026-07-13
-- 当前完成版本：`v0.7.0`
-- 下一开发版本：`v0.8.0` 互动、搜索与内容发现
+- 最后更新：2026-07-16
+- 当前完成版本：`v0.8.0`
+- 下一开发版本：`v0.9.0` 通知、邮件和 Worker 完整链路
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -93,6 +93,19 @@
 - 主题页按实际 Post 每页 30 楼分页；首页“今日回复”、最新回复者和公开用户页回复统计读取真实 PostgreSQL 数据，在线成员仍保持明确空状态。
 - 决策与回退边界见 [ADR-0010](./adr/0010-replies-markdown-attachment-pipeline.md)。
 
+### `v0.8.0` 互动、搜索与内容发现
+
+- 新增 Post 单一点赞、主题收藏、用户关注、主题关注和每用户/Topic 阅读状态；全部关系由 PostgreSQL 复合主键、外键和 CHECK 约束兜底，重复 `PUT/DELETE` 不重复改变派生计数。
+- 主题页显示真实点赞、收藏和关注状态；用户页支持关注并显示真实关注者/正在关注计数；账号中心新增 `/account/bookmarks`、`/account/following` 和 `/account/activity`。
+- 登录主题流根据阅读时间与最后活动时间显示“有新内容”；最大已读楼层只前进不后退。
+- 主题浏览通过登录用户或匿名 IP/用户代理的领域分离 HMAC 去标识化；同一 Topic/访问者/30 分钟桶只接受一次，原始值不落库。
+- 接受浏览与 `nextbuf.interactions.topic-view.aggregate@1` Outbox 在同一事务写入；独立 Worker 幂等增加 `view_count`，并限量清理 30 天前已聚合桶。Redis 清空不丢互动或浏览事实。
+- 热门算法 v1 使用有上限的回复、独立参与者、点赞、收藏、去重浏览和 24 小时时间衰减；分数查询时计算，不存在管理员可写 `is_hot/hot_score`。
+- 迁移启用 `pg_trgm` 并为标题、Markdown 源正文、用户公开身份/简介和节点建立 FTS/Trigram GIN 索引。
+- `/search` 和页头搜索使用 `PostgresSearchProvider` 参数化查询；结果只包含 public Node、`published/closed` Topic、published Post 和 active 用户，私有简介不展示。
+- 个人列表、主题按钮、用户关注和搜索进入真实浏览器旅程；热门公式有纯领域单元测试，互动并发幂等、浏览 Worker、搜索可见性和热门排序有真实 PostgreSQL 集成测试。
+- 决策、公式、隐私、保留和回退边界见 [ADR-0011](./adr/0011-interactions-search-discovery.md)。
+
 ## 2. 关键命令
 
 ```text
@@ -113,9 +126,9 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 ## 3. 测试与验证边界
 
-- 本地已通过：Prisma generate/validate、全部 5 份迁移冷启动检查、Prettier、ESLint、TypeScript、32 个单元测试、Worker/CLI 构建和 Next.js standalone 生产构建。
-- 集成测试共 16 项：3 项运行时、6 项身份/资料、7 项社区；社区额外覆盖 8 个并发回复的楼层/计数、引用、提及、回复修订/删除恢复、草稿覆盖、关闭主题权限、文本/图片附件处理、失败追踪和历史修订附件保留。
-- Playwright 共 6 项：5 项真实社区多视口/筛选/无障碍测试和 1 项注册、验证、Markdown/附件、回复/提及/引用、编辑/删除/恢复、会话与密码重置完整旅程。
+- 本地已通过：Prisma generate/validate、Prettier、ESLint、TypeScript、35 个单元测试、Worker/CLI 构建和 Next.js standalone 生产构建；全部 6 份迁移冷启动检查由 CI 的 PostgreSQL 18 执行。
+- 集成测试共 20 项：3 项运行时、6 项身份/资料、7 项社区、4 项互动/搜索；新增覆盖重复并发点赞/收藏/关注、阅读楼层单调性、浏览桶/Worker 幂等、软删除搜索过滤和热门算法排序。
+- Playwright 共 6 项：5 项真实社区多视口/筛选/无障碍测试和 1 项注册、验证、Markdown/附件、回复/提及/引用、点赞/收藏/关注/搜索、编辑/删除/恢复、会话与密码重置完整旅程。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
@@ -129,19 +142,19 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - 验证记录、注册邀请码、身份审计、邮件投递与 Outbox。
 - 节点、主题、position=1 首帖、稳定楼层回复、修订、提及、回复草稿、附件/引用关系、社区角色分配和社区审计。
 - local/S3 对象中的头像、附件原件和图片派生文件；附件处理状态、校验和、尺寸和失败原因保存在 PostgreSQL。
+- Post 点赞、主题收藏、用户/主题关注、最大已读楼层、去标识化浏览桶、派生点赞/收藏/浏览计数和浏览 Outbox。
 
 仍是明确占位：
 
 - 在线成员跟踪尚未实现，因此“当前在线”和在线成员列表为空。
-- 浏览量字段已持久化，但尚未按原始 HTTP 请求直接累加；反滥用浏览统计留到互动阶段。
 
 尚未实现：
 
 - 持久化信任等级计算、真实用户活动统计和最终注销执行器。
-- 点赞、收藏、关注、阅读状态、反滥用浏览统计、搜索索引、真实通知、治理和管理后台页面。
+- 真实通知/偏好/普通通知邮件、举报治理、持久化信任计算和管理后台页面。
 - 生产 Dockerfile、生产四容器 Compose、GHCR 镜像、`nextbufctl`、备份恢复和首次安装向导。
 
-不得为尚未实现的在线状态或浏览统计重新引入演示数据。不得在 `v0.8.0` 提前实现通知、治理、后台页面或信任计算。
+不得为尚未实现的在线状态重新引入演示数据。不得在 `v0.9.0` 提前实现治理、后台页面或信任计算。
 
 ## 5. 已确定且不得自行更改
 
@@ -159,14 +172,15 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 12. UID/用户名/别名/头像/注销语义遵循 ADR-0009；不得释放历史用户名或把当前固定 `TL0` 误当信任授权。
 13. 主题遵循 ADR-0005：统一 Post、position=1 首帖、数字公开编号和不可变修订。
 14. 回复、Markdown 与附件遵循 ADR-0010：楼层不复用，服务端安全渲染，当前/修订/草稿引用共同保护附件，Worker 保留原件并生成派生文件。
+15. 互动、浏览、热门与搜索遵循 ADR-0011：PostgreSQL 保存关系和接受桶，Worker 幂等聚合浏览，热门只计算，搜索遵守公开可见性。
 
-## 6. 下一步只做 `v0.8.0`
+## 6. 下一步只做 `v0.9.0`
 
-入口：[详细开发计划 v0.8.0](./09-detailed-development-plan.md#v080互动搜索与内容发现)
+入口：[详细开发计划 v0.9.0](./09-detailed-development-plan.md#v090通知邮件和-worker-完整链路)
 
-下一阶段增加单一点赞/取消点赞、主题收藏、用户/主题关注、阅读状态、反滥用浏览计数、PostgreSQL FTS/`pg_trgm` 搜索和热门算法 v1，并提供个人收藏、关注和参与内容列表。
+下一阶段建立 Notification、NotificationPreference 和投递记录，接通回复、提及和主题关注事件，实现未读/已读/归档、普通通知邮件偏好、Outbox、重试、周期调度、分布式锁和 Worker 运维摘要。
 
-`v0.8.0` 不提前实现真实通知投递、举报治理、管理后台页面、插件或信任计算。互动唯一性、隐私、浏览反滥用和搜索可重建边界必须由 PostgreSQL 事实与服务端授权保证，不能只做客户端按钮或 Redis 计数。
+`v0.9.0` 不提前实现举报治理、完整管理后台、插件或信任计算。通知必须从现有回复、提及和关注事实产生结构化意图，不能只做客户端红点；Redis 故障后必须可由 PostgreSQL Outbox 恢复。
 
 ## 7. 文档优先级与交接规则
 

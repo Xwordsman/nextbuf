@@ -13,6 +13,9 @@ import { notFound } from "next/navigation";
 import { MarkdownContent } from "@/components/community/markdown-content";
 import { ReplyActions } from "@/components/community/reply-actions.client";
 import { ReplyEditor } from "@/components/community/reply-editor.client";
+import { PostLikeButton } from "@/components/interactions/post-like-button.client";
+import { TopicActions } from "@/components/interactions/topic-actions.client";
+import { TopicViewTracker } from "@/components/interactions/topic-view-tracker.client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,10 +58,18 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
     hidden: "已隐藏",
     deleted: "已删除",
   };
+  const isPublicTopic = ["published", "closed"].includes(topic.status);
 
   return (
     <main className="topic-page">
       <article className="topic-detail">
+        {isPublicTopic ? (
+          <TopicViewTracker
+            topicNumber={topic.number}
+            lastVisiblePosition={topic.lastVisiblePosition}
+            markRead={topic.canInteract}
+          />
+        ) : null}
         <header className="topic-detail-head">
           <div className="topic-detail-node-line">
             <Link href={`/nodes/${topic.node.slug}`}>
@@ -89,6 +100,25 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
           </div>
         </header>
 
+        <div className="topic-detail-actions">
+          {isPublicTopic ? (
+            <TopicActions
+              topicNumber={topic.number}
+              initialBookmarked={topic.bookmarked}
+              initialBookmarkCount={topic.bookmarkCount}
+              initialFollowed={topic.followed}
+              canInteract={topic.canInteract}
+            />
+          ) : null}
+          {topic.canEdit ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/topics/${topic.number}/edit`}>
+                <FilePenLine /> 编辑主题
+              </Link>
+            </Button>
+          ) : null}
+        </div>
+
         <Panel className="topic-post" id="post-1">
           <aside className="topic-post-author">
             <Avatar className="size-12">
@@ -109,17 +139,19 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
             ) : (
               <p className="post-empty">该草稿尚未填写正文。</p>
             )}
+            {isPublicTopic ? (
+              <div className="reply-actions">
+                <PostLikeButton
+                  postId={topic.postId}
+                  initialLiked={topic.liked}
+                  initialCount={topic.likeCount}
+                  canInteract={topic.canInteract}
+                  signInHref={`/auth/sign-in?next=/topics/${topic.number}`}
+                />
+              </div>
+            ) : null}
           </div>
         </Panel>
-        {topic.canEdit ? (
-          <div className="topic-detail-actions">
-            <Button asChild variant="outline">
-              <Link href={`/topics/${topic.number}/edit`}>
-                <FilePenLine /> 编辑主题
-              </Link>
-            </Button>
-          </div>
-        ) : null}
 
         <section className="topic-replies-section" aria-labelledby="topic-replies-title">
           <div className="topic-replies-head">
@@ -177,6 +209,10 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
                       canDelete={reply.canDelete}
                       canRestore={reply.canRestore}
                       bodyMax={POST_BODY_MAX_LENGTH}
+                      postId={reply.id}
+                      liked={reply.liked}
+                      likeCount={reply.likeCount}
+                      canLike={topic.canInteract && reply.status === "published"}
                     />
                   </div>
                 </Panel>

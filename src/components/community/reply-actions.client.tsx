@@ -4,6 +4,7 @@ import { FilePenLine, LoaderCircle, Quote, RotateCcw, Save, Trash2, X } from "lu
 import { useState } from "react";
 import { MarkdownEditor } from "@/components/community/markdown-editor.client";
 import { Button } from "@/components/ui/button";
+import { PostLikeButton } from "@/components/interactions/post-like-button.client";
 
 type ReplyActionsProps = {
   topicNumber: number;
@@ -16,6 +17,10 @@ type ReplyActionsProps = {
   canDelete: boolean;
   canRestore: boolean;
   bodyMax: number;
+  postId: string;
+  liked: boolean;
+  likeCount: number;
+  canLike: boolean;
 };
 
 export function ReplyActions({
@@ -29,6 +34,10 @@ export function ReplyActions({
   canDelete,
   canRestore,
   bodyMax,
+  postId,
+  liked,
+  likeCount,
+  canLike,
 }: ReplyActionsProps) {
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(initialBody);
@@ -86,6 +95,13 @@ export function ReplyActions({
 
   return (
     <div className="reply-actions">
+      <PostLikeButton
+        postId={postId}
+        initialLiked={liked}
+        initialCount={likeCount}
+        canInteract={canLike}
+        signInHref={`/auth/sign-in?next=/topics/${topicNumber}`}
+      />
       {canQuote ? (
         <Button
           type="button"

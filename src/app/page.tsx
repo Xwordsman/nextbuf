@@ -1,7 +1,7 @@
 import { CommunityHome } from "@/components/community/community-home.client";
 import type { CommunityFeedFilter } from "@/modules/community/contracts/home-view";
 import { getCommunityHomeView } from "@/modules/community/queries.server";
-import { getCurrentAccount } from "@/modules/identity/session.server";
+import { getCurrentAccount, getCurrentUserId } from "@/modules/identity/session.server";
 
 type HomeProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -17,17 +17,15 @@ export default async function Home({ searchParams }: HomeProps) {
   const filter: CommunityFeedFilter = ["hot", "essence"].includes(requestedFilter ?? "")
     ? (requestedFilter as CommunityFeedFilter)
     : "latest";
-  const { view } = await getCommunityHomeView({
-    filter,
-    cursor: single(params.cursor),
-    direction: single(params.direction) === "previous" ? "previous" : "next",
-  });
-  return (
-    <CommunityHome
-      view={view}
-      account={await getCurrentAccount()}
-      activeNode={null}
-      filter={filter}
-    />
-  );
+  const viewerId = await getCurrentUserId();
+  const [{ view }, account] = await Promise.all([
+    getCommunityHomeView({
+      filter,
+      cursor: single(params.cursor),
+      direction: single(params.direction) === "previous" ? "previous" : "next",
+      viewerId: viewerId ?? undefined,
+    }),
+    getCurrentAccount(),
+  ]);
+  return <CommunityHome view={view} account={account} activeNode={null} filter={filter} />;
 }
