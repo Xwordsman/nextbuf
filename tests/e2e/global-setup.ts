@@ -8,6 +8,11 @@ export default async function globalSetup() {
   ]);
   await setup();
   const prisma = database.getPrismaClient();
+  await prisma.moderationSanction.deleteMany();
+  await prisma.moderationAction.deleteMany();
+  await prisma.moderationReport.deleteMany();
+  await prisma.moderationCase.deleteMany();
+  await prisma.governanceAuditEvent.deleteMany();
   await prisma.communityAuditEvent.deleteMany({ where: { topicId: { not: null } } });
   await prisma.communityRoleAssignment.deleteMany();
   await prisma.communityTopic.deleteMany();

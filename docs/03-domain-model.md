@@ -21,7 +21,7 @@
 - `username` 是唯一规范化用户名；`name` 是可重复昵称；邮箱、邮箱验证和账号状态沿用 Better Auth 语义。
 - `usernameChangedAt` 记录 30 天修改冷却起点；`deletionRequestedAt` 与 `deletionScheduledAt` 记录 14 天可撤销注销申请。
 - 账号状态：`pending`、`active`、`restricted`、`suspended`、`deleted`。
-- `v0.5.0` 已实现 `pending` 和 `active` 主链路；restricted、suspended、最终匿名化/删除、最后活动和持久化信任等级属于后续版本。
+- `v0.10.0` 起暂停/封禁会同步写入 `suspended`，撤销或到期后由受审计服务/周期维护恢复；最终匿名化/删除和最后活动仍属于后续版本。持久化信任状态位于独立 `TrustUserState`，不写入 User 角色字段。
 
 ### Profile
 
@@ -179,17 +179,19 @@ V1 只实现单一“赞”，不建立多反应类型。`v0.8.0` 使用 `intera
 
 举报包含举报人、目标、原因、补充信息和状态。相同目标的举报可以聚合展示，但每次举报仍需保留来源，便于识别滥用举报。
 
+`v0.10.0` 的 `ModerationReport` 目标只能是公开用户、公开主题或公开回复，并保存稳定 `target_key`、目标快照、举报者当时 TL 和权重。同一用户对同一目标只能有一条未结举报，每用户 UTC 日最多 10 条；结案后活动键置空，历史记录不删除。
+
 ### ModerationCase
 
-一次治理事件可以关联多个举报和多个动作。状态建议为：`open`、`investigating`、`resolved`、`dismissed`。
+一次治理事件可以关联多个举报和多个动作。实际状态为：`open`、`in_review`、`resolved`、`dismissed`。同一 `active_target_key` 最多一个未结案件；案件优先级按独立举报权重累加，但不直接代表目标有罪。
 
 ### ModerationAction
 
-处置动作包括隐藏、恢复、关闭、警告、限流、禁言、封禁等。记录操作者、目标、原因、有效期、关联案件和前后状态。
+处置动作包括隐藏、恢复、关闭、警告、节点/全站禁言、临时暂停、永久封禁、撤销和结案。每条不可变记录包含操作者、操作者当时角色、目标、原因、有效期、关联案件、前后状态和请求 ID。
 
 ### Sanction
 
-对用户生效的限制独立建模，包含类型、范围、开始/结束时间和撤销信息。不要只在 User 表放一个 `isBanned`，否则无法表达节点禁言、临时封禁和历史记录。
+对用户生效的限制独立建模，实际类型为 `warning`、`node_mute`、`site_mute`、`suspend`、`ban`，包含范围、开始/结束时间、创建动作和撤销信息。节点/全站禁言只阻止新内容，暂停/封禁阻止账号能力并同步 User.status；授权每次读取 PostgreSQL 当前有效制裁，不依赖 Redis。
 
 ### AuditLog
 
@@ -201,6 +203,24 @@ V1 只实现单一“赞”，不建立多反应类型。`v0.8.0` 使用 `intera
 - 不包含密码、令牌和完整敏感配置。
 
 审计记录默认不能通过普通后台删除；隐私和法务要求下的处理需要专门流程。
+
+### RoleAssignment
+
+基础用户是隐式角色。`CommunityRoleAssignment` 显式保存 `admin`、`global_moderator` 和限定节点的 `node_moderator`，包含授予人、原因与作用域唯一键。角色变更只允许管理员，撤销最后一个管理员会被拒绝；角色不由 TL 自动产生。
+
+### TrustRuleVersion、TrustUserState 与 TrustLevelHistory
+
+`TrustRuleVersion` 保存不可变版本号、状态和 JSON 规则。任意时刻只有一个 active 规则；draft 必须先完成 preview 批次才可激活，旧 active 规则转为 retired。
+
+`TrustUserState` 与 User 一对一，保存当前等级、自动等级、可空的人工 TL4、规则版本、指标、解释、宽限截止和计算时间。数据库约束保证自动等级只在 TL0-TL3，人工等级只能是 TL4，当前等级始终等于人工覆盖或自动等级。
+
+默认规则 v1 使用账号天数、已读主题数、有效主题/回复数、收到点赞数和 180 天内未撤销制裁数。TL1、TL2、TL3 阈值分别为 `1/3/1/0/0`、`14/20/10/3/0`、`60/100/50/20/0`。升级立即生效；自动降级先保留原等级并进入 14 天宽限。
+
+`TrustLevelHistory` 记录等级或宽限变化时的规则、指标、解释、前后等级、自动等级、来源、可选批次和人工操作者。TL 不授予节点版主、全局版主或管理员，也不承载专业声誉和交易信用。
+
+### TrustRecalculationBatch
+
+规则预估和应用都保存独立批次，包含总数、已处理数、变化数、UID 游标、影响分布、状态和错误。Worker 每个 Outbox 分片最多处理 25 个 UID，下一分片与当前进度在同一事务提交；Redis 丢失后仍可从未发布 Outbox 和数据库游标恢复。
 
 ## 8. 设置与功能开关
 

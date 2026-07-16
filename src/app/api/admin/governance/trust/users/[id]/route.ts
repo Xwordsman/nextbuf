@@ -1,0 +1,37 @@
+import { z } from "zod";
+import { moderationErrorResponse } from "@/app/api/moderation/moderation-response";
+import { getRequestSession } from "@/modules/identity/current-session.server";
+import { setManualTrustLevel } from "@/modules/trust/trust.server";
+import { hasSameOrigin } from "@/shared/http/same-origin";
+import { resolveRequestId } from "@/shared/http/request-id";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const schema = z.object({
+  level: z.literal(4).nullable(),
+  reason: z.string().trim().min(3).max(500),
+});
+
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  if (!hasSameOrigin(request)) return Response.json({ code: "invalid_origin" }, { status: 403 });
+  const session = await getRequestSession(request);
+  if (!session) return Response.json({ code: "unauthorized" }, { status: 401 });
+  const userId = z.uuid().safeParse((await context.params).id);
+  const parsed = schema.safeParse(await request.json().catch(() => null));
+  if (!userId.success || !parsed.success) {
+    return Response.json({ code: "invalid_action" }, { status: 400 });
+  }
+  try {
+    await setManualTrustLevel({
+      actorId: session.user.id,
+      userId: userId.data,
+      level: parsed.data.level,
+      reason: parsed.data.reason,
+      requestId: resolveRequestId(request.headers.get("x-request-id")),
+    });
+    return Response.json({ ok: true });
+  } catch (error) {
+    return moderationErrorResponse(error);
+  }
+}

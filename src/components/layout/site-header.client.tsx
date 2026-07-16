@@ -14,6 +14,7 @@ import {
   ServerCog,
   Settings,
   ShieldCheck,
+  ShieldAlert,
   UserPlus,
   UserRound,
 } from "lucide-react";
@@ -46,6 +47,7 @@ type SiteHeaderProps = {
     initials: string;
     unreadNotifications: number;
     isAdmin: boolean;
+    canModerate: boolean;
   } | null;
   registrationOpen: boolean;
 };
@@ -198,6 +200,13 @@ export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
                       <DropdownMenuItem asChild>
                         <Link href="/admin/worker">
                           <ServerCog /> Worker 运维
+                        </Link>
+                      </DropdownMenuItem>
+                    ) : null}
+                    {account.canModerate ? (
+                      <DropdownMenuItem asChild>
+                        <Link href="/admin/moderation">
+                          <ShieldAlert /> 治理案件
                         </Link>
                       </DropdownMenuItem>
                     ) : null}

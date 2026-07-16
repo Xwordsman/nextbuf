@@ -1,11 +1,27 @@
 import Link from "next/link";
-import { Bell, Bookmark, FileText, History, Rss, ShieldCheck, UserRound } from "lucide-react";
+import {
+  Bell,
+  Bookmark,
+  FileText,
+  Gauge,
+  History,
+  Rss,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react";
 
 export function AccountNav({
   active,
 }: {
   active:
-    "profile" | "security" | "notifications" | "topics" | "bookmarks" | "following" | "activity";
+    | "profile"
+    | "security"
+    | "trust"
+    | "notifications"
+    | "topics"
+    | "bookmarks"
+    | "following"
+    | "activity";
 }) {
   return (
     <nav className="account-nav" aria-label="账号中心">
@@ -14,6 +30,9 @@ export function AccountNav({
       </Link>
       <Link href="/account/security" aria-current={active === "security" ? "page" : undefined}>
         <ShieldCheck /> 账号安全
+      </Link>
+      <Link href="/account/trust" aria-current={active === "trust" ? "page" : undefined}>
+        <Gauge /> 信任等级
       </Link>
       <Link
         href="/account/notifications"

@@ -1,6 +1,6 @@
 # 本地开发手册
 
-本文定义 NextBuf 开发环境的实际命令和工作流。`v0.9.0` 已实现 PostgreSQL、Redis、Mailpit、Better Auth、SMTP/附件/浏览/通知 Worker、失败重放与周期调度、真实身份/资料/社区/互动/搜索/通知集成测试、同时运行 standalone Web 与 Worker 的 Playwright E2E、本地/S3 存储，以及真实节点、主题、回复、Markdown、附件、互动、内容发现和通知链路。
+本文定义 NextBuf 开发环境的实际命令和工作流。`v0.10.0` 已实现 PostgreSQL、Redis、Mailpit、Better Auth、SMTP/附件/浏览/通知/信任重算 Worker、失败重放与周期调度、真实身份/资料/社区/互动/搜索/通知/治理/信任集成测试、同时运行 standalone Web 与 Worker 的 Playwright E2E、本地/S3 存储，以及真实节点、主题、回复、Markdown、附件、互动、内容发现、通知和治理链路。
 
 ## 1. 前置条件
 
@@ -210,7 +210,7 @@ pnpm test:e2e
 
 Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalone/server.js` 和已构建 Worker。测试服务继承当前进程的完整环境配置，显式绑定 `127.0.0.1:3000`，并以 `/api/health/live` 作为启动探针，避免 CI Runner 自带的 `HOSTNAME` 改变 standalone 监听地址。`build:web` 会自动整理 `.next/static` 与 `public`，不能把启动命令改回不支持 standalone 的 `next start`。
 
-`v0.9.0` E2E 依赖 PostgreSQL、Redis、Mailpit、Web 和 Worker，覆盖：
+`v0.10.0` E2E 依赖 PostgreSQL、Redis、Mailpit、Web 和 Worker，覆盖：
 
 - 1440px 下 1380px 最大宽度、230px/300px 侧栏和 16px 间距。
 - 1024px 双栏和右侧面板弹窗。
@@ -218,7 +218,7 @@ Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalon
 - 匿名搜索、节点筛选、登录/注册入口和右侧面板。
 - 桌面/平板/手机完整截图和 serious/critical axe 检查。
 - 注册、Mailpit 验证链接、登录、两设备会话、找回密码、旧会话撤销和新密码登录。
-- 注册用户名、用户菜单中的 `@username`/UID/TL0、公开用户页和账号中心保护。
+- 注册用户名、用户菜单中的 `@username`/UID/真实 TL、公开用户页、信任说明页和账号中心保护。
 - 真实社区首页、节点路由、页内筛选、PostgreSQL 搜索、Markdown 预览、附件上传、发布/编辑主题、回复、提及、引用、点赞、收藏、用户/主题关注、个人列表、编辑回复、软删除/恢复和“我的主题”。
 - 真实未读计数、通知列表、全部已读、归档和通知渠道偏好保存。
 
@@ -257,7 +257,7 @@ Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalon
 
 ## 10. 开发环境完成标准
 
-`v0.9.0` 后，新贡献者应能够只阅读本手册完成：
+`v0.10.0` 后，新贡献者应能够只阅读本手册完成：
 
 1. 安装依赖。
 2. 启动 PostgreSQL、Redis 与 Mailpit。
@@ -272,5 +272,6 @@ Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalon
 11. 预览 Markdown，上传附件，发布/引用/编辑/删除/恢复回复，并观察 Worker 处理图片派生文件。
 12. 点赞、收藏、关注用户/主题，查看个人互动列表，验证阅读状态、浏览聚合、热门排序和 PostgreSQL 搜索。
 13. 触发并查看通知、设置普通通知渠道、通过 `pnpm nextbuf mail test --to <邮箱>` 验证 SMTP，并在管理员 Worker 页面查看失败与登记重放。
+14. 举报主题、回复或用户，按角色范围处理案件与撤销制裁，并验证信任指标、规则预估和批次重算。
 
 任何命令发生变化时，代码、CI、`.env.example` 和本文必须在同一个变更中更新。

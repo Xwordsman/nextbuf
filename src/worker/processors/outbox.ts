@@ -11,6 +11,8 @@ import { runDatabaseJobOnce } from "@/infrastructure/queue/idempotency";
 import { getServiceEnvironment } from "@/shared/config/runtime-env";
 import { getOutboxHandler } from "@/worker/registry";
 import { recordWorkerFailure, resolveWorkerFailure } from "@/worker/failures.server";
+import { TRUST_RECALCULATION_TOPIC } from "@/modules/trust/contracts";
+import { markTrustRecalculationFailed } from "@/modules/trust/worker.server";
 
 async function processOutboxJob(job: Job<OutboxJobData>): Promise<void> {
   try {
@@ -26,6 +28,14 @@ async function processOutboxJob(job: Job<OutboxJobData>): Promise<void> {
     );
     await resolveWorkerFailure(job.id);
   } catch (error) {
+    const attempts = job.opts.attempts ?? 1;
+    if (
+      job.data.topic === TRUST_RECALCULATION_TOPIC &&
+      job.attemptsMade + 1 >= attempts &&
+      typeof job.data.payload.batchId === "string"
+    ) {
+      await markTrustRecalculationFailed(job.data.payload.batchId, error);
+    }
     await recordWorkerFailure(job, error, job.attemptsMade + 1);
     throw error;
   }

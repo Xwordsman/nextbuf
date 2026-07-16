@@ -119,6 +119,8 @@ worker: node worker.js
 
 `v0.9.0` 已将回复、提及、主题关注回复和管理动作转换为版本化通知 Outbox。Worker 生成结构化 Notification 与渠道投递记录，普通邮件继续拆成独立加密 EmailDelivery/Outbox。BullMQ 最终失败、重放请求和周期任务租约保存在 PostgreSQL；Redis 清空后不丢失通知意图、死信证据或调度计划。受限的 `/admin/worker` 只向站点 `admin` 展示队列摘要和重放入口，不是通用 CRUD 后台。详细边界见 [ADR-0012](./adr/0012-notifications-mail-worker-operations.md)。
 
+`v0.10.0` 的举报、案件、处置、制裁、角色和信任状态同样以 PostgreSQL 为事实来源。Web 写入信任 preview/apply 批次和事务性 Outbox，独立 Worker 按 UID 游标分片重算；Redis 只负责可恢复执行。制裁授权同步读取数据库，不经过异步缓存；`/admin/moderation` 只是聚焦案件工作台，完整管理后台仍属于 `v0.11.0`。详细边界见 [ADR-0013](./adr/0013-governance-roles-trust.md)。
+
 ## 7. 数据与缓存原则
 
 - PostgreSQL 是业务事实来源，Redis 不是永久数据存储。

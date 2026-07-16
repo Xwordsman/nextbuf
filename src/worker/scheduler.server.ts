@@ -5,25 +5,45 @@ import { processReplayRequests } from "@/worker/failures.server";
 import { getServiceEnvironment } from "@/shared/config/runtime-env";
 import { getErrorMessage } from "@/shared/errors/error-message";
 import { WORKER_MAINTENANCE_TASK } from "@/worker/contracts";
+import { TRUST_DAILY_TASK } from "@/modules/trust/contracts";
+import { scheduleDailyTrustRecalculation } from "@/modules/trust/trust.server";
+import { restoreExpiredSuspensions } from "@/modules/moderation/actions.server";
 
 export async function ensureWorkerScheduledTasks(): Promise<void> {
-  await getPrismaClient().workerScheduledTask.upsert({
-    where: { name: WORKER_MAINTENANCE_TASK },
-    create: { name: WORKER_MAINTENANCE_TASK, intervalSeconds: 60, nextRunAt: new Date() },
-    update: {},
-  });
+  await Promise.all([
+    getPrismaClient().workerScheduledTask.upsert({
+      where: { name: WORKER_MAINTENANCE_TASK },
+      create: { name: WORKER_MAINTENANCE_TASK, intervalSeconds: 60, nextRunAt: new Date() },
+      update: {},
+    }),
+    getPrismaClient().workerScheduledTask.upsert({
+      where: { name: TRUST_DAILY_TASK },
+      create: { name: TRUST_DAILY_TASK, intervalSeconds: 86_400, nextRunAt: new Date() },
+      update: {},
+    }),
+  ]);
 }
 
 async function executeTask(name: string, workerId: string, now: Date): Promise<void> {
-  if (name !== WORKER_MAINTENANCE_TASK) throw new Error(`Unknown scheduled task: ${name}`);
-  const replayed = await processReplayRequests();
+  let result: Record<string, unknown>;
+  if (name === WORKER_MAINTENANCE_TASK) {
+    const [replayed, restoredSuspensions] = await Promise.all([
+      processReplayRequests(),
+      restoreExpiredSuspensions(),
+    ]);
+    result = { replayed, restoredSuspensions };
+  } else if (name === TRUST_DAILY_TASK) {
+    result = { batchId: await scheduleDailyTrustRecalculation() };
+  } else {
+    throw new Error(`Unknown scheduled task: ${name}`);
+  }
   await getPrismaClient().systemState.upsert({
-    where: { key: "worker.last_maintenance" },
+    where: { key: `worker.last_task.${name}` },
     create: {
-      key: "worker.last_maintenance",
-      value: { workerId, replayed, completedAt: now.toISOString() },
+      key: `worker.last_task.${name}`,
+      value: { workerId, ...result, completedAt: now.toISOString() },
     },
-    update: { value: { workerId, replayed, completedAt: now.toISOString() } },
+    update: { value: { workerId, ...result, completedAt: now.toISOString() } },
   });
 }
 

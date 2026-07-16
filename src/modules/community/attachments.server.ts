@@ -17,7 +17,7 @@ import {
   sanitizeAttachmentName,
 } from "@/infrastructure/storage/attachment-format";
 import { CommunityError } from "@/modules/community/errors";
-import { requireActiveCommunityActor } from "@/modules/community/authorization.server";
+import { requireCommunityContentActor } from "@/modules/community/authorization.server";
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
 
 export const ATTACHMENT_PROCESS_TOPIC = "nextbuf.community.attachment.process";
@@ -80,7 +80,7 @@ export async function createCommunityAttachment(input: {
       await transaction.$queryRaw(
         Prisma.sql`SELECT "id" FROM "users" WHERE "id" = CAST(${input.uploaderId} AS uuid) FOR UPDATE`,
       );
-      await requireActiveCommunityActor(transaction, input.uploaderId);
+      await requireCommunityContentActor(transaction, input.uploaderId);
       const recentUploads = await transaction.communityAttachment.count({
         where: {
           uploaderId: input.uploaderId,

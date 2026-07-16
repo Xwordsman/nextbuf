@@ -20,6 +20,7 @@ export type CurrentAccountView = {
   emailVerified: boolean;
   unreadNotifications: number;
   isAdmin: boolean;
+  canModerate: boolean;
 };
 
 const getCurrentSession = cache(async () => {
@@ -47,7 +48,10 @@ export const getCurrentAccount = cache(async (): Promise<CurrentAccountView | nu
     if (!session) return null;
     const prisma = getPrismaClient();
     const [user, unreadNotifications, permissions] = await Promise.all([
-      prisma.user.findUniqueOrThrow({ where: { id: session.user.id } }),
+      prisma.user.findUniqueOrThrow({
+        where: { id: session.user.id },
+        include: { trustState: { select: { currentLevel: true } } },
+      }),
       getUnreadNotificationCount(session.user.id),
       getCommunityPermissions(prisma, session.user.id),
     ]);
@@ -56,13 +60,14 @@ export const getCurrentAccount = cache(async (): Promise<CurrentAccountView | nu
       name: user.name,
       username: user.username,
       uid: user.uid,
-      trustLevel: 0,
+      trustLevel: user.trustState?.currentLevel ?? 0,
       email: user.email,
       image: user.image,
       initials: user.name.trim().slice(0, 1).toLocaleUpperCase("zh-CN") || "U",
       emailVerified: user.emailVerified,
       unreadNotifications,
       isAdmin: permissions.isAdmin,
+      canModerate: permissions.hasModerationRole,
     };
   } catch (error) {
     if (runtimeEnv.NODE_ENV !== "development") throw error;

@@ -16,6 +16,7 @@ import { ReplyEditor } from "@/components/community/reply-editor.client";
 import { PostLikeButton } from "@/components/interactions/post-like-button.client";
 import { TopicActions } from "@/components/interactions/topic-actions.client";
 import { TopicViewTracker } from "@/components/interactions/topic-view-tracker.client";
+import { ReportDialog } from "@/components/moderation/report-dialog.client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -117,6 +118,13 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
               </Link>
             </Button>
           ) : null}
+          {isPublicTopic ? (
+            <ReportDialog
+              target={{ type: "topic", number: topic.number }}
+              signedIn={Boolean(session)}
+              signInHref={`/auth/sign-in?next=/topics/${topic.number}`}
+            />
+          ) : null}
         </div>
 
         <Panel className="topic-post" id="post-1">
@@ -213,6 +221,7 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
                       liked={reply.liked}
                       likeCount={reply.likeCount}
                       canLike={topic.canInteract && reply.status === "published"}
+                      signedIn={Boolean(session)}
                     />
                   </div>
                 </Panel>

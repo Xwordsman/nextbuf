@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { UserFollowButton } from "@/components/interactions/user-follow-button.client";
+import { ReportDialog } from "@/components/moderation/report-dialog.client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Panel } from "@/components/ui/panel";
@@ -51,7 +52,7 @@ export default async function UserPage({ params }: UserPageProps) {
           </div>
           <div className="profile-uid-line">
             <span>UID {user.uid}</span>
-            <Badge variant="trust">TL0</Badge>
+            <Badge variant="trust">TL{user.trustState?.currentLevel ?? 0}</Badge>
           </div>
         </div>
         <div className="profile-follow-action">
@@ -61,6 +62,13 @@ export default async function UserPage({ params }: UserPageProps) {
             canFollow={follow.canFollow}
             signedIn={Boolean(viewerId)}
           />
+          {viewerId !== user.id ? (
+            <ReportDialog
+              target={{ type: "user", username: user.username }}
+              signedIn={Boolean(viewerId)}
+              signInHref={`/auth/sign-in?next=/u/${user.username}`}
+            />
+          ) : null}
         </div>
       </header>
       {profile?.isPublic === false ? (

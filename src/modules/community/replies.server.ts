@@ -2,7 +2,10 @@ import "server-only";
 
 import { Prisma } from "@/generated/prisma/client";
 import { getPrismaClient } from "@/infrastructure/database/client";
-import { requireActiveCommunityActor } from "@/modules/community/authorization.server";
+import {
+  requireActiveCommunityActor,
+  requireCommunityContentActor,
+} from "@/modules/community/authorization.server";
 import {
   deletePostDraftWithReferences,
   syncDraftAttachmentReferences,
@@ -62,7 +65,7 @@ async function requireReplyableTopic(
   if (!topic || !["published", "closed"].includes(topic.status)) {
     throw new CommunityError("topic_not_found", 404);
   }
-  const permissions = await requireActiveCommunityActor(transaction, userId, topic.nodeId);
+  const permissions = await requireCommunityContentActor(transaction, userId, topic.nodeId);
   if (topic.status === "closed" && !permissions.canModerate) {
     throw new CommunityError("topic_closed", 409);
   }

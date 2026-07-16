@@ -5,6 +5,7 @@ import { useState } from "react";
 import { MarkdownEditor } from "@/components/community/markdown-editor.client";
 import { Button } from "@/components/ui/button";
 import { PostLikeButton } from "@/components/interactions/post-like-button.client";
+import { ReportDialog } from "@/components/moderation/report-dialog.client";
 
 type ReplyActionsProps = {
   topicNumber: number;
@@ -21,6 +22,7 @@ type ReplyActionsProps = {
   liked: boolean;
   likeCount: number;
   canLike: boolean;
+  signedIn: boolean;
 };
 
 export function ReplyActions({
@@ -38,6 +40,7 @@ export function ReplyActions({
   liked,
   likeCount,
   canLike,
+  signedIn,
 }: ReplyActionsProps) {
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(initialBody);
@@ -100,6 +103,11 @@ export function ReplyActions({
         initialLiked={liked}
         initialCount={likeCount}
         canInteract={canLike}
+        signInHref={`/auth/sign-in?next=/topics/${topicNumber}`}
+      />
+      <ReportDialog
+        target={{ type: "post", number: topicNumber, position }}
+        signedIn={signedIn}
         signInHref={`/auth/sign-in?next=/topics/${topicNumber}`}
       />
       {canQuote ? (

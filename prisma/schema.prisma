@@ -8,64 +8,82 @@ datasource db {
 }
 
 model User {
-  id                      String                      @id @default(uuid()) @db.Uuid
-  uid                     Int                         @unique(map: "users_uid_key") @default(autoincrement())
-  username                String                      @unique(map: "users_username_key") @db.VarChar(24)
-  name                    String                      @db.VarChar(80)
-  email                   String                      @unique(map: "users_email_key") @db.VarChar(320)
-  emailVerified           Boolean                     @default(false) @map("email_verified")
-  image                   String?                     @db.Text
-  status                  String                      @default("pending") @db.VarChar(32)
-  activatedAt             DateTime?                   @map("activated_at") @db.Timestamptz(6)
-  usernameChangedAt       DateTime?                   @map("username_changed_at") @db.Timestamptz(6)
-  deletionRequestedAt     DateTime?                   @map("deletion_requested_at") @db.Timestamptz(6)
-  deletionScheduledAt     DateTime?                   @map("deletion_scheduled_at") @db.Timestamptz(6)
-  createdAt               DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt               DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
-  sessions                Session[]
-  accounts                Account[]
-  profile                 Profile?
-  usernameAliases         UsernameAlias[]
-  communityTopics         CommunityTopic[]            @relation("CommunityTopicAuthor")
-  communityPosts          CommunityPost[]             @relation("CommunityPostAuthor")
-  deletedCommunityPosts   CommunityPost[]             @relation("CommunityPostDeleter")
-  communityRevisions      CommunityPostRevision[]     @relation("CommunityRevisionEditor")
-  communityMentions       CommunityPostMention[]      @relation("CommunityMentionUser")
-  communityAttachments    CommunityAttachment[]       @relation("CommunityAttachmentUploader")
-  communityPostDrafts     CommunityPostDraft[]
-  communityRoles          CommunityRoleAssignment[]   @relation("CommunityRoleUser")
-  grantedCommunityRoles   CommunityRoleAssignment[]   @relation("CommunityRoleGrantor")
-  communityAuditEvents    CommunityAuditEvent[]       @relation("CommunityAuditActor")
-  interactionPostLikes    InteractionPostLike[]
-  interactionBookmarks    InteractionTopicBookmark[]
-  interactionFollowing    InteractionUserFollow[]     @relation("InteractionFollower")
-  interactionFollowers    InteractionUserFollow[]     @relation("InteractionFollowed")
-  interactionTopicFollows InteractionTopicFollow[]
-  interactionReadStates   InteractionTopicReadState[]
-  notificationsReceived   Notification[]              @relation("NotificationRecipient")
-  notificationsActed      Notification[]              @relation("NotificationActor")
-  notificationPreferences NotificationPreference[]
-  workerReplayRequests    WorkerJobFailure[]           @relation("WorkerFailureReplayRequester")
+  id                       String                      @id @default(uuid()) @db.Uuid
+  uid                      Int                         @unique(map: "users_uid_key") @default(autoincrement())
+  username                 String                      @unique(map: "users_username_key") @db.VarChar(24)
+  name                     String                      @db.VarChar(80)
+  email                    String                      @unique(map: "users_email_key") @db.VarChar(320)
+  emailVerified            Boolean                     @default(false) @map("email_verified")
+  image                    String?                     @db.Text
+  status                   String                      @default("pending") @db.VarChar(32)
+  activatedAt              DateTime?                   @map("activated_at") @db.Timestamptz(6)
+  usernameChangedAt        DateTime?                   @map("username_changed_at") @db.Timestamptz(6)
+  deletionRequestedAt      DateTime?                   @map("deletion_requested_at") @db.Timestamptz(6)
+  deletionScheduledAt      DateTime?                   @map("deletion_scheduled_at") @db.Timestamptz(6)
+  createdAt                DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sessions                 Session[]
+  accounts                 Account[]
+  profile                  Profile?
+  usernameAliases          UsernameAlias[]
+  communityTopics          CommunityTopic[]            @relation("CommunityTopicAuthor")
+  communityPosts           CommunityPost[]             @relation("CommunityPostAuthor")
+  deletedCommunityPosts    CommunityPost[]             @relation("CommunityPostDeleter")
+  communityRevisions       CommunityPostRevision[]     @relation("CommunityRevisionEditor")
+  communityMentions        CommunityPostMention[]      @relation("CommunityMentionUser")
+  communityAttachments     CommunityAttachment[]       @relation("CommunityAttachmentUploader")
+  communityPostDrafts      CommunityPostDraft[]
+  communityRoles           CommunityRoleAssignment[]   @relation("CommunityRoleUser")
+  grantedCommunityRoles    CommunityRoleAssignment[]   @relation("CommunityRoleGrantor")
+  communityAuditEvents     CommunityAuditEvent[]       @relation("CommunityAuditActor")
+  interactionPostLikes     InteractionPostLike[]
+  interactionBookmarks     InteractionTopicBookmark[]
+  interactionFollowing     InteractionUserFollow[]     @relation("InteractionFollower")
+  interactionFollowers     InteractionUserFollow[]     @relation("InteractionFollowed")
+  interactionTopicFollows  InteractionTopicFollow[]
+  interactionReadStates    InteractionTopicReadState[]
+  notificationsReceived    Notification[]              @relation("NotificationRecipient")
+  notificationsActed       Notification[]              @relation("NotificationActor")
+  notificationPreferences  NotificationPreference[]
+  workerReplayRequests     WorkerJobFailure[]          @relation("WorkerFailureReplayRequester")
+  moderationReports        ModerationReport[]          @relation("ModerationReporter")
+  reportsAgainstUser       ModerationReport[]          @relation("ModerationReportedUser")
+  moderationCasesCreated   ModerationCase[]            @relation("ModerationCaseCreator")
+  moderationCasesAssigned  ModerationCase[]            @relation("ModerationCaseAssignee")
+  moderationCasesAgainst   ModerationCase[]            @relation("ModerationCaseReportedUser")
+  moderationActions        ModerationAction[]          @relation("ModerationActionActor")
+  moderationActionsAgainst ModerationAction[]          @relation("ModerationActionTargetUser")
+  sanctions                ModerationSanction[]        @relation("ModerationSanctionUser")
+  sanctionsCreated         ModerationSanction[]        @relation("ModerationSanctionCreator")
+  sanctionsRevoked         ModerationSanction[]        @relation("ModerationSanctionRevoker")
+  governanceAuditEvents    GovernanceAuditEvent[]      @relation("GovernanceAuditActor")
+  trustState               TrustUserState?
+  trustRulesCreated        TrustRuleVersion[]          @relation("TrustRuleCreator")
+  trustHistories           TrustLevelHistory[]         @relation("TrustHistoryUser")
+  trustHistoryActions      TrustLevelHistory[]         @relation("TrustHistoryActor")
+  trustBatchesRequested    TrustRecalculationBatch[]   @relation("TrustBatchRequester")
 
   @@index([status], map: "users_status_idx")
   @@map("users")
 }
 
 model CommunityNode {
-  id              String                    @id @default(uuid()) @db.Uuid
-  slug            String                    @unique(map: "community_nodes_slug_key") @db.VarChar(64)
-  name            String                    @db.VarChar(80)
-  description     String                    @default("") @db.VarChar(500)
-  color           String                    @db.Char(7)
-  icon            String                    @db.VarChar(32)
-  sortOrder       Int                       @default(0) @map("sort_order")
-  visibility      String                    @default("public") @db.VarChar(32)
-  archivedAt      DateTime?                 @map("archived_at") @db.Timestamptz(6)
-  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  topics          CommunityTopic[]
-  roleAssignments CommunityRoleAssignment[]
-  auditEvents     CommunityAuditEvent[]
+  id                  String                    @id @default(uuid()) @db.Uuid
+  slug                String                    @unique(map: "community_nodes_slug_key") @db.VarChar(64)
+  name                String                    @db.VarChar(80)
+  description         String                    @default("") @db.VarChar(500)
+  color               String                    @db.Char(7)
+  icon                String                    @db.VarChar(32)
+  sortOrder           Int                       @default(0) @map("sort_order")
+  visibility          String                    @default("public") @db.VarChar(32)
+  archivedAt          DateTime?                 @map("archived_at") @db.Timestamptz(6)
+  createdAt           DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  topics              CommunityTopic[]
+  roleAssignments     CommunityRoleAssignment[]
+  auditEvents         CommunityAuditEvent[]
+  moderationActions   ModerationAction[]
+  moderationSanctions ModerationSanction[]
 
   @@index([visibility, archivedAt, sortOrder], map: "community_nodes_browse_idx")
   @@map("community_nodes")
@@ -102,6 +120,9 @@ model CommunityTopic {
   interactionReadStates InteractionTopicReadState[]
   interactionViews      InteractionTopicView[]
   notifications         Notification[]
+  moderationReports     ModerationReport[]
+  moderationCases       ModerationCase[]
+  moderationActions     ModerationAction[]
 
   @@index([status, isPinned, lastActivityAt, number], map: "community_topics_feed_idx")
   @@index([nodeId, status, isPinned, lastActivityAt, number], map: "community_topics_node_feed_idx")
@@ -110,33 +131,36 @@ model CommunityTopic {
 }
 
 model CommunityPost {
-  id               String                    @id @default(uuid()) @db.Uuid
-  topicId          String                    @map("topic_id") @db.Uuid
-  authorId         String                    @map("author_id") @db.Uuid
-  position         Int
-  status           String                    @default("draft") @db.VarChar(32)
-  bodySource       String                    @map("body_source") @db.Text
-  revisionCount    Int                       @default(1) @map("revision_count")
-  likeCount        Int                       @default(0) @map("like_count")
-  quotedPostId     String?                   @map("quoted_post_id") @db.Uuid
-  deletedById      String?                   @map("deleted_by_id") @db.Uuid
-  deletedReason    String?                   @map("deleted_reason") @db.VarChar(500)
-  editedAt         DateTime?                 @map("edited_at") @db.Timestamptz(6)
-  deletedAt        DateTime?                 @map("deleted_at") @db.Timestamptz(6)
-  createdAt        DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  topic            CommunityTopic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  author           User                      @relation("CommunityPostAuthor", fields: [authorId], references: [id], onDelete: Restrict)
-  quotedPost       CommunityPost?            @relation("CommunityPostQuote", fields: [quotedPostId], references: [id], onDelete: SetNull)
-  quotes           CommunityPost[]           @relation("CommunityPostQuote")
-  deletedBy        User?                     @relation("CommunityPostDeleter", fields: [deletedById], references: [id], onDelete: SetNull)
-  revisions        CommunityPostRevision[]
-  mentions         CommunityPostMention[]
-  attachments      CommunityPostAttachment[]
-  quotedDrafts     CommunityPostDraft[]      @relation("CommunityPostDraftQuote")
-  auditEvents      CommunityAuditEvent[]
-  interactionLikes InteractionPostLike[]
-  notifications    Notification[]
+  id                String                    @id @default(uuid()) @db.Uuid
+  topicId           String                    @map("topic_id") @db.Uuid
+  authorId          String                    @map("author_id") @db.Uuid
+  position          Int
+  status            String                    @default("draft") @db.VarChar(32)
+  bodySource        String                    @map("body_source") @db.Text
+  revisionCount     Int                       @default(1) @map("revision_count")
+  likeCount         Int                       @default(0) @map("like_count")
+  quotedPostId      String?                   @map("quoted_post_id") @db.Uuid
+  deletedById       String?                   @map("deleted_by_id") @db.Uuid
+  deletedReason     String?                   @map("deleted_reason") @db.VarChar(500)
+  editedAt          DateTime?                 @map("edited_at") @db.Timestamptz(6)
+  deletedAt         DateTime?                 @map("deleted_at") @db.Timestamptz(6)
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  topic             CommunityTopic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author            User                      @relation("CommunityPostAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  quotedPost        CommunityPost?            @relation("CommunityPostQuote", fields: [quotedPostId], references: [id], onDelete: SetNull)
+  quotes            CommunityPost[]           @relation("CommunityPostQuote")
+  deletedBy         User?                     @relation("CommunityPostDeleter", fields: [deletedById], references: [id], onDelete: SetNull)
+  revisions         CommunityPostRevision[]
+  mentions          CommunityPostMention[]
+  attachments       CommunityPostAttachment[]
+  quotedDrafts      CommunityPostDraft[]      @relation("CommunityPostDraftQuote")
+  auditEvents       CommunityAuditEvent[]
+  interactionLikes  InteractionPostLike[]
+  notifications     Notification[]
+  moderationReports ModerationReport[]
+  moderationCases   ModerationCase[]
+  moderationActions ModerationAction[]
 
   @@unique([topicId, position], map: "community_posts_topic_position_key")
   @@index([authorId, createdAt], map: "community_posts_author_created_idx")
@@ -266,6 +290,7 @@ model CommunityRoleAssignment {
   nodeId      String?        @map("node_id") @db.Uuid
   scopeKey    String         @map("scope_key") @db.VarChar(64)
   grantedById String?        @map("granted_by_id") @db.Uuid
+  reason      String?        @db.VarChar(500)
   createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   user        User           @relation("CommunityRoleUser", fields: [userId], references: [id], onDelete: Cascade)
   node        CommunityNode? @relation(fields: [nodeId], references: [id], onDelete: Cascade)
@@ -274,6 +299,232 @@ model CommunityRoleAssignment {
   @@unique([userId, role, scopeKey], map: "community_role_assignments_user_role_scope_key")
   @@index([role, scopeKey], map: "community_role_assignments_role_scope_idx")
   @@map("community_role_assignments")
+}
+
+model ModerationCase {
+  id              String               @id @default(uuid()) @db.Uuid
+  number          Int                  @unique(map: "moderation_cases_number_key") @default(autoincrement())
+  targetType      String               @map("target_type") @db.VarChar(24)
+  targetKey       String               @map("target_key") @db.VarChar(96)
+  activeTargetKey String?              @unique(map: "moderation_cases_active_target_key") @map("active_target_key") @db.VarChar(96)
+  topicId         String?              @map("topic_id") @db.Uuid
+  postId          String?              @map("post_id") @db.Uuid
+  reportedUserId  String?              @map("reported_user_id") @db.Uuid
+  status          String               @default("open") @db.VarChar(24)
+  priorityScore   Int                  @default(0) @map("priority_score")
+  summary         String?              @db.VarChar(500)
+  createdById     String?              @map("created_by_id") @db.Uuid
+  assignedToId    String?              @map("assigned_to_id") @db.Uuid
+  resolvedAt      DateTime?            @map("resolved_at") @db.Timestamptz(6)
+  dismissedAt     DateTime?            @map("dismissed_at") @db.Timestamptz(6)
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  topic           CommunityTopic?      @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  post            CommunityPost?       @relation(fields: [postId], references: [id], onDelete: Restrict)
+  reportedUser    User?                @relation("ModerationCaseReportedUser", fields: [reportedUserId], references: [id], onDelete: Restrict)
+  createdBy       User?                @relation("ModerationCaseCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  assignedTo      User?                @relation("ModerationCaseAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  reports         ModerationReport[]
+  actions         ModerationAction[]
+  sanctions       ModerationSanction[]
+
+  @@index([status, priorityScore, createdAt], map: "moderation_cases_queue_idx")
+  @@index([topicId, createdAt], map: "moderation_cases_topic_idx")
+  @@index([postId, createdAt], map: "moderation_cases_post_idx")
+  @@index([reportedUserId, createdAt], map: "moderation_cases_user_idx")
+  @@map("moderation_cases")
+}
+
+model ModerationReport {
+  id                 String          @id @default(uuid()) @db.Uuid
+  reporterId         String          @map("reporter_id") @db.Uuid
+  caseId             String          @map("case_id") @db.Uuid
+  targetType         String          @map("target_type") @db.VarChar(24)
+  targetKey          String          @map("target_key") @db.VarChar(96)
+  activeTargetKey    String?         @map("active_target_key") @db.VarChar(96)
+  topicId            String?         @map("topic_id") @db.Uuid
+  postId             String?         @map("post_id") @db.Uuid
+  reportedUserId     String?         @map("reported_user_id") @db.Uuid
+  reason             String          @db.VarChar(32)
+  details            String          @default("") @db.VarChar(2000)
+  status             String          @default("open") @db.VarChar(24)
+  reporterTrustLevel Int             @map("reporter_trust_level")
+  weight             Int             @default(1)
+  snapshot           Json            @db.JsonB
+  resolvedAt         DateTime?       @map("resolved_at") @db.Timestamptz(6)
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  reporter           User            @relation("ModerationReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  case               ModerationCase  @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  topic              CommunityTopic? @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  post               CommunityPost?  @relation(fields: [postId], references: [id], onDelete: Restrict)
+  reportedUser       User?           @relation("ModerationReportedUser", fields: [reportedUserId], references: [id], onDelete: Restrict)
+
+  @@unique([reporterId, activeTargetKey], map: "moderation_reports_reporter_active_target_key")
+  @@index([caseId, createdAt], map: "moderation_reports_case_created_idx")
+  @@index([reporterId, createdAt], map: "moderation_reports_reporter_created_idx")
+  @@map("moderation_reports")
+}
+
+model ModerationAction {
+  id           String              @id @default(uuid()) @db.Uuid
+  caseId       String              @map("case_id") @db.Uuid
+  actorId      String              @map("actor_id") @db.Uuid
+  actorRoles   Json                @map("actor_roles") @db.JsonB
+  action       String              @db.VarChar(40)
+  targetType   String              @map("target_type") @db.VarChar(24)
+  targetKey    String              @map("target_key") @db.VarChar(96)
+  topicId      String?             @map("topic_id") @db.Uuid
+  postId       String?             @map("post_id") @db.Uuid
+  targetUserId String?             @map("target_user_id") @db.Uuid
+  nodeId       String?             @map("node_id") @db.Uuid
+  reason       String              @db.VarChar(500)
+  beforeState  Json                @map("before_state") @db.JsonB
+  afterState   Json                @map("after_state") @db.JsonB
+  expiresAt    DateTime?           @map("expires_at") @db.Timestamptz(6)
+  requestId    String              @map("request_id") @db.VarChar(128)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  case         ModerationCase      @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  actor        User                @relation("ModerationActionActor", fields: [actorId], references: [id], onDelete: Restrict)
+  topic        CommunityTopic?     @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  post         CommunityPost?      @relation(fields: [postId], references: [id], onDelete: Restrict)
+  targetUser   User?               @relation("ModerationActionTargetUser", fields: [targetUserId], references: [id], onDelete: Restrict)
+  node         CommunityNode?      @relation(fields: [nodeId], references: [id], onDelete: Restrict)
+  sanction     ModerationSanction?
+
+  @@index([caseId, createdAt], map: "moderation_actions_case_created_idx")
+  @@index([actorId, createdAt], map: "moderation_actions_actor_created_idx")
+  @@map("moderation_actions")
+}
+
+model ModerationSanction {
+  id               String           @id @default(uuid()) @db.Uuid
+  userId           String           @map("user_id") @db.Uuid
+  type             String           @db.VarChar(32)
+  nodeId           String?          @map("node_id") @db.Uuid
+  caseId           String           @map("case_id") @db.Uuid
+  actionId         String           @unique(map: "moderation_sanctions_action_id_key") @map("action_id") @db.Uuid
+  reason           String           @db.VarChar(500)
+  startsAt         DateTime         @default(now()) @map("starts_at") @db.Timestamptz(6)
+  endsAt           DateTime?        @map("ends_at") @db.Timestamptz(6)
+  createdById      String           @map("created_by_id") @db.Uuid
+  revokedAt        DateTime?        @map("revoked_at") @db.Timestamptz(6)
+  revokedById      String?          @map("revoked_by_id") @db.Uuid
+  revocationReason String?          @map("revocation_reason") @db.VarChar(500)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user             User             @relation("ModerationSanctionUser", fields: [userId], references: [id], onDelete: Restrict)
+  node             CommunityNode?   @relation(fields: [nodeId], references: [id], onDelete: Restrict)
+  case             ModerationCase   @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  action           ModerationAction @relation(fields: [actionId], references: [id], onDelete: Restrict)
+  createdBy        User             @relation("ModerationSanctionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  revokedBy        User?            @relation("ModerationSanctionRevoker", fields: [revokedById], references: [id], onDelete: Restrict)
+
+  @@index([userId, revokedAt, startsAt, endsAt], map: "moderation_sanctions_user_active_idx")
+  @@index([nodeId, userId, revokedAt], map: "moderation_sanctions_node_user_idx")
+  @@map("moderation_sanctions")
+}
+
+model GovernanceAuditEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorId     String   @map("actor_id") @db.Uuid
+  actorRoles  Json     @map("actor_roles") @db.JsonB
+  action      String   @db.VarChar(80)
+  targetType  String   @map("target_type") @db.VarChar(32)
+  targetKey   String   @map("target_key") @db.VarChar(120)
+  reason      String   @db.VarChar(500)
+  beforeState Json     @map("before_state") @db.JsonB
+  afterState  Json     @map("after_state") @db.JsonB
+  requestId   String   @map("request_id") @db.VarChar(128)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor       User     @relation("GovernanceAuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([actorId, createdAt], map: "governance_audit_actor_created_idx")
+  @@index([targetType, targetKey, createdAt], map: "governance_audit_target_created_idx")
+  @@map("governance_audit_events")
+}
+
+model TrustRuleVersion {
+  id          String                    @id @default(uuid()) @db.Uuid
+  version     Int                       @unique(map: "trust_rule_versions_version_key") @default(autoincrement())
+  status      String                    @default("draft") @db.VarChar(24)
+  config      Json                      @db.JsonB
+  createdById String?                   @map("created_by_id") @db.Uuid
+  activatedAt DateTime?                 @map("activated_at") @db.Timestamptz(6)
+  createdAt   DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy   User?                     @relation("TrustRuleCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  userStates  TrustUserState[]
+  histories   TrustLevelHistory[]
+  batches     TrustRecalculationBatch[]
+
+  @@index([status, createdAt], map: "trust_rule_versions_status_created_idx")
+  @@map("trust_rule_versions")
+}
+
+model TrustUserState {
+  userId         String           @id @map("user_id") @db.Uuid
+  currentLevel   Int              @default(0) @map("current_level")
+  automatedLevel Int              @default(0) @map("automated_level")
+  manualLevel    Int?             @map("manual_level")
+  ruleVersionId  String           @map("rule_version_id") @db.Uuid
+  metrics        Json             @db.JsonB
+  explanation    Json             @db.JsonB
+  graceUntil     DateTime?        @map("grace_until") @db.Timestamptz(6)
+  calculatedAt   DateTime         @default(now()) @map("calculated_at") @db.Timestamptz(6)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ruleVersion    TrustRuleVersion @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+
+  @@index([currentLevel, calculatedAt], map: "trust_user_states_level_calculated_idx")
+  @@map("trust_user_states")
+}
+
+model TrustLevelHistory {
+  id             String                   @id @default(uuid()) @db.Uuid
+  userId         String                   @map("user_id") @db.Uuid
+  ruleVersionId  String                   @map("rule_version_id") @db.Uuid
+  batchId        String?                  @map("batch_id") @db.Uuid
+  actorId        String?                  @map("actor_id") @db.Uuid
+  fromLevel      Int                      @map("from_level")
+  toLevel        Int                      @map("to_level")
+  automatedLevel Int                      @map("automated_level")
+  source         String                   @db.VarChar(32)
+  reason         Json                     @db.JsonB
+  metrics        Json                     @db.JsonB
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  user           User                     @relation("TrustHistoryUser", fields: [userId], references: [id], onDelete: Cascade)
+  ruleVersion    TrustRuleVersion         @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+  batch          TrustRecalculationBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  actor          User?                    @relation("TrustHistoryActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt], map: "trust_level_history_user_created_idx")
+  @@index([batchId], map: "trust_level_history_batch_idx")
+  @@map("trust_level_history")
+}
+
+model TrustRecalculationBatch {
+  id             String              @id @default(uuid()) @db.Uuid
+  ruleVersionId  String              @map("rule_version_id") @db.Uuid
+  requestedById  String?             @map("requested_by_id") @db.Uuid
+  mode           String              @db.VarChar(16)
+  status         String              @default("pending") @db.VarChar(24)
+  totalUsers     Int                 @default(0) @map("total_users")
+  processedUsers Int                 @default(0) @map("processed_users")
+  changedUsers   Int                 @default(0) @map("changed_users")
+  cursorUid      Int                 @default(0) @map("cursor_uid")
+  summary        Json                @db.JsonB
+  startedAt      DateTime?           @map("started_at") @db.Timestamptz(6)
+  completedAt    DateTime?           @map("completed_at") @db.Timestamptz(6)
+  lastError      String?             @map("last_error") @db.Text
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  ruleVersion    TrustRuleVersion    @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+  requestedBy    User?               @relation("TrustBatchRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  histories      TrustLevelHistory[]
+
+  @@index([status, createdAt], map: "trust_recalculation_batches_status_created_idx")
+  @@map("trust_recalculation_batches")
 }
 
 model CommunityAuditEvent {
@@ -479,19 +730,19 @@ model IdentityAuditEvent {
 }
 
 model EmailDelivery {
-  id                   String    @id @default(uuid()) @db.Uuid
-  kind                 String    @db.VarChar(80)
-  recipient            String    @db.VarChar(320)
-  subject              String    @db.VarChar(255)
-  ciphertext           String    @db.Text
-  initializationVector String    @map("initialization_vector") @db.VarChar(32)
-  authTag              String    @map("auth_tag") @db.VarChar(32)
-  status               String    @default("pending") @db.VarChar(32)
-  attempts             Int       @default(0)
-  lastError            String?   @map("last_error") @db.Text
-  sentAt               DateTime? @map("sent_at") @db.Timestamptz(6)
-  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                   String                @id @default(uuid()) @db.Uuid
+  kind                 String                @db.VarChar(80)
+  recipient            String                @db.VarChar(320)
+  subject              String                @db.VarChar(255)
+  ciphertext           String                @db.Text
+  initializationVector String                @map("initialization_vector") @db.VarChar(32)
+  authTag              String                @map("auth_tag") @db.VarChar(32)
+  status               String                @default("pending") @db.VarChar(32)
+  attempts             Int                   @default(0)
+  lastError            String?               @map("last_error") @db.Text
+  sentAt               DateTime?             @map("sent_at") @db.Timestamptz(6)
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
   notificationDelivery NotificationDelivery?
 
   @@index([status, createdAt], map: "email_deliveries_status_created_idx")

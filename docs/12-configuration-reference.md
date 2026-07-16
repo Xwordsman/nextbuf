@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 环境变量的目标合同。`v0.1.0` 必须建立统一配置 Schema，`v0.12.0` 前必须让 `.env.example`、Compose、安装向导、Web、Worker、CLI 与本文完全一致。
 
-> 当前实现状态：截至 `v0.9.0`，`.env.example` 中的应用、数据库、Redis、Worker、Outbox、调度租约、认证、加密邮件、GitHub OAuth、本地/S3 存储和附件限制变量已经由共享 Zod Schema 实现。当前 PostgreSQL 搜索无需独立环境变量；外部搜索、观测、首次安装和生产 Compose 变量仍是后续合同，尚未出现在 `.env.example` 的变量不能视为当前可用功能。
+> 当前实现状态：截至 `v0.10.0`，`.env.example` 中的应用、数据库、Redis、Worker、Outbox、调度租约、认证、加密邮件、GitHub OAuth、本地/S3 存储和附件限制变量已经由共享 Zod Schema 实现。治理权限、默认信任规则和重算批次存放在 PostgreSQL，不新增环境变量；外部搜索、观测、首次安装和生产 Compose 变量仍是后续合同，尚未出现在 `.env.example` 的变量不能视为当前可用功能。
 
 ## 1. 配置规则
 

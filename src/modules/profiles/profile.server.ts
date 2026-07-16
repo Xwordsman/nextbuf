@@ -22,6 +22,7 @@ export async function resolvePublicProfile(handle: string) {
     where: { username, status: "active" },
     include: {
       profile: true,
+      trustState: { select: { currentLevel: true } },
       _count: {
         select: {
           communityTopics: {
@@ -52,6 +53,7 @@ export async function resolvePublicProfile(handle: string) {
       user: {
         include: {
           profile: true,
+          trustState: { select: { currentLevel: true } },
           _count: {
             select: {
               communityTopics: {

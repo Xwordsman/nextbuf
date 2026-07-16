@@ -2,7 +2,10 @@ import "server-only";
 
 import { Prisma } from "@/generated/prisma/client";
 import { getPrismaClient } from "@/infrastructure/database/client";
-import { requireActiveCommunityActor } from "@/modules/community/authorization.server";
+import {
+  requireActiveCommunityActor,
+  requireCommunityContentActor,
+} from "@/modules/community/authorization.server";
 import { syncPostContentReferences } from "@/modules/community/content-references.server";
 import { CommunityError } from "@/modules/community/errors";
 import { queueManagementNotificationIntent } from "@/modules/notifications/events.server";
@@ -81,8 +84,8 @@ export async function createTopic(
 
   return prisma.$transaction(async (transaction) => {
     await lockUser(transaction, context.userId);
-    await requireActiveCommunityActor(transaction, context.userId);
     const node = await resolveWritableNode(transaction, input.nodeSlug);
+    await requireCommunityContentActor(transaction, context.userId, node.id);
     const now = new Date();
 
     if (input.action === "publish") {
@@ -182,6 +185,7 @@ export async function updateTopicContent(
     const now = new Date();
     if (publishing) {
       await lockUser(transaction, context.userId);
+      await requireCommunityContentActor(transaction, context.userId, node.id);
       await requirePublishAllowance(transaction, context.userId, now);
     }
 

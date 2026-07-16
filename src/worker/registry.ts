@@ -10,6 +10,8 @@ import {
 import { processCommunityAttachment } from "@/modules/community/attachment-worker.server";
 import { TOPIC_VIEW_AGGREGATE_TOPIC } from "@/modules/interactions/interactions.server";
 import { aggregateTopicView } from "@/modules/interactions/view-worker.server";
+import { TRUST_RECALCULATION_TOPIC } from "@/modules/trust/contracts";
+import { processTrustRecalculationChunk } from "@/modules/trust/worker.server";
 import { COMMUNITY_NOTIFICATION_TOPIC } from "@/modules/notifications/events.server";
 import { processCommunityNotification } from "@/modules/notifications/worker.server";
 
@@ -79,6 +81,12 @@ handlers.set(handlerKey(TOPIC_VIEW_AGGREGATE_TOPIC, 1), async (transaction, job)
   const viewId = job.payload.viewId;
   if (typeof viewId !== "string") throw new Error("Topic view job is missing viewId");
   return aggregateTopicView(transaction, viewId);
+});
+
+handlers.set(handlerKey(TRUST_RECALCULATION_TOPIC, 1), async (transaction, job) => {
+  const batchId = job.payload.batchId;
+  if (typeof batchId !== "string") throw new Error("Trust job is missing batchId");
+  return processTrustRecalculationChunk(transaction, batchId);
 });
 
 export function getOutboxHandler(topic: string, version: number): OutboxHandler {
