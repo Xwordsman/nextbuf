@@ -247,6 +247,24 @@ button:disabled {
   position: relative;
 }
 
+.notification-count {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  display: grid;
+  min-width: 16px;
+  height: 16px;
+  place-items: center;
+  padding: 0 4px;
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .notification-dot {
   position: absolute;
   top: 7px;
@@ -1068,6 +1086,277 @@ button:disabled {
 
 .settings-panel {
   overflow: hidden;
+}
+
+.notifications-page,
+.worker-operations-page {
+  width: min(100%, 980px);
+  margin: 0 auto;
+  padding: 34px 18px 72px;
+}
+
+.notifications-page-head,
+.worker-operations-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.notifications-page-head a {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.notification-filter {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.notification-filter a {
+  padding: 0 2px 9px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+}
+
+.notification-filter a[aria-current="page"] {
+  color: var(--foreground);
+  border-bottom-color: var(--primary);
+}
+
+.notifications-panel,
+.worker-table-panel {
+  overflow: hidden;
+}
+
+.notification-page-toolbar,
+.notification-preference-footer,
+.worker-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.notification-page-toolbar {
+  min-height: 54px;
+  padding: 8px 14px 8px 18px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.notification-page-list {
+  display: grid;
+}
+
+.notification-page-item {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 16px 14px 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.notification-page-item:last-child {
+  border-bottom: 0;
+}
+
+.notification-page-item[data-unread="true"] {
+  box-shadow: inset 3px 0 #2563eb;
+  background: #f8fbff;
+}
+
+.notification-page-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.notification-page-copy p,
+.notification-page-copy a,
+.notification-page-copy time {
+  margin: 0;
+}
+
+.notification-page-copy p {
+  font-size: 13px;
+}
+
+.notification-page-copy a {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-page-copy time {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.notification-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.notification-page-empty {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  color: var(--muted-foreground);
+}
+
+.notification-page-empty svg {
+  width: 28px;
+  height: 28px;
+}
+
+.notification-page-empty p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.notification-preferences {
+  display: grid;
+}
+
+.notification-preference-head,
+.notification-preference-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 80px 80px;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.notification-preference-head {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.notification-preference-row strong {
+  font-size: 13px;
+}
+
+.notification-preference-row label {
+  display: grid;
+  place-items: center;
+}
+
+.notification-preference-row input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--primary);
+}
+
+.notification-preference-footer {
+  padding: 18px 22px 8px;
+}
+
+.notification-preference-footer p,
+.notification-preferences > .form-status {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.notification-preferences > .form-status {
+  min-height: 30px;
+  padding: 5px 22px 12px;
+}
+
+.worker-operations-page {
+  width: min(100%, 1180px);
+}
+
+.worker-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.worker-action-bar > span {
+  flex-basis: 100%;
+  min-height: 16px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  text-align: right;
+}
+
+.worker-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.worker-metrics > section {
+  display: grid;
+  gap: 7px;
+  padding: 16px;
+}
+
+.worker-metrics span,
+.worker-section-head span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.worker-metrics strong {
+  font-size: 24px;
+}
+
+.worker-section-head {
+  min-height: 52px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.worker-section-head h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.worker-table-panel {
+  margin-bottom: 16px;
+}
+
+.worker-error-cell {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.worker-queue-error {
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 12px;
+}
+
+.worker-operations-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
 .settings-sections {
@@ -2872,6 +3161,41 @@ button:disabled {
 
   .account-page {
     padding: 24px 12px 48px;
+  }
+
+  .notifications-page,
+  .worker-operations-page {
+    padding: 24px 12px 48px;
+  }
+
+  .notifications-page-head,
+  .worker-operations-head,
+  .notification-preference-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .worker-metrics,
+  .worker-operations-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .notification-preference-head,
+  .notification-preference-row {
+    grid-template-columns: minmax(140px, 1fr) 52px 52px;
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .notification-page-item {
+    grid-template-columns: 36px minmax(0, 1fr);
+    padding-right: 10px;
+    padding-left: 12px;
+  }
+
+  .notification-page-actions {
+    grid-column: 2;
+    justify-content: flex-end;
   }
 
   .account-nav {

@@ -10,6 +10,7 @@ import { closeSystemQueue } from "@/infrastructure/queue/system-queue";
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
 import { getErrorMessage } from "@/shared/errors/error-message";
 import { createOutboxWorker } from "@/worker/processors/outbox";
+import { ensureWorkerScheduledTasks, runScheduledTasks } from "@/worker/scheduler.server";
 
 export async function startWorker(): Promise<void> {
   const environment = getAuthEnvironment();
@@ -27,7 +28,10 @@ export async function startWorker(): Promise<void> {
   const startedAt = new Date();
   const { worker, connection } = createOutboxWorker();
   let dispatching = false;
+  let scheduling = false;
   let stopping = false;
+  let activeDispatch: Promise<void> | null = null;
+  let activeSchedule: Promise<void> | null = null;
 
   await worker.waitUntilReady();
 
@@ -63,32 +67,60 @@ export async function startWorker(): Promise<void> {
   }, environment.WORKER_HEARTBEAT_INTERVAL_MS);
   heartbeatTimer.unref();
 
-  const dispatch = async () => {
+  const dispatch = () => {
     if (dispatching || stopping) {
-      return;
+      return activeDispatch ?? Promise.resolve();
     }
 
     dispatching = true;
-    try {
-      const result = await dispatchOutboxBatch(workerId);
-      if (result.dispatched > 0 || result.failed > 0) {
-        logger.info("Outbox dispatch cycle completed", { workerId, ...result });
+    activeDispatch = (async () => {
+      try {
+        const result = await dispatchOutboxBatch(workerId);
+        if (result.dispatched > 0 || result.failed > 0) {
+          logger.info("Outbox dispatch cycle completed", { workerId, ...result });
+        }
+      } catch (error) {
+        logger.error("Outbox dispatch cycle failed", { workerId, error: getErrorMessage(error) });
+      } finally {
+        dispatching = false;
+        activeDispatch = null;
       }
-    } catch (error) {
-      logger.error("Outbox dispatch cycle failed", { workerId, error: getErrorMessage(error) });
-    } finally {
-      dispatching = false;
-    }
+    })();
+    return activeDispatch;
   };
 
   const dispatchTimer = setInterval(() => void dispatch(), environment.OUTBOX_POLL_INTERVAL_MS);
   dispatchTimer.unref();
   await dispatch();
 
-  worker.on("completed", (job) => logger.debug("Worker job completed", { jobId: job.id }));
-  worker.on("failed", (job, error) =>
-    logger.error("Worker job failed", { jobId: job?.id, error: getErrorMessage(error) }),
+  await ensureWorkerScheduledTasks();
+  const schedule = () => {
+    if (scheduling || stopping) return activeSchedule ?? Promise.resolve();
+    scheduling = true;
+    activeSchedule = runScheduledTasks(workerId)
+      .catch((error) =>
+        logger.error("Worker schedule cycle failed", { workerId, error: getErrorMessage(error) }),
+      )
+      .then(() => undefined)
+      .finally(() => {
+        scheduling = false;
+        activeSchedule = null;
+      });
+    return activeSchedule;
+  };
+  const scheduleTimer = setInterval(
+    () => void schedule(),
+    environment.WORKER_SCHEDULER_POLL_INTERVAL_MS,
   );
+  scheduleTimer.unref();
+  await schedule();
+
+  worker.on("completed", (job) => {
+    logger.debug("Worker job completed", { jobId: job.id });
+  });
+  worker.on("failed", (job, error) => {
+    logger.error("Worker job failed", { jobId: job?.id, error: getErrorMessage(error) });
+  });
   worker.on("error", (error) =>
     logger.error("BullMQ worker error", { error: getErrorMessage(error) }),
   );
@@ -103,6 +135,7 @@ export async function startWorker(): Promise<void> {
     stopping = true;
     clearInterval(heartbeatTimer);
     clearInterval(dispatchTimer);
+    clearInterval(scheduleTimer);
     logger.info("Stopping NextBuf worker", { workerId, signal });
 
     const forceExit = setTimeout(() => {
@@ -112,6 +145,7 @@ export async function startWorker(): Promise<void> {
     forceExit.unref();
 
     try {
+      await Promise.all([activeDispatch, activeSchedule]);
       await worker.close();
       if (connection.status !== "end") {
         await connection.quit();

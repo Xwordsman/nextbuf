@@ -276,6 +276,8 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 
 ### v0.9.0：通知、邮件和 Worker 完整链路
 
+实现状态：已于 2026-07-16 完成；实际合同见 [ADR-0012](./adr/0012-notifications-mail-worker-operations.md)。
+
 目标：把已有业务事件转换成可靠通知，并让 Worker 成为正式运行角色。
 
 开发内容：

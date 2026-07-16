@@ -38,8 +38,13 @@ async function main(): Promise<void> {
       await invite(process.argv.slice(3));
       return;
     }
+    case "mail": {
+      const { mail } = await import("@/cli/commands/mail");
+      await mail(process.argv.slice(3));
+      return;
+    }
     default:
-      console.log("Usage: nextbuf <web|worker|migrate|setup|doctor|invite>");
+      console.log("Usage: nextbuf <web|worker|migrate|setup|doctor|invite|mail>");
       process.exitCode = command ? 1 : 0;
   }
 }

@@ -6,6 +6,8 @@ import { getAuth } from "@/infrastructure/auth/better-auth";
 import { getPrismaClient } from "@/infrastructure/database/client";
 import { logger } from "@/infrastructure/observability/logger";
 import { runtimeEnv } from "@/shared/config/runtime-env";
+import { getCommunityPermissions } from "@/modules/community/authorization.server";
+import { getUnreadNotificationCount } from "@/modules/notifications/notifications.server";
 
 export type CurrentAccountView = {
   name: string;
@@ -16,6 +18,8 @@ export type CurrentAccountView = {
   image: string | null;
   initials: string;
   emailVerified: boolean;
+  unreadNotifications: number;
+  isAdmin: boolean;
 };
 
 const getCurrentSession = cache(async () => {
@@ -41,7 +45,12 @@ export const getCurrentAccount = cache(async (): Promise<CurrentAccountView | nu
   try {
     const session = await getCurrentSession();
     if (!session) return null;
-    const user = await getPrismaClient().user.findUniqueOrThrow({ where: { id: session.user.id } });
+    const prisma = getPrismaClient();
+    const [user, unreadNotifications, permissions] = await Promise.all([
+      prisma.user.findUniqueOrThrow({ where: { id: session.user.id } }),
+      getUnreadNotificationCount(session.user.id),
+      getCommunityPermissions(prisma, session.user.id),
+    ]);
 
     return {
       name: user.name,
@@ -52,6 +61,8 @@ export const getCurrentAccount = cache(async (): Promise<CurrentAccountView | nu
       image: user.image,
       initials: user.name.trim().slice(0, 1).toLocaleUpperCase("zh-CN") || "U",
       emailVerified: user.emailVerified,
+      unreadNotifications,
+      isAdmin: permissions.isAdmin,
     };
   } catch (error) {
     if (runtimeEnv.NODE_ENV !== "development") throw error;

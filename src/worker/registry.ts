@@ -1,6 +1,6 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { RUNTIME_PROBE_TOPIC, type OutboxJobData } from "@/infrastructure/queue/contracts";
-import { IDENTITY_EMAIL_TOPIC } from "@/infrastructure/mail/queue";
+import { IDENTITY_EMAIL_TOPIC, MAIL_DELIVERY_TOPIC } from "@/infrastructure/mail/queue";
 import { sendEmailDelivery } from "@/infrastructure/mail/smtp";
 import {
   ATTACHMENT_COLLECT_TOPIC,
@@ -10,6 +10,8 @@ import {
 import { processCommunityAttachment } from "@/modules/community/attachment-worker.server";
 import { TOPIC_VIEW_AGGREGATE_TOPIC } from "@/modules/interactions/interactions.server";
 import { aggregateTopicView } from "@/modules/interactions/view-worker.server";
+import { COMMUNITY_NOTIFICATION_TOPIC } from "@/modules/notifications/events.server";
+import { processCommunityNotification } from "@/modules/notifications/worker.server";
 
 type OutboxHandler = (
   transaction: Prisma.TransactionClient,
@@ -47,6 +49,17 @@ handlers.set(handlerKey(IDENTITY_EMAIL_TOPIC, 1), async (transaction, job) => {
   await sendEmailDelivery(transaction, deliveryId);
   return { deliveryId };
 });
+
+handlers.set(handlerKey(MAIL_DELIVERY_TOPIC, 1), async (transaction, job) => {
+  const deliveryId = job.payload.deliveryId;
+  if (typeof deliveryId !== "string") throw new Error("Email job is missing deliveryId");
+  await sendEmailDelivery(transaction, deliveryId);
+  return { deliveryId };
+});
+
+handlers.set(handlerKey(COMMUNITY_NOTIFICATION_TOPIC, 1), async (transaction, job) =>
+  processCommunityNotification(transaction, job.payload),
+);
 
 function attachmentId(job: OutboxJobData): string {
   const value = job.payload.attachmentId;

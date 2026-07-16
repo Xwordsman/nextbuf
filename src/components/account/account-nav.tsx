@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Bookmark, FileText, History, Rss, ShieldCheck, UserRound } from "lucide-react";
+import { Bell, Bookmark, FileText, History, Rss, ShieldCheck, UserRound } from "lucide-react";
 
 export function AccountNav({
   active,
 }: {
-  active: "profile" | "security" | "topics" | "bookmarks" | "following" | "activity";
+  active:
+    "profile" | "security" | "notifications" | "topics" | "bookmarks" | "following" | "activity";
 }) {
   return (
     <nav className="account-nav" aria-label="账号中心">
@@ -13,6 +14,12 @@ export function AccountNav({
       </Link>
       <Link href="/account/security" aria-current={active === "security" ? "page" : undefined}>
         <ShieldCheck /> 账号安全
+      </Link>
+      <Link
+        href="/account/notifications"
+        aria-current={active === "notifications" ? "page" : undefined}
+      >
+        <Bell /> 通知偏好
       </Link>
       <Link href="/account/topics" aria-current={active === "topics" ? "page" : undefined}>
         <FileText /> 我的主题

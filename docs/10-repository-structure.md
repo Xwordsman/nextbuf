@@ -58,10 +58,11 @@ NextBuf/
 │  │  ├─ index.ts             Worker 进程入口
 │  │  ├─ runtime.ts           心跳、Dispatcher 和优雅停止
 │  │  ├─ registry.ts          任务注册
-│  │  ├─ schedulers.ts        周期任务注册
+│  │  ├─ scheduler.server.ts  PostgreSQL 调度租约与周期任务
+│  │  ├─ failures.server.ts   最终失败、重放请求与恢复执行
 │  │  └─ processors/          队列处理器
 │  ├─ cli/
-│  │  ├─ index.ts             web/worker/migrate/setup/doctor/invite 入口
+│  │  ├─ index.ts             web/worker/migrate/setup/doctor/invite/mail 入口
 │  │  └─ commands/            可组合的运行命令
 │  └─ shared/
 │     ├─ contracts/           稳定的跨模块类型
@@ -143,7 +144,7 @@ community/
 
 ### `src/cli`
 
-提供 Web、Worker、迁移、setup、doctor 和邀请码管理的统一 Node 入口。CLI 可以组装基础设施并调用 Prisma/Next.js 官方入口，但不能重新实现领域规则，也不能在输出中泄露连接串或密钥。邀请码明文只能在创建时输出一次。
+提供 Web、Worker、迁移、setup、doctor、邀请码管理和 SMTP 测试邮件的统一 Node 入口。CLI 可以组装基础设施并调用 Prisma/Next.js 官方入口，但不能重新实现领域规则，也不能在输出中泄露连接串或密钥。邀请码明文只能在创建时输出一次；测试邮件必须经过加密 EmailDelivery 和 Outbox，不能由 CLI 直接同步连接 SMTP。
 
 ### `src/shared`
 

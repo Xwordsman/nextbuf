@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { expect, test, type Page } from "@playwright/test";
+import { disconnectPrismaClient, getPrismaClient } from "../../src/infrastructure/database/client";
 
 const mailpitUrl = process.env.MAILPIT_API_URL ?? "http://127.0.0.1:8025";
 const oldPassword = "old-password-for-e2e";
@@ -150,6 +151,53 @@ test.describe.serial("identity authentication", () => {
     await expect(page).toHaveURL(/\/topics\/\d+\?from=2#post-2$/);
     const firstReply = page.locator("#post-2");
     await expect(firstReply.getByText("这是第一条浏览器回复", { exact: false })).toBeVisible();
+
+    const prisma = getPrismaClient();
+    const [recipient, actor, notificationTopic] = await Promise.all([
+      prisma.user.findUniqueOrThrow({ where: { email } }),
+      prisma.user.findUniqueOrThrow({ where: { username: "community_fixture" } }),
+      prisma.communityTopic.findFirstOrThrow({ where: { title: topicTitle } }),
+    ]);
+    const notificationPost = await prisma.communityPost.findUniqueOrThrow({
+      where: { topicId_position: { topicId: notificationTopic.id, position: 2 } },
+    });
+    for (const type of ["mention", "followed_topic_reply"] as const) {
+      await prisma.notification.create({
+        data: {
+          recipientId: recipient.id,
+          actorId: actor.id,
+          topicId: notificationTopic.id,
+          postId: notificationPost.id,
+          type,
+          dedupeKey: `e2e-notification:${recipient.id}:${type}:${Date.now()}`,
+          snapshot: {
+            actorName: actor.name,
+            actorUsername: actor.username,
+            topicNumber: notificationTopic.number,
+            topicTitle,
+            postPosition: 2,
+          },
+          deliveries: { create: { channel: "in_app", status: "delivered" } },
+        },
+      });
+    }
+    await disconnectPrismaClient();
+    await page.goto("/notifications");
+    await expect(page.getByRole("heading", { name: "通知中心" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /通知，2 条未读/ })).toBeVisible();
+    await expect(page.locator(".notification-page-item")).toHaveCount(2);
+    await page.getByRole("button", { name: "全部已读" }).click();
+    await expect(page.getByText("0 条未读")).toBeVisible();
+    await page.getByRole("button", { name: "归档" }).first().click();
+    await expect(page.locator(".notification-page-item")).toHaveCount(1);
+    await page.goto("/account/notifications");
+    await page.getByLabel("提及我邮件通知").check();
+    await page.getByRole("button", { name: "保存偏好" }).click();
+    await expect(page.getByText("通知偏好已保存。")).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel("提及我邮件通知")).toBeChecked();
+    await page.goto(topicUrl);
+
     await firstReply.getByRole("button", { name: "引用" }).click();
     await expect(page.getByText(/引用 #2/)).toBeVisible();
     await page.getByLabel("回复正文").fill("这是引用第二楼后发布的第二条浏览器回复。");

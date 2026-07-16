@@ -5,6 +5,7 @@ import { getPrismaClient } from "@/infrastructure/database/client";
 import { requireActiveCommunityActor } from "@/modules/community/authorization.server";
 import { syncPostContentReferences } from "@/modules/community/content-references.server";
 import { CommunityError } from "@/modules/community/errors";
+import { queueManagementNotificationIntent } from "@/modules/notifications/events.server";
 import {
   MAX_ACTIVE_TOPIC_DRAFTS,
   MAX_PUBLISHED_TOPICS_PER_HOUR,
@@ -378,7 +379,7 @@ export async function moderateTopic(
         closedAt: input.isClosed ? (topic.closedAt ?? now) : null,
       },
     });
-    await transaction.communityAuditEvent.create({
+    const audit = await transaction.communityAuditEvent.create({
       data: {
         actorId: context.userId,
         action: "topic.moderated",
@@ -393,6 +394,11 @@ export async function moderateTopic(
           isEssence: input.isEssence,
         }),
       },
+    });
+    await queueManagementNotificationIntent(transaction, {
+      auditEventId: audit.id,
+      topicId: topic.id,
+      action: "topic.moderated",
     });
     return updated;
   });

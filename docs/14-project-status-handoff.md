@@ -3,8 +3,8 @@
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
 - 最后更新：2026-07-16
-- 当前完成版本：`v0.8.0`
-- 下一开发版本：`v0.9.0` 通知、邮件和 Worker 完整链路
+- 当前完成版本：`v0.9.0`
+- 下一开发版本：`v0.10.0` 举报、治理、角色和信任等级
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -106,6 +106,18 @@
 - 个人列表、主题按钮、用户关注和搜索进入真实浏览器旅程；热门公式有纯领域单元测试，互动并发幂等、浏览 Worker、搜索可见性和热门排序有真实 PostgreSQL 集成测试。
 - 决策、公式、隐私、保留和回退边界见 [ADR-0011](./adr/0011-interactions-search-discovery.md)。
 
+### `v0.9.0` 通知、邮件和 Worker 完整链路
+
+- 新增结构化 Notification、按类型的 NotificationPreference 和 `in_app`/`email` 渠道投递记录；缺省站内开启、普通邮件关闭，安全邮件不读取普通通知偏好。
+- 回复事务写入版本化通知 Outbox；Worker 从真实 Post/Mention/TopicFollow 事实生成通知。同一 Post/接收者只生成一条，按提及、直接回复、关注主题回复决定优先级并排除本人。
+- 主题管理动作向非本人作者生成管理通知；快照只保存稳定渲染所需的触发者公开身份、主题编号/标题、楼层和动作，不保存最终不可解释文案。
+- `/notifications` 提供真实未读计数、全部/未读列表、单条已读、全部已读和归档；`/account/notifications` 保存站内/邮件渠道偏好，页头铃铛显示真实未读数。
+- 普通通知邮件复用 AES-256-GCM EmailDelivery、独立邮件 Outbox、SMTP Provider 和稳定 Message-ID；新增 `pnpm nextbuf mail test --to <邮箱>` 和管理员本人测试邮件入口。
+- BullMQ 最终失败持久化到 PostgreSQL，邮件失败同步更新投递状态；手工重放先登记请求，再由 Worker 移除失败 Redis Job、重置原 Outbox 并留下审计。
+- PostgreSQL 保存周期任务计划、租约、次数和错误；多 Worker 通过条件更新竞争租约，超时可接管。停止信号会禁止新派发/调度并等待活动周期和 BullMQ 任务关闭。
+- `/admin/worker` 只允许站点 `admin` 查看 Redis 队列、Outbox、邮件、心跳、周期任务和失败摘要以及登记重放，不是通用后台 CRUD。
+- 决策、幂等、SMTP 限制、回退和后续 fan-out 边界见 [ADR-0012](./adr/0012-notifications-mail-worker-operations.md)。
+
 ## 2. 关键命令
 
 ```text
@@ -116,6 +128,7 @@ pnpm nextbuf setup               执行迁移并幂等初始化
 pnpm nextbuf doctor              检查数据库、迁移、Redis 与 key namespace
 pnpm nextbuf migrate             只部署已有迁移
 pnpm nextbuf invite create ...   创建注册邀请码
+pnpm nextbuf mail test --to ...  通过 Outbox 发送 SMTP 测试邮件
 pnpm build                       构建 Prisma Client、Worker/CLI、Next.js standalone
 pnpm check                       格式、Lint、类型和单元测试
 pnpm test:integration            PostgreSQL/Redis/Mailpit 真实集成测试
@@ -126,9 +139,9 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 ## 3. 测试与验证边界
 
-- 本地已通过：Prisma generate/validate、Prettier、ESLint、TypeScript、35 个单元测试、Worker/CLI 构建和 Next.js standalone 生产构建；全部 6 份迁移冷启动检查由 CI 的 PostgreSQL 18 执行。
-- 集成测试共 20 项：3 项运行时、6 项身份/资料、7 项社区、4 项互动/搜索；新增覆盖重复并发点赞/收藏/关注、阅读楼层单调性、浏览桶/Worker 幂等、软删除搜索过滤和热门算法排序。
-- Playwright 共 6 项：5 项真实社区多视口/筛选/无障碍测试和 1 项注册、验证、Markdown/附件、回复/提及/引用、点赞/收藏/关注/搜索、编辑/删除/恢复、会话与密码重置完整旅程。
+- 本地已通过：Prisma generate/validate、Prettier、ESLint、TypeScript、36 个单元测试、Worker/CLI 构建和 Next.js standalone 生产构建；全部 7 份迁移冷启动检查由 CI 的 PostgreSQL 18 执行。
+- 集成测试共 24 项：3 项运行时、6 项身份/资料、7 项社区、4 项互动/搜索、4 项通知/Worker；新增覆盖 Redis 清空后的通知恢复、提及/回复/关注优先级、普通与安全邮件偏好隔离、失败持久化/重放和调度租约竞争。
+- Playwright 共 6 项：5 项真实社区多视口/筛选/无障碍测试和 1 项注册、验证、Markdown/附件、回复/提及/引用、点赞/收藏/关注/搜索、通知未读/归档/偏好、编辑/删除/恢复、会话与密码重置完整旅程。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
@@ -143,6 +156,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - 节点、主题、position=1 首帖、稳定楼层回复、修订、提及、回复草稿、附件/引用关系、社区角色分配和社区审计。
 - local/S3 对象中的头像、附件原件和图片派生文件；附件处理状态、校验和、尺寸和失败原因保存在 PostgreSQL。
 - Post 点赞、主题收藏、用户/主题关注、最大已读楼层、去标识化浏览桶、派生点赞/收藏/浏览计数和浏览 Outbox。
+- 结构化通知、渠道偏好、站内/邮件投递结果、加密邮件、Worker 最终失败、重放请求、周期任务租约和运行结果。
 
 仍是明确占位：
 
@@ -151,10 +165,10 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 尚未实现：
 
 - 持久化信任等级计算、真实用户活动统计和最终注销执行器。
-- 真实通知/偏好/普通通知邮件、举报治理、持久化信任计算和管理后台页面。
+- 举报治理、持久化信任计算和通用管理后台页面；当前只有严格站点管理员授权的 Worker 运维摘要。
 - 生产 Dockerfile、生产四容器 Compose、GHCR 镜像、`nextbufctl`、备份恢复和首次安装向导。
 
-不得为尚未实现的在线状态重新引入演示数据。不得在 `v0.9.0` 提前实现治理、后台页面或信任计算。
+不得为尚未实现的在线状态重新引入演示数据。不得在 `v0.10.0` 提前实现插件、交易或无关通用后台 CRUD。
 
 ## 5. 已确定且不得自行更改
 
@@ -173,14 +187,15 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 13. 主题遵循 ADR-0005：统一 Post、position=1 首帖、数字公开编号和不可变修订。
 14. 回复、Markdown 与附件遵循 ADR-0010：楼层不复用，服务端安全渲染，当前/修订/草稿引用共同保护附件，Worker 保留原件并生成派生文件。
 15. 互动、浏览、热门与搜索遵循 ADR-0011：PostgreSQL 保存关系和接受桶，Worker 幂等聚合浏览，热门只计算，搜索遵守公开可见性。
+16. 通知、普通邮件与 Worker 恢复遵循 ADR-0012：结构化通知和失败/调度状态以 PostgreSQL 为事实，Redis 可清空，安全邮件不读取普通偏好。
 
-## 6. 下一步只做 `v0.9.0`
+## 6. 下一步只做 `v0.10.0`
 
-入口：[详细开发计划 v0.9.0](./09-detailed-development-plan.md#v090通知邮件和-worker-完整链路)
+入口：[详细开发计划 v0.10.0](./09-detailed-development-plan.md#v0100举报治理角色和信任等级)
 
-下一阶段建立 Notification、NotificationPreference 和投递记录，接通回复、提及和主题关注事件，实现未读/已读/归档、普通通知邮件偏好、Outbox、重试、周期调度、分布式锁和 Worker 运维摘要。
+下一阶段建立举报、治理案件、处置和制裁事实，完成角色管理、信任等级持久化计算、能力映射、历史记录和批量重算。治理、管理角色和信任能力必须继续分离，不能把 `TL` 当作管理员身份。
 
-`v0.9.0` 不提前实现举报治理、完整管理后台、插件或信任计算。通知必须从现有回复、提及和关注事实产生结构化意图，不能只做客户端红点；Redis 故障后必须可由 PostgreSQL Outbox 恢复。
+`v0.10.0` 不提前实现插件、交易、支付、开放 API 或生产发布包。举报和处置必须保留证据、授权与审计，信任计算必须可重算且不依赖不可恢复的 Redis 计数。
 
 ## 7. 文档优先级与交接规则
 

@@ -10,18 +10,25 @@ import {
 import { runDatabaseJobOnce } from "@/infrastructure/queue/idempotency";
 import { getServiceEnvironment } from "@/shared/config/runtime-env";
 import { getOutboxHandler } from "@/worker/registry";
+import { recordWorkerFailure, resolveWorkerFailure } from "@/worker/failures.server";
 
 async function processOutboxJob(job: Job<OutboxJobData>): Promise<void> {
-  const handler = getOutboxHandler(job.data.topic, job.data.version);
-  await runDatabaseJobOnce(
-    getPrismaClient(),
-    {
-      queueName: SYSTEM_QUEUE_NAME,
-      jobName: job.name,
-      idempotencyKey: `outbox-${job.data.eventId}`,
-    },
-    (transaction) => handler(transaction, job.data),
-  );
+  try {
+    const handler = getOutboxHandler(job.data.topic, job.data.version);
+    await runDatabaseJobOnce(
+      getPrismaClient(),
+      {
+        queueName: SYSTEM_QUEUE_NAME,
+        jobName: job.name,
+        idempotencyKey: `outbox-${job.data.eventId}`,
+      },
+      (transaction) => handler(transaction, job.data),
+    );
+    await resolveWorkerFailure(job.id);
+  } catch (error) {
+    await recordWorkerFailure(job, error, job.attemptsMade + 1);
+    throw error;
+  }
 }
 
 export function createOutboxWorker() {

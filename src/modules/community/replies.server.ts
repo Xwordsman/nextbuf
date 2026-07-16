@@ -14,6 +14,7 @@ import {
   validateReplyDraft,
 } from "@/modules/community/content-policy";
 import { CommunityError } from "@/modules/community/errors";
+import { queueReplyNotificationIntent } from "@/modules/notifications/events.server";
 
 type ReplyWriteContext = { userId: string; requestId?: string };
 type ReplyInput = { body: string; quotedPosition?: number | null };
@@ -150,6 +151,7 @@ export async function createReply(context: ReplyWriteContext, number: number, in
         metadata: auditMetadata({ number, position, quotedPosition: quotedPost?.position }),
       },
     });
+    await queueReplyNotificationIntent(transaction, post.id);
     return post;
   });
 }

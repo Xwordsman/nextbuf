@@ -11,6 +11,7 @@ import {
   MessageSquare,
   PanelRight,
   Search,
+  ServerCog,
   Settings,
   ShieldCheck,
   UserPlus,
@@ -43,6 +44,8 @@ type SiteHeaderProps = {
     email: string;
     image: string | null;
     initials: string;
+    unreadNotifications: number;
+    isAdmin: boolean;
   } | null;
   registrationOpen: boolean;
 };
@@ -123,8 +126,20 @@ export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
             <>
               <Tooltip content="通知">
                 <Button asChild variant="ghost" size="icon" className="notification-trigger">
-                  <Link href="/status/unavailable?from=notifications" aria-label="通知">
+                  <Link
+                    href="/notifications"
+                    aria-label={
+                      account.unreadNotifications > 0
+                        ? `通知，${account.unreadNotifications} 条未读`
+                        : "通知"
+                    }
+                  >
                     <Bell />
+                    {account.unreadNotifications > 0 ? (
+                      <span className="notification-count" aria-hidden="true">
+                        {account.unreadNotifications > 99 ? "99+" : account.unreadNotifications}
+                      </span>
+                    ) : null}
                   </Link>
                 </Button>
               </Tooltip>
@@ -170,10 +185,22 @@ export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
+                      <Link href="/notifications">
+                        <Bell /> 通知中心
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
                       <Link href="/account">
                         <Settings /> 账户设置
                       </Link>
                     </DropdownMenuItem>
+                    {account.isAdmin ? (
+                      <DropdownMenuItem asChild>
+                        <Link href="/admin/worker">
+                          <ServerCog /> Worker 运维
+                        </Link>
+                      </DropdownMenuItem>
+                    ) : null}
                     <DropdownMenuItem asChild>
                       <Link href="/account/security">
                         <ShieldCheck /> 账号安全

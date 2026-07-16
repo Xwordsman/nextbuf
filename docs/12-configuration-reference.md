@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 环境变量的目标合同。`v0.1.0` 必须建立统一配置 Schema，`v0.12.0` 前必须让 `.env.example`、Compose、安装向导、Web、Worker、CLI 与本文完全一致。
 
-> 当前实现状态：截至 `v0.8.0`，`.env.example` 中的应用、数据库、Redis、Worker、Outbox、认证、身份邮件、GitHub OAuth、本地/S3 存储和附件限制变量已经由共享 Zod Schema 实现。当前 PostgreSQL 搜索无需独立环境变量；外部搜索、观测、首次安装和生产 Compose 变量仍是后续合同，尚未出现在 `.env.example` 的变量不能视为当前可用功能。
+> 当前实现状态：截至 `v0.9.0`，`.env.example` 中的应用、数据库、Redis、Worker、Outbox、调度租约、认证、加密邮件、GitHub OAuth、本地/S3 存储和附件限制变量已经由共享 Zod Schema 实现。当前 PostgreSQL 搜索无需独立环境变量；外部搜索、观测、首次安装和生产 Compose 变量仍是后续合同，尚未出现在 `.env.example` 的变量不能视为当前可用功能。
 
 ## 1. 配置规则
 
@@ -56,6 +56,8 @@
 | `WORKER_SHUTDOWN_TIMEOUT_MS` | 否 | `30000` | Worker | 否 | 优雅停止等待时间 |
 | `WORKER_HEARTBEAT_INTERVAL_MS` | 否 | `10000` | Worker | 否 | 写入 PostgreSQL Worker 心跳的间隔 |
 | `WORKER_STALE_AFTER_MS` | 否 | `30000` | Web、doctor | 否 | 超过该时长未心跳的 Worker 不计为 ready |
+| `WORKER_SCHEDULER_POLL_INTERVAL_MS` | 否 | `5000` | Worker | 否 | 检查 PostgreSQL 周期任务计划的间隔 |
+| `WORKER_TASK_LOCK_TIMEOUT_MS` | 否 | `300000` | Worker | 否 | Worker 崩溃后其他实例接管调度租约的时间 |
 | `OUTBOX_POLL_INTERVAL_MS` | 否 | `1000` | Worker | 否 | Outbox Dispatcher 轮询间隔 |
 | `OUTBOX_BATCH_SIZE` | 否 | `50` | Worker | 否 | 单轮最多认领并投递的 Outbox 数量 |
 | `OUTBOX_LOCK_TIMEOUT_MS` | 否 | `60000` | Worker | 否 | Dispatcher 崩溃后允许其他实例重新认领的时间 |

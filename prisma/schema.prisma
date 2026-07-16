@@ -42,6 +42,10 @@ model User {
   interactionFollowers    InteractionUserFollow[]     @relation("InteractionFollowed")
   interactionTopicFollows InteractionTopicFollow[]
   interactionReadStates   InteractionTopicReadState[]
+  notificationsReceived   Notification[]              @relation("NotificationRecipient")
+  notificationsActed      Notification[]              @relation("NotificationActor")
+  notificationPreferences NotificationPreference[]
+  workerReplayRequests    WorkerJobFailure[]           @relation("WorkerFailureReplayRequester")
 
   @@index([status], map: "users_status_idx")
   @@map("users")
@@ -97,6 +101,7 @@ model CommunityTopic {
   interactionFollows    InteractionTopicFollow[]
   interactionReadStates InteractionTopicReadState[]
   interactionViews      InteractionTopicView[]
+  notifications         Notification[]
 
   @@index([status, isPinned, lastActivityAt, number], map: "community_topics_feed_idx")
   @@index([nodeId, status, isPinned, lastActivityAt, number], map: "community_topics_node_feed_idx")
@@ -131,6 +136,7 @@ model CommunityPost {
   quotedDrafts     CommunityPostDraft[]      @relation("CommunityPostDraftQuote")
   auditEvents      CommunityAuditEvent[]
   interactionLikes InteractionPostLike[]
+  notifications    Notification[]
 
   @@unique([topicId, position], map: "community_posts_topic_position_key")
   @@index([authorId, createdAt], map: "community_posts_author_created_idx")
@@ -486,9 +492,64 @@ model EmailDelivery {
   sentAt               DateTime? @map("sent_at") @db.Timestamptz(6)
   createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  notificationDelivery NotificationDelivery?
 
   @@index([status, createdAt], map: "email_deliveries_status_created_idx")
   @@map("email_deliveries")
+}
+
+model Notification {
+  id          String                 @id @default(uuid()) @db.Uuid
+  recipientId String                 @map("recipient_id") @db.Uuid
+  actorId     String?                @map("actor_id") @db.Uuid
+  type        String                 @db.VarChar(48)
+  topicId     String?                @map("topic_id") @db.Uuid
+  postId      String?                @map("post_id") @db.Uuid
+  dedupeKey   String                 @unique(map: "notifications_dedupe_key_key") @map("dedupe_key") @db.VarChar(255)
+  snapshot    Json                   @db.JsonB
+  readAt      DateTime?              @map("read_at") @db.Timestamptz(6)
+  archivedAt  DateTime?              @map("archived_at") @db.Timestamptz(6)
+  createdAt   DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  recipient   User                   @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor       User?                  @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  topic       CommunityTopic?        @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  post        CommunityPost?         @relation(fields: [postId], references: [id], onDelete: SetNull)
+  deliveries  NotificationDelivery[]
+
+  @@index([recipientId, archivedAt, createdAt], map: "notifications_recipient_archive_created_idx")
+  @@index([recipientId, readAt, createdAt], map: "notifications_recipient_read_created_idx")
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  userId       String   @map("user_id") @db.Uuid
+  type         String   @db.VarChar(48)
+  inAppEnabled Boolean  @default(true) @map("in_app_enabled")
+  emailEnabled Boolean  @default(false) @map("email_enabled")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, type], map: "notification_preferences_pkey")
+  @@map("notification_preferences")
+}
+
+model NotificationDelivery {
+  id              String         @id @default(uuid()) @db.Uuid
+  notificationId  String         @map("notification_id") @db.Uuid
+  channel         String         @db.VarChar(24)
+  status          String         @db.VarChar(32)
+  skippedReason   String?        @map("skipped_reason") @db.VarChar(120)
+  emailDeliveryId String?        @unique(map: "notification_deliveries_email_delivery_id_key") @map("email_delivery_id") @db.Uuid
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  notification    Notification   @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  emailDelivery   EmailDelivery? @relation(fields: [emailDeliveryId], references: [id], onDelete: SetNull)
+
+  @@unique([notificationId, channel], map: "notification_deliveries_notification_channel_key")
+  @@index([channel, status, createdAt], map: "notification_deliveries_channel_status_created_idx")
+  @@map("notification_deliveries")
 }
 
 model SystemState {
@@ -545,4 +606,45 @@ model WorkerHeartbeat {
 
   @@index([heartbeatAt], map: "worker_heartbeats_heartbeat_at_idx")
   @@map("worker_heartbeats")
+}
+
+model WorkerJobFailure {
+  id                  String    @id @default(uuid()) @db.Uuid
+  queueName           String    @map("queue_name") @db.VarChar(120)
+  jobId               String    @map("job_id") @db.VarChar(255)
+  jobName             String    @map("job_name") @db.VarChar(160)
+  outboxEventId       String?   @map("outbox_event_id") @db.Uuid
+  attempts            Int       @default(0)
+  lastError           String    @map("last_error") @db.Text
+  failedAt            DateTime  @default(now()) @map("failed_at") @db.Timestamptz(6)
+  replayRequestedAt   DateTime? @map("replay_requested_at") @db.Timestamptz(6)
+  replayRequestedById String?   @map("replay_requested_by_id") @db.Uuid
+  replayedAt          DateTime? @map("replayed_at") @db.Timestamptz(6)
+  replayCount         Int       @default(0) @map("replay_count")
+  resolvedAt          DateTime? @map("resolved_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  replayRequestedBy   User?     @relation("WorkerFailureReplayRequester", fields: [replayRequestedById], references: [id], onDelete: SetNull)
+
+  @@unique([queueName, jobId], map: "worker_job_failures_queue_job_key")
+  @@index([resolvedAt, failedAt], map: "worker_job_failures_resolved_failed_idx")
+  @@index([replayRequestedAt, replayedAt], map: "worker_job_failures_replay_idx")
+  @@map("worker_job_failures")
+}
+
+model WorkerScheduledTask {
+  name            String    @id @db.VarChar(120)
+  intervalSeconds Int       @map("interval_seconds")
+  nextRunAt       DateTime  @map("next_run_at") @db.Timestamptz(6)
+  lockedAt        DateTime? @map("locked_at") @db.Timestamptz(6)
+  lockOwner       String?   @map("lock_owner") @db.VarChar(160)
+  lastStartedAt   DateTime? @map("last_started_at") @db.Timestamptz(6)
+  lastCompletedAt DateTime? @map("last_completed_at") @db.Timestamptz(6)
+  lastError       String?   @map("last_error") @db.Text
+  runCount        Int       @default(0) @map("run_count")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([nextRunAt, lockedAt], map: "worker_scheduled_tasks_due_idx")
+  @@map("worker_scheduled_tasks")
 }

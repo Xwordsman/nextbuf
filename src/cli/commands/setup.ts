@@ -4,6 +4,7 @@ import { disconnectPrismaClient, getPrismaClient } from "@/infrastructure/databa
 import { checkDatabaseHealth } from "@/infrastructure/database/health";
 import { migrate } from "@/cli/commands/migrate";
 import { runtimeEnv } from "@/shared/config/runtime-env";
+import { ensureWorkerScheduledTasks } from "@/worker/scheduler.server";
 
 export async function setup(): Promise<void> {
   await migrate();
@@ -23,6 +24,7 @@ export async function setup(): Promise<void> {
       value: { version: runtimeEnv.NEXTBUF_VERSION, checkedAt: new Date().toISOString() },
     },
   });
+  await ensureWorkerScheduledTasks();
 
   await disconnectRedisClient();
   await disconnectPrismaClient();
