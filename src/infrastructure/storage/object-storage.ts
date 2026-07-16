@@ -55,7 +55,7 @@ export async function verifyObjectStorageConnection(): Promise<void> {
     await getS3Client().send(new HeadBucketCommand({ Bucket: environment.S3_BUCKET }));
     return;
   }
-  const key = `.nextbuf-connection-test-${randomUUID()}`;
+  const key = `nextbuf-connection-test-${randomUUID()}`;
   const target = localPath(key);
   await mkdir(path.dirname(target), { recursive: true });
   await writeFile(target, "nextbuf", { flag: "wx" });

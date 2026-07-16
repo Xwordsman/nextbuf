@@ -178,7 +178,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 ## 3. 测试与验证边界
 
-- 本地已通过：Prisma generate、Prettier、ESLint、TypeScript、45 个单元测试、Worker/CLI、Next.js standalone 生产构建和非 Docker Windows 归档生成。全部 9 份迁移冷启动与 Linux 发布资产仍以 CI 为最终门槛。
+- 本地已通过：Prisma generate、Prettier、ESLint、TypeScript、46 个单元测试、Worker/CLI、Next.js standalone 生产构建和非 Docker Windows 归档生成。全部 9 份迁移冷启动与 Linux 发布资产仍以 CI 为最终门槛。
 - 集成测试共 31 项：原 27 项运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任，加 4 项后台设置/二次验证/用户分页与批量会话/审计导出；本机无真实服务，最终结果以 CI 为准。
 - Playwright 共 6 项：5 项真实社区多视口/筛选/无障碍测试和 1 项完整身份/社区旅程；普通用户直接调用后台 Provider API 返回 403。
 - Actions 另有 amd64/arm64 生产镜像冒烟，验证 setup、一次性管理员、Web/Worker 健康和重复安装拒绝；amd64 额外执行带附件/密钥/数据库的删除卷恢复。非 Docker x64 包解压后运行内置版本入口。
