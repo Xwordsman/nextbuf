@@ -29,7 +29,7 @@ async function createActor(name: string) {
   return getPrismaClient().user.create({
     data: {
       name,
-      username: `interaction_${suffix}`.slice(0, 24),
+      username: `ix_${suffix}`.slice(0, 24),
       email: `${emailPrefix}${suffix}${emailDomain}`,
       emailVerified: true,
       status: "active",
@@ -175,6 +175,15 @@ describe("interactions, search and discovery integration", () => {
 
   it("searches public content and excludes soft-deleted topics", async () => {
     const author = await createActor("Search Author");
+    await createTopic(
+      { userId: author.id },
+      {
+        nodeSlug: "ai",
+        title: "NebulaSignal PostgreSQL 搜索可见主题",
+        body: "NebulaSignal 正文用于独立验证标题和 Markdown 源内容搜索。",
+        action: "publish",
+      },
+    );
     const deleted = await createTopic(
       { userId: author.id },
       {
@@ -192,9 +201,9 @@ describe("interactions, search and discovery integration", () => {
     );
     const removed = await searchContent({ query: "DeletedQuasar", category: "topics" });
     expect(removed.topics).toHaveLength(0);
-    const members = await searchContent({ query: "interaction_search", category: "members" });
+    const members = await searchContent({ query: "ix_search", category: "members" });
     expect(members.members).toContainEqual(
-      expect.objectContaining({ username: expect.stringContaining("interaction_search") }),
+      expect.objectContaining({ username: expect.stringContaining("ix_search") }),
     );
     const nodes = await searchContent({ query: "人工智能", category: "nodes" });
     expect(nodes.nodes).toContainEqual(expect.objectContaining({ slug: "ai" }));
