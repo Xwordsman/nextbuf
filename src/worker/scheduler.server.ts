@@ -4,8 +4,7 @@ import { getPrismaClient } from "@/infrastructure/database/client";
 import { processReplayRequests } from "@/worker/failures.server";
 import { getServiceEnvironment } from "@/shared/config/runtime-env";
 import { getErrorMessage } from "@/shared/errors/error-message";
-
-export const WORKER_MAINTENANCE_TASK = "worker.maintenance";
+import { WORKER_MAINTENANCE_TASK } from "@/worker/contracts";
 
 export async function ensureWorkerScheduledTasks(): Promise<void> {
   await getPrismaClient().workerScheduledTask.upsert({

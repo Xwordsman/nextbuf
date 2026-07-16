@@ -4,7 +4,7 @@ import { disconnectPrismaClient, getPrismaClient } from "@/infrastructure/databa
 import { checkDatabaseHealth } from "@/infrastructure/database/health";
 import { migrate } from "@/cli/commands/migrate";
 import { runtimeEnv } from "@/shared/config/runtime-env";
-import { ensureWorkerScheduledTasks } from "@/worker/scheduler.server";
+import { WORKER_MAINTENANCE_TASK } from "@/worker/contracts";
 
 export async function setup(): Promise<void> {
   await migrate();
@@ -14,7 +14,8 @@ export async function setup(): Promise<void> {
     throw new Error(`Setup dependency check failed: database=${database.ok}, redis=${redis.ok}`);
   }
 
-  await getPrismaClient().systemState.upsert({
+  const prisma = getPrismaClient();
+  await prisma.systemState.upsert({
     where: { key: "runtime.initialized" },
     create: {
       key: "runtime.initialized",
@@ -24,7 +25,11 @@ export async function setup(): Promise<void> {
       value: { version: runtimeEnv.NEXTBUF_VERSION, checkedAt: new Date().toISOString() },
     },
   });
-  await ensureWorkerScheduledTasks();
+  await prisma.workerScheduledTask.upsert({
+    where: { name: WORKER_MAINTENANCE_TASK },
+    create: { name: WORKER_MAINTENANCE_TASK, intervalSeconds: 60, nextRunAt: new Date() },
+    update: {},
+  });
 
   await disconnectRedisClient();
   await disconnectPrismaClient();

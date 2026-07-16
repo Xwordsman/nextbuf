@@ -16,8 +16,9 @@ import { setTopicFollowed } from "@/modules/interactions/interactions.server";
 import { updateNotificationPreferences } from "@/modules/notifications/notifications.server";
 import { createOutboxEvent } from "@/infrastructure/outbox/create-event";
 import { createOutboxWorker } from "@/worker/processors/outbox";
+import { WORKER_MAINTENANCE_TASK } from "@/worker/contracts";
 import { processReplayRequests, requestWorkerReplay } from "@/worker/failures.server";
-import { runScheduledTasks, WORKER_MAINTENANCE_TASK } from "@/worker/scheduler.server";
+import { runScheduledTasks } from "@/worker/scheduler.server";
 
 const emailPrefix = "notifications-integration+";
 const emailDomain = "@nextbuf.test";
