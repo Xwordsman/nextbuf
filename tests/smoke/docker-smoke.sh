@@ -6,12 +6,21 @@ cd "$ROOT"
 
 ARCH=${1:-amd64}
 RUN_RESTORE=${RUN_RESTORE:-0}
+SMOKE_TIMEOUT_SECONDS=${SMOKE_TIMEOUT_SECONDS:-1200}
 ENV_FILE=.env.smoke
 COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml -f deploy/compose/compose.smoke.yml"
 BASE_COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml"
+SMOKE_STAGE=bootstrap
+watchdog_pid=
+
+stage() {
+  SMOKE_STAGE=$1
+  printf '==> %s\n' "$SMOKE_STAGE"
+}
 
 diagnose_failure() {
   diagnostics=$(
+    printf 'Smoke stage: %s\n' "$SMOKE_STAGE"
     printf '%s\n' 'Compose status:'
     NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE ps -a 2>&1 || true
     printf '%s\n' 'Container logs:'
@@ -29,6 +38,10 @@ diagnose_failure() {
 cleanup() {
   status=$?
   trap - EXIT HUP INT TERM
+  if [ -n "${watchdog_pid:-}" ]; then
+    kill "$watchdog_pid" >/dev/null 2>&1 || true
+    wait "$watchdog_pid" 2>/dev/null || true
+  fi
   if [ "$status" -ne 0 ]; then
     diagnose_failure
   fi
@@ -37,7 +50,16 @@ cleanup() {
   rm -rf backups
   exit "$status"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 124' HUP INT TERM
+
+smoke_pid=$$
+(
+  sleep "$SMOKE_TIMEOUT_SECONDS"
+  printf 'Smoke test timed out after %s seconds\n' "$SMOKE_TIMEOUT_SECONDS" >&2
+  kill -TERM "$smoke_pid"
+) &
+watchdog_pid=$!
 
 cp .env.example "$ENV_FILE"
 sed -i \
@@ -56,16 +78,30 @@ sed -i \
   "$ENV_FILE"
 
 mkdir -p backups
+stage 'validate Compose and start dependencies'
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE config --quiet
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d postgres redis mailpit
+
+stage 'verify pre-setup startup gate'
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d --no-deps web worker
-sleep 8
-if curl --fail --silent http://127.0.0.1:3100/health/ready >/dev/null 2>&1; then
-  echo "Web became ready before setup" >&2
-  exit 1
-fi
-NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE logs web worker | grep -Eq 'preflight|dependencies are unavailable|setup has not completed'
+for service in web worker; do
+  deadline=$(( $(date +%s) + 180 ))
+  until NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE logs "$service" 2>&1 | \
+    grep -Eq 'preflight|dependencies are unavailable|setup has not completed'; do
+    if curl --fail --silent http://127.0.0.1:3100/health/ready >/dev/null 2>&1; then
+      echo "Web became ready before setup" >&2
+      exit 1
+    fi
+    [ "$(date +%s)" -lt "$deadline" ] || {
+      echo "$service did not expose the expected preflight rejection" >&2
+      exit 1
+    }
+    sleep 2
+  done
+done
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE rm -sf web worker
+
+stage 'initialize runtime and start application services'
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE run --rm setup
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d --no-deps web worker
 
@@ -79,6 +115,7 @@ until curl --fail --silent http://127.0.0.1:3100/health/ready >/dev/null 2>&1; d
   sleep 2
 done
 
+stage 'create and reject repeated initial administrator setup'
 response=$(curl --fail-with-body --silent \
   -H 'content-type: application/json' \
   -d '{"token":"nextbuf-smoke-setup-token-at-least-32-characters","name":"Smoke Admin","username":"smoke_admin","email":"smoke-admin@nextbuf.test","password":"smoke-admin-password-12345"}' \
@@ -91,24 +128,29 @@ repeat_status=$(curl --silent -o /tmp/nextbuf-setup-repeat.json -w '%{http_code}
   http://127.0.0.1:3100/api/setup)
 [ "$repeat_status" = 409 ]
 
+stage 'wait for Worker health'
 deadline=$(( $(date +%s) + 180 ))
 until curl --fail --silent http://127.0.0.1:3100/health/worker >/dev/null 2>&1; do
   [ "$(date +%s)" -lt "$deadline" ] || exit 1
   sleep 2
 done
 
+stage 'run doctor and prepare backup fixture'
 NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor
 printf 'attachment-smoke-%s\n' "$ARCH" | NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup -ec 'cat > /app/data/uploads/restore-proof.txt'
 
 if [ "$RUN_RESTORE" = 1 ]; then
+  stage 'create and restore an empty-install backup'
   NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl backup
   backup=$(find backups -maxdepth 1 -name 'nextbuf-*.tar.gz' -print | sort | tail -n 1)
   [ -n "$backup" ]
   NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE rm -sf mailpit
   NEXTBUFCTL_ASSUME_YES=1 NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml \
     ./nextbufctl restore "$backup" --empty-install --restore-config --yes
+  stage 'verify restored database and attachments'
   NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup -ec 'cat /app/data/uploads/restore-proof.txt' | grep -q "attachment-smoke-$ARCH"
   curl --fail --silent http://127.0.0.1:3100/api/setup | grep -q '"complete":true'
 fi
 
+stage 'report final service state'
 NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps
