@@ -8,6 +8,8 @@ WORKDIR /app
 
 FROM base AS dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY prisma.config.ts ./
+COPY prisma/schema.prisma ./prisma/schema.prisma
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 FROM dependencies AS build
