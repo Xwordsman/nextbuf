@@ -44,6 +44,12 @@ function claimValue(value: Prisma.JsonValue): {
   return value as { email?: string; username?: string; claimedAt?: string };
 }
 
+async function acquireInstallationLock(transaction: Prisma.TransactionClient): Promise<void> {
+  await transaction.$executeRaw(
+    Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${INSTALLATION_LOCK}))`,
+  );
+}
+
 export async function isInstallationComplete(): Promise<boolean> {
   return Boolean(
     await getPrismaClient().systemState.findUnique({
@@ -71,9 +77,7 @@ export async function getInstallationStatus(): Promise<InstallationStatus> {
 export async function reconcileInstallationState(): Promise<void> {
   const prisma = getPrismaClient();
   await prisma.$transaction(async (transaction) => {
-    await transaction.$queryRaw(
-      Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${INSTALLATION_LOCK}))`,
-    );
+    await acquireInstallationLock(transaction);
     const administrators = await transaction.communityRoleAssignment.count({
       where: { role: "admin", scopeKey: "site" },
     });
@@ -96,9 +100,7 @@ export async function reconcileInstallationState(): Promise<void> {
 
 async function acquireClaim(input: { email: string; username: string }): Promise<boolean> {
   return getPrismaClient().$transaction(async (transaction) => {
-    await transaction.$queryRaw(
-      Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${INSTALLATION_LOCK}))`,
-    );
+    await acquireInstallationLock(transaction);
     const [complete, administrators, users, claim] = await Promise.all([
       transaction.systemState.findUnique({ where: { key: INSTALLATION_COMPLETE_KEY } }),
       transaction.communityRoleAssignment.count({ where: { role: "admin", scopeKey: "site" } }),
@@ -176,9 +178,7 @@ export async function createInitialAdministrator(input: {
     }
 
     return await getPrismaClient().$transaction(async (transaction) => {
-      await transaction.$queryRaw(
-        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${INSTALLATION_LOCK}))`,
-      );
+      await acquireInstallationLock(transaction);
       const user = await transaction.user.findUnique({ where: { email } });
       if (!user || user.username !== username.username) {
         throw new InstallationError("administrator_creation_failed", 500);
