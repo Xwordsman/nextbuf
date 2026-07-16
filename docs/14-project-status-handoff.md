@@ -3,8 +3,8 @@
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
 - 最后更新：2026-07-16
-- 当前完成版本：`v0.11.0`
-- 下一开发版本：`v0.12.0` 安装、Docker、Actions 和运维
+- 当前完成版本：`v0.12.0`
+- 下一开发版本：`v0.13.0` 公开 Beta 加固
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -142,6 +142,16 @@
 - Better Auth `verifyPassword` 为当前 Session 建立十分钟 `admin_reauthentications`。角色变更、人工 TL4、信任规则激活、站点设置、批量会话撤销和审计导出同时要求 step-up 与固定确认文本；Session 撤销级联清除提升状态。
 - 决策、在线/引导配置分层、OAuth-only 限制、审计和回退见 [ADR-0014](./adr/0014-administration-settings-and-reauthentication.md)。
 
+### `v0.12.0` 安装、Docker、Actions 和运维
+
+- 新增 Node.js 24 多阶段生产 `Dockerfile`：同一非 root 镜像提供 Web、Worker、setup、migrate、preflight、doctor、邀请和邮件入口；应用版本、迁移全集、依赖、存储和 `runtime.initialized` 任一不符都会拒绝 Web/Worker 启动。
+- 根 `compose.yml` 提供 Web、Worker、PostgreSQL 18、Redis 8 四个常驻服务；setup 为一次性成功退出任务，PostgreSQL/Redis/本地附件使用独立命名卷，Web 只绑定 `127.0.0.1`。
+- `nextbufctl` 实现 init/start/stop/status/logs/doctor/backup/restore/upgrade，并保留等价 Compose 命令；升级只接受更高精确版本，迁移成功后不承诺盲目切回旧代码。
+- `/setup` 使用环境中的至少 32 位 `SETUP_TOKEN` 创建首位管理员；账号、密码哈希和邮箱验证仍由 Better Auth 管理，NextBuf 在受锁流程中授予首个站点管理员并写治理审计/安装完成状态。完成前普通邮箱和 OAuth 新用户创建均被拒绝。
+- `nextbuf-backup-v1` 原子归档包含 PostgreSQL custom dump、本地附件、配置、Compose、版本/迁移清单和 SHA-256；恢复可显式覆盖配置或删除空安装卷，Redis 明确不是备份事实。S3 对象仍需 Provider 级版本/快照。
+- GitHub Actions 增加 amd64/arm64 镜像 setup/首次管理员/Web/Worker 冒烟、amd64 空卷恢复、非 Docker x64 归档、GHCR、SBOM、provenance 和标签 Release 资产。
+- 发布资产包含 Nginx、宝塔、systemd 和 PM2 两进程示例；部署、初始化、升级、回滚和恢复边界见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)。
+
 ## 2. 关键命令
 
 ```text
@@ -150,22 +160,28 @@ pnpm dev:web                     单独启动 Next.js
 pnpm dev:worker                  单独监听 Worker
 pnpm nextbuf setup               执行迁移并幂等初始化
 pnpm nextbuf doctor              检查数据库、迁移、Redis 与 key namespace
+pnpm nextbuf preflight web       执行 Web 启动门禁
 pnpm nextbuf migrate             只部署已有迁移
 pnpm nextbuf invite create ...   创建注册邀请码
 pnpm nextbuf mail test --to ...  通过 Outbox 发送 SMTP 测试邮件
 pnpm build                       构建 Prisma Client、Worker/CLI、Next.js standalone
+pnpm release:archive 0.12.0      生成非 Docker 平台归档和 SHA-256
 pnpm check                       格式、Lint、类型和单元测试
 pnpm test:integration            PostgreSQL/Redis/Mailpit 真实集成测试
 pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
+./nextbufctl start               生产 Compose 初始化并启动四个常驻服务
+./nextbufctl backup              备份 PostgreSQL、配置和本地附件
+./nextbufctl restore ...         校验并恢复备份
 ```
 
 开发 Compose 提供 PostgreSQL `5432`、Redis `6379`、Mailpit SMTP `1025` 和 Web `8025`。测试 Compose 使用 `55432`、`56379`、`11025` 和 `18025`，不得与开发或生产数据混用。
 
 ## 3. 测试与验证边界
 
-- 本地已通过：Prisma generate/validate、Prettier、ESLint、TypeScript、44 个单元测试、Worker/CLI 构建和 Next.js standalone 生产构建。全部 9 份迁移冷启动由 CI 的 PostgreSQL 18 验证。
+- 本地已通过：Prisma generate、Prettier、ESLint、TypeScript、45 个单元测试、Worker/CLI、Next.js standalone 生产构建和非 Docker Windows 归档生成。全部 9 份迁移冷启动与 Linux 发布资产仍以 CI 为最终门槛。
 - 集成测试共 31 项：原 27 项运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任，加 4 项后台设置/二次验证/用户分页与批量会话/审计导出；本机无真实服务，最终结果以 CI 为准。
-- Playwright 共 6 项：5 项真实社区多视口/筛选/无障碍测试和 1 项完整身份/社区旅程；`v0.11.0` 额外断言普通用户直接调用后台 Provider API 返回 403。
+- Playwright 共 6 项：5 项真实社区多视口/筛选/无障碍测试和 1 项完整身份/社区旅程；普通用户直接调用后台 Provider API 返回 403。
+- Actions 另有 amd64/arm64 生产镜像冒烟，验证 setup、一次性管理员、Web/Worker 健康和重复安装拒绝；amd64 额外执行带附件/密钥/数据库的删除卷恢复。非 Docker x64 包解压后运行内置版本入口。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
@@ -184,6 +200,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - 举报来源与目标快照、治理案件、不可变处置、可撤销制裁、角色授予原因和治理审计。
 - 规则版本、真实信任指标、当前/自动/人工 TL、降级宽限期、等级历史、预估/应用批次及 UID 游标。
 - 站点设置单例、设置修订/最后修改者和当前 Session 绑定的管理员二次验证状态。
+- 运行初始化、首次安装 claim/完成状态和首位管理员治理审计。
 
 仍是明确占位：
 
@@ -192,10 +209,9 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 尚未实现：
 
 - 最终注销执行器和在线成员跟踪。
-- OAuth-only 管理员的 TOTP/Passkey/WebAuthn step-up；当前密码二次验证基础不应被绕过。
-- 生产 Dockerfile、生产四容器 Compose、GHCR 镜像、`nextbufctl`、备份恢复和首次安装向导。
+- OAuth-only 管理员的 TOTP/Passkey/WebAuthn step-up、外部远程备份 Provider 和非 Docker arm64 原生发布包；当前密码二次验证基础不应被绕过。
 
-不得为尚未实现的在线状态重新引入演示数据。不得在 `v0.12.0` 混入插件、交易或无关产品功能。
+不得为尚未实现的在线状态重新引入演示数据。不得在 `v0.13.0` 混入插件、交易或无关产品功能。
 
 ## 5. 已确定且不得自行更改
 
@@ -217,14 +233,15 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 16. 通知、普通邮件与 Worker 恢复遵循 ADR-0012：结构化通知和失败/调度状态以 PostgreSQL 为事实，Redis 可清空，安全邮件不读取普通偏好。
 17. 举报、角色、制裁和信任遵循 ADR-0013：有效制裁直接参与服务端授权，TL 不授予管理角色，规则必须先预估再分批应用。
 18. 后台、站点设置和管理员二次验证遵循 ADR-0014：在线运营设置与启动密钥分层，高风险操作绑定当前 Better Auth Session，Provider Secret 不进入浏览器。
+19. 生产打包、首次管理员、备份恢复与升级遵循 ADR-0015：一个镜像多入口、setup 门禁、Better Auth 首账号、可验证备份和迁移后保守回滚。
 
-## 6. 下一步只做 `v0.12.0`
+## 6. 下一步只做 `v0.13.0`
 
-入口：[详细开发计划 v0.12.0](./09-detailed-development-plan.md#v0120安装dockeractions-和运维)
+入口：[详细开发计划 v0.13.0](./09-detailed-development-plan.md#v0130公开-beta-加固)
 
-下一阶段把当前可构建的 Web、Worker、CLI 和迁移入口封装为普通用户可安装、升级、诊断、备份和恢复的生产发行物：一个多入口应用镜像、默认四容器 Compose、`nextbufctl`、首次管理员初始化、GHCR amd64/arm64、SBOM、宝塔文档和非 Docker 发布包。
+下一阶段冻结 V1 功能范围，集中执行安全威胁建模、依赖审计、性能/索引/队列容量基准、移动端与键盘无障碍、跨 Beta 迁移、日志脱敏、故障注入和邀请安装测试。
 
-`v0.12.0` 不改变 ADR-0014 的在线配置和 step-up 语义，不实现插件、交易、支付或开放 API。部署脚本必须调用同一公开迁移/setup/doctor 入口，不能隐藏第二套初始化逻辑。
+`v0.13.0` 不增加插件、交易、支付或开放 API；优先关闭安全、数据损坏、安装升级、恢复和严重体验阻断项。
 
 ## 7. 文档优先级与交接规则
 

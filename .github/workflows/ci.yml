@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+    tags: ["v*"]
 
 permissions:
   contents: read
@@ -110,6 +111,15 @@ jobs:
         run: |
           docker compose -f deploy/compose/compose.dev.yml config --quiet
           docker compose -f deploy/compose/compose.test.yml config --quiet
+          NEXTBUF_ENV_FILE=.env.example docker compose --env-file .env.example -f compose.yml config --quiet
+
+      - name: Validate deployment shell scripts
+        run: |
+          sh -n nextbufctl
+          sh -n deploy/docker/entrypoint.sh
+          sh -n deploy/bin/nextbuf
+          sh -n deploy/bin/nextbuf-service
+          sh -n tests/smoke/docker-smoke.sh
 
       - name: Check formatting
         run: pnpm format:check
@@ -137,3 +147,168 @@ jobs:
 
       - name: End-to-end test
         run: pnpm test:e2e
+
+  image-smoke:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [amd64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build smoke image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          platforms: linux/${{ matrix.architecture }}
+          tags: nextbuf-smoke:0.12.0
+          build-args: |
+            NEXTBUF_VERSION=0.12.0
+            NEXTBUF_COMMIT=${{ github.sha }}
+            NEXTBUF_BUILD_TIME=${{ github.event.repository.updated_at }}
+          cache-from: type=gha,scope=smoke-${{ matrix.architecture }}
+          cache-to: type=gha,mode=max,scope=smoke-${{ matrix.architecture }}
+
+      - name: Run Compose, first-admin and recovery smoke tests
+        env:
+          RUN_RESTORE: ${{ matrix.architecture == 'amd64' && '1' || '0' }}
+        run: |
+          chmod +x nextbufctl tests/smoke/docker-smoke.sh
+          tests/smoke/docker-smoke.sh "${{ matrix.architecture }}"
+
+  archive-smoke:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install and build
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Build and smoke-test non-Docker archive
+        run: |
+          pnpm release:archive 0.12.0 release
+          tar -xzf release/nextbuf-0.12.0-linux-x64.tar.gz -C release
+          test "$(release/nextbuf-0.12.0/runtime/deploy/bin/nextbuf version)" = "0.12.0"
+          test -f release/nextbuf-0.12.0/deploy/systemd/nextbuf-web.service
+          test -f release/nextbuf-0.12.0/deploy/pm2/ecosystem.config.cjs
+
+  publish-image:
+    if: github.event_name == 'push'
+    needs: [image-smoke, archive-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/xwordsman/nextbuf
+          tags: |
+            type=raw,value=edge,enable={{is_default_branch}}
+            type=sha
+            type=semver,pattern={{version}}
+
+      - name: Build and publish multi-architecture image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXTBUF_VERSION=0.12.0
+            NEXTBUF_COMMIT=${{ github.sha }}
+            NEXTBUF_BUILD_TIME=${{ github.event.repository.updated_at }}
+          cache-from: type=gha,scope=publish
+          cache-to: type=gha,mode=max,scope=publish
+          provenance: mode=max
+          sbom: true
+
+  release-assets:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [image-smoke, archive-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install and build
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm release:archive "${GITHUB_REF_NAME#v}" release
+
+      - name: Generate source SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: release/nextbuf-${{ github.ref_name }}-sbom.spdx.json
+
+      - name: Publish GitHub Release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release/*.tar.gz
+            release/*.sha256
+            release/*.spdx.json

@@ -123,6 +123,8 @@ worker: node worker.js
 
 `v0.11.0` 已在同一模块化单体中增加完整后台壳、运营仪表盘、用户/内容/节点工作台、PostgreSQL 站点设置、Provider 脱敏诊断和统一审计查询/导出。后台 Route Handler 仍只是输入边界；所有查询和写入进入 `server-only` 管理/设置服务。高风险操作绑定当前 Better Auth Session 的短时二次验证，部署密钥仍由环境变量提供。详细边界见 [ADR-0014](./adr/0014-administration-settings-and-reauthentication.md)。
 
+`v0.12.0` 把同一模块化单体打包为一个 amd64/arm64 镜像和非 Docker x64 归档。Web/Worker 仍是独立进程，但共享 setup/preflight、迁移全集、版本检查和配置 Schema；PostgreSQL 的 `runtime.initialized` 阻止失败初始化后的带病启动，一次性 `SETUP_TOKEN` 只保护 Better Auth 首位管理员流程。备份、恢复与升级边界见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)。
+
 ## 7. 数据与缓存原则
 
 - PostgreSQL 是业务事实来源，Redis 不是永久数据存储。

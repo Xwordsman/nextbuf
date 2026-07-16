@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/deploy/runtime-package/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -24,6 +25,9 @@
 /dist
 /src/generated/prisma
 /data/uploads
+/backups
+/release
+/.release-work
 
 # misc
 .DS_Store

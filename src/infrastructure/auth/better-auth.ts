@@ -143,8 +143,17 @@ function createAuthInstance() {
                 context?.request?.headers.get("x-nextbuf-registration") ??
                 null,
             );
-            if (!internalRegistration && (await getSiteSettings()).registrationMode !== "open") {
-              throw new APIError("FORBIDDEN", { message: "Registration is not open" });
+            if (!internalRegistration) {
+              const installation = await getPrismaClient().systemState.findUnique({
+                where: { key: "installation.completed" },
+                select: { key: true },
+              });
+              if (!installation) {
+                throw new APIError("FORBIDDEN", { message: "Installation is not complete" });
+              }
+              if ((await getSiteSettings()).registrationMode !== "open") {
+                throw new APIError("FORBIDDEN", { message: "Registration is not open" });
+              }
             }
             const requested =
               typeof user.username === "string" ? validateUsername(user.username) : null;

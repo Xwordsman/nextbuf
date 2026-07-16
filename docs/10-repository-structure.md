@@ -75,7 +75,8 @@ NextBuf/
 │  └─ seed.ts
 ├─ public/                    浏览器可直接访问的静态资源
 ├─ scripts/
-│  └─ prepare-standalone.mjs  整理本地/发布用 standalone 静态资源
+│  ├─ prepare-standalone.mjs  整理本地/发布用 standalone 静态资源
+│  └─ create-release.mjs      生成非 Docker x64 发布归档和校验和
 ├─ tests/
 │  ├─ unit/
 │  ├─ integration/
@@ -83,16 +84,19 @@ NextBuf/
 │  └─ fixtures/
 ├─ deploy/
 │  ├─ compose/
+│  ├─ bin/
+│  ├─ docker/
 │  ├─ systemd/
 │  ├─ nginx/
-│  └─ scripts/
+│  └─ pm2/
 ├─ docs/
 ├─ UI/                        历史设计原型，仅作视觉参考
 ├─ playwright.config.ts       多视口浏览器测试与 standalone Web 启动
 ├─ package.json
 ├─ pnpm-lock.yaml
 ├─ Dockerfile
-└─ compose.yml
+├─ compose.yml
+└─ nextbufctl
 ```
 
 ## 3. 各层职责

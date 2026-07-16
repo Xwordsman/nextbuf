@@ -172,6 +172,11 @@ describe("identity authentication integration", () => {
     await prisma.user.deleteMany({
       where: { email: { startsWith: emailPrefix, endsWith: emailDomain } },
     });
+    await prisma.systemState.upsert({
+      where: { key: "installation.completed" },
+      create: { key: "installation.completed", value: { source: "integration-test" } },
+      update: { value: { source: "integration-test" } },
+    });
   });
 
   afterAll(async () => {

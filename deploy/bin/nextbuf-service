@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+cd "$ROOT"
+
+role=${1:-}
+case "$role" in
+  web)
+    node dist/cli/index.mjs preflight web
+    exec node scripts/start-standalone.mjs
+    ;;
+  worker)
+    node dist/cli/index.mjs preflight worker
+    exec node dist/worker/index.mjs
+    ;;
+  *)
+    printf 'Usage: nextbuf-service <web|worker>\n' >&2
+    exit 2
+    ;;
+esac

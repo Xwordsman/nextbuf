@@ -52,6 +52,7 @@ export function SignUpForm({
         username_unavailable: "该用户名已被使用或由历史用户保留。",
         invalid_invite: "邀请码无效、已过期或已达到使用次数。",
         registration_closed: "当前未开放注册。",
+        installation_incomplete: "站点尚未完成首次安装。",
         registration_rate_limited: "操作过于频繁，请稍后再试。",
       };
       setMessage(messages[result.code ?? ""] ?? "暂时无法注册，请稍后再试。");

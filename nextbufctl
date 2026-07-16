@@ -1,0 +1,336 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$ROOT"
+
+COMPOSE_FILE=${NEXTBUF_COMPOSE_FILE:-compose.yml}
+ENV_FILE=${NEXTBUF_ENV_FILE:-.env}
+BACKUP_DIR=${NEXTBUF_BACKUP_DIR:-$ROOT/backups}
+
+die() {
+  printf 'nextbufctl: %s\n' "$*" >&2
+  exit 1
+}
+
+info() {
+  printf 'nextbufctl: %s\n' "$*"
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+}
+
+require_files() {
+  [ -f "$COMPOSE_FILE" ] || die "missing $COMPOSE_FILE"
+  [ -f "$ENV_FILE" ] || die "missing $ENV_FILE; run ./nextbufctl init first"
+}
+
+compose() {
+  NEXTBUF_ENV_FILE="$ENV_FILE" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+env_get() {
+  sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1
+}
+
+env_set() {
+  key=$1
+  value=$2
+  temp="$ENV_FILE.tmp.$$"
+  awk -v key="$key" -v value="$value" '
+    BEGIN { found = 0 }
+    index($0, key "=") == 1 { print key "=" value; found = 1; next }
+    { print }
+    END { if (!found) print key "=" value }
+  ' "$ENV_FILE" >"$temp"
+  chmod 600 "$temp"
+  mv "$temp" "$ENV_FILE"
+}
+
+random_hex() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex "$1"
+  else
+    od -An -N "$1" -tx1 /dev/urandom | tr -d ' \n'
+  fi
+}
+
+random_base64_32() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -base64 32 | tr -d '\n'
+  else
+    dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64 | tr -d '\n'
+  fi
+}
+
+is_placeholder() {
+  value=$1
+  [ -z "$value" ] || printf '%s' "$value" | grep -Eq '^(replace-|generate-|change-me|example)'
+}
+
+wait_for_service() {
+  service=$1
+  timeout=${2:-120}
+  started=$(date +%s)
+  while :; do
+    id=$(compose ps -q "$service" 2>/dev/null || true)
+    if [ -n "$id" ]; then
+      status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id" 2>/dev/null || true)
+      [ "$status" = healthy ] && return 0
+      [ "$status" = exited ] && die "$service exited before becoming healthy"
+    fi
+    now=$(date +%s)
+    [ $((now - started)) -lt "$timeout" ] || die "timed out waiting for $service"
+    sleep 2
+  done
+}
+
+confirm_destructive() {
+  [ "${NEXTBUFCTL_ASSUME_YES:-0}" = 1 ] && return 0
+  printf '%s [type YES]: ' "$1" >&2
+  read -r answer
+  [ "$answer" = YES ] || die "operation cancelled"
+}
+
+do_init() {
+  require_command docker
+  docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required"
+  [ -f "$ENV_FILE" ] || {
+    [ -f .env.example ] || die "missing .env.example"
+    cp .env.example "$ENV_FILE"
+  }
+  chmod 600 "$ENV_FILE"
+
+  for key in POSTGRES_PASSWORD REDIS_PASSWORD AUTH_SECRET SETUP_TOKEN; do
+    value=$(env_get "$key")
+    if is_placeholder "$value"; then env_set "$key" "$(random_hex 32)"; fi
+  done
+  value=$(env_get MAIL_PAYLOAD_KEY)
+  if is_placeholder "$value"; then env_set MAIL_PAYLOAD_KEY "$(random_base64_32)"; fi
+
+  postgres_user=$(env_get POSTGRES_USER)
+  postgres_password=$(env_get POSTGRES_PASSWORD)
+  postgres_db=$(env_get POSTGRES_DB)
+  redis_password=$(env_get REDIS_PASSWORD)
+  env_set DATABASE_URL "postgresql://$postgres_user:$postgres_password@postgres:5432/$postgres_db"
+  env_set DATABASE_DIRECT_URL "postgresql://$postgres_user:$postgres_password@postgres:5432/$postgres_db"
+  env_set REDIS_URL "redis://:$redis_password@redis:6379/0"
+
+  mkdir -p "$BACKUP_DIR"
+  chmod 700 "$BACKUP_DIR"
+  compose config --quiet
+  info "configuration initialized in $ENV_FILE"
+  info "edit APP_URL, SMTP_* and storage settings before running ./nextbufctl start"
+}
+
+do_start() {
+  require_files
+  compose config --quiet
+  compose pull
+  compose up -d postgres redis
+  wait_for_service postgres 180
+  wait_for_service redis 120
+  compose run --rm setup
+  compose up -d --no-deps web worker
+  wait_for_service web 180
+  wait_for_service worker 180
+  info "NextBuf is running. Complete first administrator setup at $(env_get APP_URL)/setup"
+}
+
+do_stop() {
+  require_files
+  compose stop web worker
+}
+
+do_status() {
+  require_files
+  compose ps
+}
+
+do_logs() {
+  require_files
+  service=${1:-}
+  case "$service" in
+    web|worker|postgres|redis|setup) compose logs --tail 200 -f "$service" ;;
+    "") compose logs --tail 200 -f web worker ;;
+    *) die "logs service must be web, worker, postgres, redis or setup" ;;
+  esac
+}
+
+do_doctor() {
+  require_files
+  compose --profile tools run --rm --no-deps doctor
+}
+
+do_backup() {
+  require_files
+  require_command tar
+  require_command sha256sum
+  mkdir -p "$BACKUP_DIR"
+  chmod 700 "$BACKUP_DIR"
+  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+  version=$(env_get NEXTBUF_VERSION)
+  temp=$(mktemp -d "$BACKUP_DIR/.nextbuf-backup.XXXXXX")
+  trap 'rm -rf "$temp"' EXIT HUP INT TERM
+  database_kb=$(compose exec -T postgres sh -ec 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT CEIL(pg_database_size(current_database()) / 1024.0)::bigint"' | tr -d '\r')
+  if [ "$(env_get STORAGE_DRIVER)" = local ]; then
+    uploads_kb=$(compose run --rm --no-deps --entrypoint sh setup -ec 'du -sk /app/data/uploads | cut -f1')
+  else
+    uploads_kb=0
+  fi
+  available_kb=$(df -Pk "$BACKUP_DIR" | awk 'NR == 2 { print $4 }')
+  required_kb=$(((database_kb + uploads_kb) * 2 + 102400))
+  [ "$available_kb" -gt "$required_kb" ] || die "insufficient free space for backup: need at least ${required_kb} KiB"
+  info "creating PostgreSQL dump"
+  compose exec -T postgres sh -ec 'exec pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --no-owner --no-privileges' >"$temp/database.dump"
+  cp "$ENV_FILE" "$temp/config.env"
+  chmod 600 "$temp/config.env"
+  cp "$COMPOSE_FILE" "$temp/compose.yml"
+  if [ "$(env_get STORAGE_DRIVER)" = local ]; then
+    compose run --rm --no-deps --entrypoint sh setup -ec 'tar -C /app/data/uploads -czf - .' >"$temp/uploads.tar.gz"
+    attachments=true
+    attachment_file=uploads.tar.gz
+  else
+    printf 'driver=s3\nbucket=%s\nendpoint=%s\n' "$(env_get S3_BUCKET)" "$(env_get S3_ENDPOINT)" >"$temp/storage-s3.txt"
+    attachments=false
+    attachment_file=storage-s3.txt
+  fi
+  postgres_version=$(compose exec -T postgres sh -ec 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SHOW server_version"' | tr -d '\r')
+  migration=$(compose exec -T postgres sh -ec 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY finished_at DESC LIMIT 1"' | tr -d '\r')
+  cat >"$temp/manifest.json" <<EOF
+{"format":"nextbuf-backup-v1","createdAt":"$stamp","applicationVersion":"$version","postgresVersion":"$postgres_version","latestMigration":"$migration","attachmentsIncluded":$attachments}
+EOF
+  (cd "$temp" && sha256sum database.dump config.env compose.yml manifest.json "$attachment_file" >SHA256SUMS)
+  archive="$BACKUP_DIR/nextbuf-$version-$stamp.tar.gz"
+  partial="$archive.partial"
+  tar -C "$temp" -czf "$partial" .
+  chmod 600 "$partial"
+  mv "$partial" "$archive"
+  rm -rf "$temp"
+  trap - EXIT HUP INT TERM
+  LAST_BACKUP=$archive
+  export LAST_BACKUP
+  info "backup completed: $archive"
+}
+
+do_restore() {
+  require_files
+  archive=${1:-}
+  [ -n "$archive" ] || die "usage: ./nextbufctl restore <backup-file> [--empty-install] [--restore-config] [--yes]"
+  shift || true
+  empty=0
+  restore_config=0
+  for option in "$@"; do
+    case "$option" in
+      --empty-install) empty=1 ;;
+      --restore-config) restore_config=1 ;;
+      --yes) NEXTBUFCTL_ASSUME_YES=1 ;;
+      *) die "unknown restore option: $option" ;;
+    esac
+  done
+  [ -f "$archive" ] || die "backup not found: $archive"
+  require_command tar
+  require_command sha256sum
+  if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then die "unsafe path in backup archive"; fi
+  temp=$(mktemp -d "${TMPDIR:-/tmp}/nextbuf-restore.XXXXXX")
+  trap 'rm -rf "$temp"' EXIT HUP INT TERM
+  tar -C "$temp" -xzf "$archive"
+  (cd "$temp" && sha256sum -c SHA256SUMS)
+  [ -f "$temp/database.dump" ] || die "backup has no PostgreSQL dump"
+  [ -f "$temp/manifest.json" ] || die "backup has no manifest"
+  info "restore manifest: $(cat "$temp/manifest.json")"
+  if [ -f "$temp/uploads.tar.gz" ] && tar -tzf "$temp/uploads.tar.gz" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+    die "unsafe path in attachment archive"
+  fi
+  if [ "$restore_config" = 1 ] && [ "$empty" != 1 ]; then
+    die "--restore-config requires --empty-install so database service credentials cannot diverge from an existing volume"
+  fi
+  if [ "$restore_config" != 1 ]; then
+    for key in AUTH_SECRET MAIL_PAYLOAD_KEY STORAGE_DRIVER; do
+      current_value=$(env_get "$key")
+      backup_value=$(sed -n "s/^$key=//p" "$temp/config.env" | tail -n 1)
+      [ "$current_value" = "$backup_value" ] || die "$key differs from the backup; use an empty install with --restore-config"
+    done
+    if [ "$(env_get STORAGE_DRIVER)" = s3 ]; then
+      current_bucket=$(env_get S3_BUCKET)
+      backup_bucket=$(sed -n 's/^S3_BUCKET=//p' "$temp/config.env" | tail -n 1)
+      [ "$current_bucket" = "$backup_bucket" ] || die "S3_BUCKET differs from the backup"
+    fi
+  fi
+  confirm_destructive "Restore will replace the current NextBuf database and local attachments."
+
+  compose stop web worker >/dev/null 2>&1 || true
+  if [ "$empty" = 1 ]; then
+    compose down -v
+  fi
+  if [ "$restore_config" = 1 ]; then
+    cp "$temp/config.env" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+  fi
+  compose up -d postgres redis
+  wait_for_service postgres 180
+  wait_for_service redis 120
+  compose exec -T postgres sh -ec 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"'
+  compose exec -T postgres sh -ec 'exec pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --no-privileges --exit-on-error' <"$temp/database.dump"
+  if [ -f "$temp/uploads.tar.gz" ]; then
+    compose run --rm --no-deps --entrypoint sh setup -ec 'find /app/data/uploads -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; tar -C /app/data/uploads -xzf -' <"$temp/uploads.tar.gz"
+  fi
+  compose run --rm setup
+  compose up -d --no-deps web worker
+  wait_for_service web 180
+  wait_for_service worker 180
+  rm -rf "$temp"
+  trap - EXIT HUP INT TERM
+  info "restore completed"
+}
+
+do_upgrade() {
+  require_files
+  require_command sort
+  target=${1:-}
+  printf '%s' "$target" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$' || die "upgrade requires an exact version such as 0.12.1"
+  current=$(env_get NEXTBUF_VERSION)
+  [ "$target" != "$current" ] || die "already running $target"
+  oldest=$(printf '%s\n%s\n' "$current" "$target" | sort -V | head -n 1)
+  [ "$oldest" = "$current" ] || die "downgrades are not supported by upgrade; use the documented restore procedure"
+  do_backup
+  backup_path=$LAST_BACKUP
+  env_set NEXTBUF_VERSION "$target"
+  if ! compose pull web worker setup migrate doctor; then
+    env_set NEXTBUF_VERSION "$current"
+    die "image pull failed; configuration restored to $current"
+  fi
+  compose stop web worker
+  if ! compose --profile tools run --rm migrate; then
+    env_set NEXTBUF_VERSION "$current"
+    compose up -d --no-deps web worker || true
+    die "migration failed; image version restored. Backup: $backup_path"
+  fi
+  compose up -d --no-deps web worker
+  wait_for_service web 180
+  wait_for_service worker 180
+  info "upgrade completed: $current -> $target"
+}
+
+command_name=${1:-help}
+if [ "$#" -gt 0 ]; then shift; fi
+case "$command_name" in
+  help|-h|--help)
+    printf '%s\n' 'Usage: ./nextbufctl <init|start|stop|status|logs|doctor|backup|restore|upgrade>'
+    exit 0
+    ;;
+esac
+require_command docker
+case "$command_name" in
+  init) do_init "$@" ;;
+  start) do_start "$@" ;;
+  stop) do_stop "$@" ;;
+  status) do_status "$@" ;;
+  logs) do_logs "$@" ;;
+  doctor) do_doctor "$@" ;;
+  backup) do_backup "$@" ;;
+  restore) do_restore "$@" ;;
+  upgrade) do_upgrade "$@" ;;
+  *) die "unknown command: $command_name" ;;
+esac

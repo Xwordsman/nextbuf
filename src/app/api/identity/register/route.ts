@@ -11,6 +11,7 @@ import { getAuthEnvironment } from "@/shared/config/runtime-env";
 import { isUsernameAvailable } from "@/modules/profiles/username.server";
 import { validateUsername } from "@/modules/profiles/username-policy";
 import { getSiteSettings } from "@/modules/settings/settings.server";
+import { isInstallationComplete } from "@/modules/installation/installation.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +54,9 @@ export async function POST(request: Request): Promise<Response> {
   if (!input.success) return errorResponse("invalid_registration", 400);
 
   const environment = getAuthEnvironment();
+  if (!(await isInstallationComplete())) {
+    return errorResponse("installation_incomplete", 503);
+  }
   const settings = await getSiteSettings();
   const username = validateUsername(input.data.username);
   if (!username.ok) return errorResponse(username.code, 400);

@@ -54,6 +54,31 @@ describe("environment configuration", () => {
     expect(environment.MAIL_PAYLOAD_KEY).toHaveLength(44);
   });
 
+  it("accepts a strong optional one-time setup token", () => {
+    const environment = parseAuthEnvironment({
+      NODE_ENV: "test",
+      DATABASE_URL: "postgresql://nextbuf:secret@localhost:5432/nextbuf",
+      REDIS_URL: "redis://localhost:6379/0",
+      AUTH_SECRET: "nextbuf-test-auth-secret-at-least-32-characters",
+      SETUP_TOKEN: "nextbuf-test-setup-token-at-least-32-characters",
+      MAIL_PAYLOAD_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+      SMTP_HOST: "localhost",
+    });
+
+    expect(environment.SETUP_TOKEN).toContain("setup-token");
+    expect(() =>
+      parseAuthEnvironment({
+        NODE_ENV: "test",
+        DATABASE_URL: "postgresql://nextbuf:secret@localhost:5432/nextbuf",
+        REDIS_URL: "redis://localhost:6379/0",
+        AUTH_SECRET: "nextbuf-test-auth-secret-at-least-32-characters",
+        SETUP_TOKEN: "too-short",
+        MAIL_PAYLOAD_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        SMTP_HOST: "localhost",
+      }),
+    ).toThrow("SETUP_TOKEN");
+  });
+
   it("rejects partial SMTP and OAuth credentials", () => {
     const input: NodeJS.ProcessEnv = {
       NODE_ENV: "test",

@@ -4,7 +4,7 @@
 - PostgreSQL/Redis/Mailpit 集成测试位于 `tests/integration`，必须使用独立真实服务运行。
 - Playwright 端到端测试位于 `tests/e2e`，同时运行 Next.js standalone Web 与 Worker，覆盖多视口社区外壳和真实身份邮件旅程。
 
-`v0.11.0` 在既有身份、社区、互动、通知、治理和信任覆盖上增加站点设置校验与修订冲突、Session 绑定二次验证、用户后台分页、受控批量会话撤销、审计递归脱敏/CSV 安全和普通用户后台 API 拒绝。当前单元测试 44 项，真实服务集成测试 31 项，Playwright 6 项。
+`v0.12.0` 在既有身份、社区、互动、通知、治理、信任和后台覆盖上增加环境 setup token 校验、安装完成 fixture、生产 Compose/脚本静态检查、amd64/arm64 镜像首次安装冒烟、setup 失败门禁、重复管理员拒绝以及 amd64 删除卷后的备份恢复。当前单元测试 45 项，真实服务集成测试 31 项，Playwright 6 项；容器冒烟由 GitHub Actions 单独执行。
 
 本地浏览器测试先执行：
 

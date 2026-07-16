@@ -1,0 +1,25 @@
+[Unit]
+Description=NextBuf Web
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nextbuf
+Group=nextbuf
+WorkingDirectory=/opt/nextbuf/current
+EnvironmentFile=/etc/nextbuf/nextbuf.env
+ExecStart=/opt/nextbuf/current/deploy/bin/nextbuf-service web
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/nextbuf/uploads /var/lib/nextbuf/cache
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+.git
+.github
+.next
+dist
+node_modules
+data
+backups
+release
+.release-work
+playwright-report
+test-results
+coverage
+UI
+.env*
+!.env.example
+*.log

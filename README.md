@@ -2,7 +2,7 @@
 
 NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开源综合社区。
 
-当前版本为 `v0.11.0` 管理后台与站点配置：管理员可以通过同一 Next.js 应用查看运营仪表盘、搜索用户和内容、管理节点/角色/会话/TL4、调整注册与发布规则、维护信任规则状态机、测试 SMTP/存储/GitHub OAuth 连通性，并查询或受控导出统一审计日志。高风险写入绑定当前 Better Auth Session 的短时密码二次验证；Provider 密钥始终留在部署环境且不返回浏览器。
+当前版本为 `v0.12.0` 安装与运维版本：在原有完整社区与管理后台基础上，提供 amd64/arm64 单一应用镜像、四容器生产 Compose、一次性首次管理员、`nextbufctl`、可验证备份恢复、精确版本升级、宝塔部署以及 systemd/PM2 非 Docker 运行方式。
 
 ## 技术基线
 
@@ -18,6 +18,8 @@ NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开
 - 幂等点赞/收藏/关注、阅读状态、反滥用浏览聚合和热门算法 v1
 - PostgreSQL FTS/`pg_trgm` 搜索与可替换 `SearchProvider`
 - 一个应用镜像，Web 与 Worker 分开运行
+- 生产 Dockerfile、四容器 Compose、setup/preflight 门禁和 GHCR 多架构发布
+- `nextbufctl` 初始化、状态、日志、诊断、备份、恢复与升级
 - 事务性 Outbox、数据库内幂等任务和 Web/Worker 健康检查
 - 结构化通知、普通邮件偏好、持久化失败任务、手工重放和分布式周期调度
 - 举报案件、不可变处置审计、节点/全站禁言、暂停与封禁
@@ -47,6 +49,19 @@ cp .env.example .env
 访问 <http://localhost:3000>。
 
 `pnpm dev` 同时启动 Web 和 Worker；也可以分别运行 `pnpm dev:web` 与 `pnpm dev:worker`。开发 Compose 提供 PostgreSQL、Redis 和 Mailpit，Mailpit Web 界面位于 <http://localhost:8025>。它不是生产部署文件。
+
+## Docker 部署
+
+正式 Release 解压后执行：
+
+```bash
+chmod +x nextbufctl
+./nextbufctl init
+# 编辑 .env 中的 APP_URL、SMTP 与存储配置
+./nextbufctl start
+```
+
+首次启动后访问 `${APP_URL}/setup`，使用 `.env` 中只显示在服务器上的 `SETUP_TOKEN` 创建首位管理员。完整宝塔、反向代理、备份恢复与升级步骤见 [安装与运维运行手册](./docs/13-installation-operations-runbook.md)。
 
 ## 质量检查
 

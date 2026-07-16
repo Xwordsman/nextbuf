@@ -389,6 +389,15 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 - 至少完成一次从备份恢复到空服务器的演练。
 - 运行手册中的核心 `nextbufctl`、Docker 和非 Docker 命令均在全新环境验证通过。
 
+实现结果（`v0.12.0`）：
+
+- 根目录生产 `Dockerfile` 构建一个非 root Node.js 24 镜像，统一包含 Web、Worker、Prisma 迁移、setup、preflight、doctor、邀请和邮件 CLI；Web/Worker 启动前验证镜像版本、迁移全集、依赖、存储和 PostgreSQL 运行门禁。
+- `compose.yml` 默认运行 Web、Worker、PostgreSQL 18、Redis 8 四个常驻服务，setup 成功退出后才允许应用启动；PostgreSQL、Redis、附件使用独立命名卷，只有 Web 绑定宿主机 loopback。
+- `nextbufctl` 实现 init/start/stop/status/logs/doctor/backup/restore/upgrade，保留等价 Compose 命令。备份格式 `nextbuf-backup-v1` 包含 PostgreSQL custom dump、本地附件、配置、版本清单与 SHA-256；Redis 明确可重建。
+- `/setup` 使用环境中的一次性 `SETUP_TOKEN`，通过 Better Auth 创建首位邮箱密码账号，在受锁事务内授予唯一首个站点管理员并写治理审计/安装完成状态；普通邮箱/OAuth 注册在安装完成前被拒绝。
+- GitHub Actions 对 amd64/arm64 分别运行生产镜像 setup、首次管理员与 Web/Worker 冒烟，amd64 额外执行删除卷后的空安装恢复；通过后发布 GHCR 多架构镜像、SBOM/provenance、非 Docker x64 tar.gz、SHA-256 和 GitHub Release 资产。
+- Release 包提供 Nginx、systemd、PM2、宝塔、HTTPS、精确版本升级和恢复说明；持久部署/回退合同记录于 ADR-0015。
+
 ### v0.13.0：公开 Beta 加固
 
 目标：冻结 V1 功能范围，集中解决安全、性能、升级和体验问题。

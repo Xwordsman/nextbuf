@@ -1,0 +1,25 @@
+services:
+  mailpit:
+    image: axllent/mailpit:v1.30.4
+    networks:
+      - nextbuf
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  setup:
+    depends_on:
+      mailpit:
+        condition: service_healthy
+
+  web:
+    depends_on:
+      mailpit:
+        condition: service_healthy
+
+  worker:
+    depends_on:
+      mailpit:
+        condition: service_healthy

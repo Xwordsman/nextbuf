@@ -29,6 +29,11 @@ export default async function globalSetup() {
     },
     update: { name: "社区示例用户", emailVerified: true, status: "active" },
   });
+  await prisma.systemState.upsert({
+    where: { key: "installation.completed" },
+    create: { key: "installation.completed", value: { source: "e2e-fixture" } },
+    update: { value: { source: "e2e-fixture" } },
+  });
   const nodes = await prisma.communityNode.findMany({ where: { slug: { in: ["ai", "domain"] } } });
   const bySlug = new Map(nodes.map((node) => [node.slug, node]));
 

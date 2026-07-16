@@ -5,8 +5,13 @@ const optionalString = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
   z.string().optional(),
 );
+const optionalSecret = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().min(32).optional(),
+);
 const exampleAuthSecret = "replace-with-at-least-32-random-characters";
 const exampleMailPayloadKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+const exampleSetupToken = "replace-with-at-least-32-random-characters";
 const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
 function isLoopbackUrl(value: string): boolean {
@@ -29,7 +34,7 @@ const environmentSchema = z.object({
   TZ: z.string().min(1).default("Asia/Shanghai"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   LOG_FORMAT: z.enum(["pretty", "json"]).default("pretty"),
-  NEXTBUF_VERSION: z.string().min(1).default("0.11.0"),
+  NEXTBUF_VERSION: z.string().min(1).default("0.12.0"),
   NEXTBUF_COMMIT: z.string().min(1).default("development"),
   NEXTBUF_BUILD_TIME: z.string().default(""),
   DATABASE_URL: optionalUrl,
@@ -53,6 +58,7 @@ const environmentSchema = z.object({
   JOB_REMOVE_COMPLETE_AFTER: z.coerce.number().int().min(1).default(1_000),
   JOB_REMOVE_FAILED_AFTER: z.coerce.number().int().min(1).default(5_000),
   AUTH_SECRET: optionalString,
+  SETUP_TOKEN: optionalSecret,
   AUTH_REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
   AUTH_SESSION_EXPIRES_IN_SECONDS: z.coerce.number().int().min(3_600).default(2_592_000),
   AUTH_SESSION_UPDATE_AGE_SECONDS: z.coerce.number().int().min(60).default(86_400),
@@ -173,6 +179,13 @@ const authEnvironmentSchema = serviceEnvironmentSchema
           code: "custom",
           path: ["AUTH_SECRET"],
           message: "must not use the example secret in production",
+        });
+      }
+      if (environment.SETUP_TOKEN === exampleSetupToken) {
+        context.addIssue({
+          code: "custom",
+          path: ["SETUP_TOKEN"],
+          message: "must not use the example token in production",
         });
       }
       if (environment.MAIL_PAYLOAD_KEY === exampleMailPayloadKey) {
