@@ -1,12 +1,17 @@
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 export default async function globalSetup() {
   if (existsSync(".env.test")) process.loadEnvFile(".env.test");
-  const [{ setup }, database] = await Promise.all([
-    import("../../src/cli/commands/setup"),
-    import("../../src/infrastructure/database/client"),
-  ]);
-  await setup();
+  await execFileAsync(process.execPath, ["dist/cli/index.mjs", "setup"], {
+    cwd: process.cwd(),
+    env: process.env,
+    windowsHide: true,
+  });
+  const database = await import("../../src/infrastructure/database/client");
   const prisma = database.getPrismaClient();
   await prisma.moderationSanction.deleteMany();
   await prisma.moderationAction.deleteMany();
