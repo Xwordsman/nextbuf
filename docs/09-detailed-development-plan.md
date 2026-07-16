@@ -354,6 +354,17 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 - 普通用户和越权版主不能通过直接请求调用后台接口。
 - 后台不只是数据库 CRUD，举报和处置流程可完整闭环。
 
+实现结果（`v0.11.0`）：
+
+- `/admin` 提供注册、30 日活跃、主题/回复、举报/案件、Outbox、邮件、Worker、失败任务和队列状态；Redis 不可用时显示明确降级状态。
+- `/admin/users` 支持 UID/用户名/昵称/邮箱和状态筛选、稳定 UID 分页与最多 50 人的受控批量会话撤销；详情页显示脱敏账号、Provider、会话、角色、制裁、内容计数、信任状态和历史，并复用既有角色/TL4 领域服务。
+- `/admin/content` 统一检索主题与回复并链接到现有编辑/治理流程；`/admin/nodes` 复用受审计节点更新用例；`/admin/moderation` 与 `/admin/worker` 纳入同一后台导航。
+- PostgreSQL 单例 `SiteSetting` 持久化站点名称、注册策略、主题/回复/上传开关及每小时限额；写入使用行锁、显式修订号、数据库 CHECK、Zod、管理员授权和治理审计。注册、OAuth 新用户创建、主题、回复与附件事务已读取该设置。
+- `/admin/settings` 管理站点运营参数与版本化信任规则；SMTP、本地/S3 和 GitHub OAuth 凭据仍由环境变量提供，页面只显示脱敏状态并执行固定目标的真实连接测试。
+- `/admin/audit` 合并 identity/community/governance 不可变事件，支持来源、操作、UID、日期、分页和最多 500 条的受控 CSV 导出；敏感键递归脱敏并阻止电子表格公式注入。
+- Better Auth `verifyPassword` 为当前 Session 建立十分钟 `AdminReauthentication`。角色变更、人工 TL4、规则激活、站点设置、批量会话撤销和审计导出同时要求 step-up 与固定确认文本；OAuth-only 管理员的替代 step-up 留待专门 ADR。
+- 后台采用工作流服务而不是任意表 CRUD；普通用户直接调用后台 Provider API 的 Playwright 旅程必须返回 403。
+
 ### v0.12.0：安装、Docker、Actions 和运维
 
 目标：把开发工程变成普通用户可以安装和维护的开源程序。

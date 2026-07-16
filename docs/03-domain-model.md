@@ -227,10 +227,14 @@ V1 只实现单一“赞”，不建立多反应类型。`v0.8.0` 使用 `intera
 设置分三类：
 
 - 启动配置：数据库、Redis、加密密钥等，只来自环境或秘密管理系统。
-- 站点设置：名称、注册策略、主题限制等，保存在数据库并经过类型校验。
+- 站点设置：名称、注册策略、主题/回复/上传开关和每小时限额，保存在数据库并经过类型校验。
 - 用户偏好：通知、界面和隐私选项，归用户所有。
 
-敏感值不能明文展示在后台。可在线修改的 Provider 密钥必须加密保存，并要求实例级主密钥才能解密。
+`v0.11.0` 使用单例 `SiteSetting(id=site)`，显式保存 `revision`、站点名称、注册模式、三个发布开关、三个每小时上限和最后修改者。写入锁定单例行并检查期望修订号；数据库 CHECK 与 Zod 同时限制名称、枚举和数值范围。主题、回复和附件创建事务直接读取该事实，Redis 不参与正确性判断。
+
+SMTP、S3 和 OAuth Secret 属于启动配置，不进入 `SiteSetting`。后台只返回脱敏状态并执行固定 Provider 的服务端连接测试。敏感值不能明文展示、导出或写入浏览器日志。
+
+`AdminReauthentication` 以 Better Auth `Session.id` 为主键，只保存验证时间和十分钟过期时间。Session 删除时级联删除该状态；它不是第二套会话、Cookie 或认证主体。
 
 功能开关必须有默认值、所有者和移除计划，不能成为永久死代码仓库。
 
@@ -240,6 +244,8 @@ V1 只实现单一“赞”，不建立多反应类型。`v0.8.0` 使用 `intera
 erDiagram
     USER ||--|| PROFILE : has
     USER ||--o{ SESSION : owns
+    SESSION ||--o| ADMIN_REAUTHENTICATION : elevates
+    USER ||--o{ SITE_SETTING : updates
     USER ||--o{ TOPIC : authors
     USER ||--o{ POST : writes
     NODE ||--o{ TOPIC : contains

@@ -9,11 +9,8 @@ import {
 import { syncPostContentReferences } from "@/modules/community/content-references.server";
 import { CommunityError } from "@/modules/community/errors";
 import { queueManagementNotificationIntent } from "@/modules/notifications/events.server";
-import {
-  MAX_ACTIVE_TOPIC_DRAFTS,
-  MAX_PUBLISHED_TOPICS_PER_HOUR,
-  validateTopicInput,
-} from "@/modules/community/topic-policy";
+import { MAX_ACTIVE_TOPIC_DRAFTS, validateTopicInput } from "@/modules/community/topic-policy";
+import { getSiteSettings } from "@/modules/settings/settings.server";
 
 type TopicWriteContext = { userId: string; requestId?: string };
 
@@ -56,14 +53,21 @@ async function requirePublishAllowance(
   userId: string,
   now: Date,
 ) {
+  const settings = await getSiteSettings(transaction);
+  if (!settings.topicsEnabled) {
+    throw new CommunityError("topic_posting_disabled", 409);
+  }
   const published = await transaction.communityTopic.count({
     where: {
       authorId: userId,
       publishedAt: { gte: new Date(now.getTime() - 3_600_000) },
     },
   });
-  if (published >= MAX_PUBLISHED_TOPICS_PER_HOUR) {
-    throw new CommunityError("topic_rate_limited", 429, { retryAfter: 3600 });
+  if (published >= settings.maxTopicsPerHour) {
+    throw new CommunityError("topic_rate_limited", 429, {
+      retryAfter: 3600,
+      limit: settings.maxTopicsPerHour,
+    });
   }
 }
 

@@ -121,6 +121,8 @@ worker: node worker.js
 
 `v0.10.0` 的举报、案件、处置、制裁、角色和信任状态同样以 PostgreSQL 为事实来源。Web 写入信任 preview/apply 批次和事务性 Outbox，独立 Worker 按 UID 游标分片重算；Redis 只负责可恢复执行。制裁授权同步读取数据库，不经过异步缓存；`/admin/moderation` 只是聚焦案件工作台，完整管理后台仍属于 `v0.11.0`。详细边界见 [ADR-0013](./adr/0013-governance-roles-trust.md)。
 
+`v0.11.0` 已在同一模块化单体中增加完整后台壳、运营仪表盘、用户/内容/节点工作台、PostgreSQL 站点设置、Provider 脱敏诊断和统一审计查询/导出。后台 Route Handler 仍只是输入边界；所有查询和写入进入 `server-only` 管理/设置服务。高风险操作绑定当前 Better Auth Session 的短时二次验证，部署密钥仍由环境变量提供。详细边界见 [ADR-0014](./adr/0014-administration-settings-and-reauthentication.md)。
+
 ## 7. 数据与缓存原则
 
 - PostgreSQL 是业务事实来源，Redis 不是永久数据存储。

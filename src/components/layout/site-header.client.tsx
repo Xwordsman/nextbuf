@@ -49,10 +49,11 @@ type SiteHeaderProps = {
     isAdmin: boolean;
     canModerate: boolean;
   } | null;
+  siteName: string;
   registrationOpen: boolean;
 };
 
-export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
+export function SiteHeader({ account, siteName, registrationOpen }: SiteHeaderProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { query, setQuery, mobileSearchOpen, setMobileSearchOpen, setRailOpen } = useCommunityUi();
@@ -68,12 +69,12 @@ export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
   return (
     <header className="site-header" data-testid="site-header">
       <div className="header-inner">
-        <Link className="site-brand" href="/" aria-label="NextBuf 首页">
+        <Link className="site-brand" href="/" aria-label={`${siteName} 首页`}>
           <span className="brand-mark" aria-hidden="true">
             <MessageSquare />
           </span>
           <span className="brand-copy">
-            <strong>NextBuf</strong>
+            <strong>{siteName}</strong>
             <small>AI · 建站 · 主机 · 域名</small>
           </span>
         </Link>
@@ -198,8 +199,8 @@ export function SiteHeader({ account, registrationOpen }: SiteHeaderProps) {
                     </DropdownMenuItem>
                     {account.isAdmin ? (
                       <DropdownMenuItem asChild>
-                        <Link href="/admin/worker">
-                          <ServerCog /> Worker 运维
+                        <Link href="/admin">
+                          <ServerCog /> 管理后台
                         </Link>
                       </DropdownMenuItem>
                     ) : null}

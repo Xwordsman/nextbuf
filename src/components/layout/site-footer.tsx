@@ -27,18 +27,18 @@ const footerColumns = [
   },
 ] as const;
 
-export function SiteFooter() {
+export function SiteFooter({ siteName = "NextBuf" }: { siteName?: string }) {
   return (
     <footer className="site-footer">
       <div className="footer-inner">
         <div className="footer-grid">
           <div className="footer-brand">
-            <Link className="site-brand" href="/" aria-label="NextBuf 首页">
+            <Link className="site-brand" href="/" aria-label={`${siteName} 首页`}>
               <span className="brand-mark" aria-hidden="true">
                 <MessageSquare />
               </span>
               <span className="brand-copy">
-                <strong>NextBuf</strong>
+                <strong>{siteName}</strong>
                 <small>AI · 建站 · 主机 · 域名</small>
               </span>
             </Link>
@@ -72,7 +72,7 @@ export function SiteFooter() {
 
         <div className="footer-bottom">
           <div>
-            <p>© 2026 NextBuf 开源社区项目</p>
+            <p>© 2026 {siteName} 开源社区项目</p>
             <p>AGPL-3.0-only · DCO 1.1 · v{PROJECT.version}</p>
           </div>
           <div className="footer-bottom-links">

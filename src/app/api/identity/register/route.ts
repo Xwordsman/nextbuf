@@ -10,6 +10,7 @@ import {
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
 import { isUsernameAvailable } from "@/modules/profiles/username.server";
 import { validateUsername } from "@/modules/profiles/username-policy";
+import { getSiteSettings } from "@/modules/settings/settings.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,9 +53,10 @@ export async function POST(request: Request): Promise<Response> {
   if (!input.success) return errorResponse("invalid_registration", 400);
 
   const environment = getAuthEnvironment();
+  const settings = await getSiteSettings();
   const username = validateUsername(input.data.username);
   if (!username.ok) return errorResponse(username.code, 400);
-  if (environment.AUTH_REGISTRATION_MODE === "closed") {
+  if (settings.registrationMode === "closed") {
     return errorResponse("registration_closed", 403);
   }
 
@@ -76,7 +78,7 @@ export async function POST(request: Request): Promise<Response> {
   });
   let invite: Awaited<ReturnType<typeof reserveRegistrationInvite>> = null;
 
-  if (environment.AUTH_REGISTRATION_MODE === "invite") {
+  if (settings.registrationMode === "invite") {
     if (!input.data.inviteCode) return errorResponse("invalid_invite", 403);
     invite = await reserveRegistrationInvite(input.data.inviteCode);
     if (!invite) return errorResponse("invalid_invite", 403);

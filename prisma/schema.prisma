@@ -62,6 +62,7 @@ model User {
   trustHistories           TrustLevelHistory[]         @relation("TrustHistoryUser")
   trustHistoryActions      TrustLevelHistory[]         @relation("TrustHistoryActor")
   trustBatchesRequested    TrustRecalculationBatch[]   @relation("TrustBatchRequester")
+  siteSettingsUpdated      SiteSetting[]               @relation("SiteSettingUpdater")
 
   @@index([status], map: "users_status_idx")
   @@map("users")
@@ -653,18 +654,50 @@ model UsernameAlias {
 }
 
 model Session {
-  id        String   @id @default(uuid()) @db.Uuid
-  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
-  token     String   @unique(map: "auth_sessions_token_key") @db.VarChar(255)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-  ipAddress String?  @map("ip_address") @db.VarChar(64)
-  userAgent String?  @map("user_agent") @db.Text
-  userId    String   @map("user_id") @db.Uuid
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                    String                 @id @default(uuid()) @db.Uuid
+  expiresAt             DateTime               @map("expires_at") @db.Timestamptz(6)
+  token                 String                 @unique(map: "auth_sessions_token_key") @db.VarChar(255)
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  ipAddress             String?                @map("ip_address") @db.VarChar(64)
+  userAgent             String?                @map("user_agent") @db.Text
+  userId                String                 @map("user_id") @db.Uuid
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adminReauthentication AdminReauthentication?
 
   @@index([userId, expiresAt], map: "auth_sessions_user_expires_idx")
   @@map("auth_sessions")
+}
+
+model SiteSetting {
+  id                String   @id @default("site") @db.VarChar(32)
+  revision          Int      @default(1)
+  siteName          String   @default("NextBuf") @map("site_name") @db.VarChar(80)
+  registrationMode  String   @default("open") @map("registration_mode") @db.VarChar(16)
+  topicsEnabled     Boolean  @default(true) @map("topics_enabled")
+  repliesEnabled    Boolean  @default(true) @map("replies_enabled")
+  uploadsEnabled    Boolean  @default(true) @map("uploads_enabled")
+  maxTopicsPerHour  Int      @default(3) @map("max_topics_per_hour")
+  maxRepliesPerHour Int      @default(20) @map("max_replies_per_hour")
+  maxUploadsPerHour Int      @default(20) @map("max_uploads_per_hour")
+  updatedById       String?  @map("updated_by_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedBy         User?    @relation("SiteSettingUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("site_settings")
+}
+
+model AdminReauthentication {
+  sessionId  String   @id @map("session_id") @db.Uuid
+  verifiedAt DateTime @map("verified_at") @db.Timestamptz(6)
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  session    Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt], map: "admin_reauthentications_expires_idx")
+  @@map("admin_reauthentications")
 }
 
 model Account {

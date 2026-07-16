@@ -11,13 +11,10 @@ import {
   syncDraftAttachmentReferences,
   syncPostContentReferences,
 } from "@/modules/community/content-references.server";
-import {
-  MAX_REPLIES_PER_HOUR,
-  validateReplyBody,
-  validateReplyDraft,
-} from "@/modules/community/content-policy";
+import { validateReplyBody, validateReplyDraft } from "@/modules/community/content-policy";
 import { CommunityError } from "@/modules/community/errors";
 import { queueReplyNotificationIntent } from "@/modules/notifications/events.server";
+import { getSiteSettings } from "@/modules/settings/settings.server";
 
 type ReplyWriteContext = { userId: string; requestId?: string };
 type ReplyInput = { body: string; quotedPosition?: number | null };
@@ -91,6 +88,8 @@ export async function createReply(context: ReplyWriteContext, number: number, in
     await lockUser(transaction, context.userId);
     await lockTopic(transaction, number);
     const { topic } = await requireReplyableTopic(transaction, number, context.userId);
+    const settings = await getSiteSettings(transaction);
+    if (!settings.repliesEnabled) throw new CommunityError("reply_posting_disabled", 409);
     const recentReplies = await transaction.communityPost.count({
       where: {
         authorId: context.userId,
@@ -98,8 +97,11 @@ export async function createReply(context: ReplyWriteContext, number: number, in
         createdAt: { gte: new Date(Date.now() - 3_600_000) },
       },
     });
-    if (recentReplies >= MAX_REPLIES_PER_HOUR) {
-      throw new CommunityError("reply_rate_limited", 429, { retryAfter: 3600 });
+    if (recentReplies >= settings.maxRepliesPerHour) {
+      throw new CommunityError("reply_rate_limited", 429, {
+        retryAfter: 3600,
+        limit: settings.maxRepliesPerHour,
+      });
     }
     const quotedPost = await resolveQuotedPost(transaction, topic.id, input.quotedPosition);
     const now = new Date();

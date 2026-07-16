@@ -22,7 +22,8 @@ function replyError(code?: string): string {
   const messages: Record<string, string> = {
     invalid_post: "回复长度、链接数、提及数或附件引用不符合要求。",
     invalid_attachment: "回复包含无效、失败或不属于你的附件。",
-    reply_rate_limited: "一小时内最多发布 20 条回复，请稍后再试。",
+    reply_rate_limited: "已达到站点当前的每小时回复上限，请稍后再试。",
+    reply_posting_disabled: "站点当前已暂停发布回复。",
     topic_closed: "主题已经关闭，当前不能回复。",
     forbidden: "你没有回复该主题的权限。",
   };

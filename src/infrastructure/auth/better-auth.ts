@@ -8,6 +8,7 @@ import { recordIdentityAudit } from "@/modules/identity/audit.server";
 import { sendPasswordResetMessage, sendVerificationMessage } from "@/modules/identity/mail.server";
 import { generateAvailableUsername } from "@/modules/profiles/username.server";
 import { validateUsername } from "@/modules/profiles/username-policy";
+import { getSiteSettings } from "@/modules/settings/settings.server";
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
 
 function splitList(value: string): string[] {
@@ -38,7 +39,7 @@ function createAuthInstance() {
           github: {
             clientId: environment.GITHUB_CLIENT_ID,
             clientSecret: environment.GITHUB_CLIENT_SECRET,
-            disableSignUp: environment.AUTH_REGISTRATION_MODE !== "open",
+            disableSignUp: false,
           },
         }
       : {};
@@ -135,7 +136,16 @@ function createAuthInstance() {
     databaseHooks: {
       user: {
         create: {
-          before: async (user) => {
+          before: async (user, context) => {
+            const internalRegistration = headerMatches(
+              registrationHeader(environment.AUTH_SECRET),
+              context?.headers?.get("x-nextbuf-registration") ??
+                context?.request?.headers.get("x-nextbuf-registration") ??
+                null,
+            );
+            if (!internalRegistration && (await getSiteSettings()).registrationMode !== "open") {
+              throw new APIError("FORBIDDEN", { message: "Registration is not open" });
+            }
             const requested =
               typeof user.username === "string" ? validateUsername(user.username) : null;
             if (requested && !requested.ok) {

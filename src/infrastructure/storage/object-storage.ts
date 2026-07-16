@@ -1,10 +1,12 @@
 import "server-only";
 
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadBucketCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -45,6 +47,19 @@ function getS3Client(): S3Client {
 
 export function getStorageDriver(): StorageDriver {
   return getAuthEnvironment().STORAGE_DRIVER;
+}
+
+export async function verifyObjectStorageConnection(): Promise<void> {
+  const environment = getAuthEnvironment();
+  if (environment.STORAGE_DRIVER === "s3") {
+    await getS3Client().send(new HeadBucketCommand({ Bucket: environment.S3_BUCKET }));
+    return;
+  }
+  const key = `.nextbuf-connection-test-${randomUUID()}`;
+  const target = localPath(key);
+  await mkdir(path.dirname(target), { recursive: true });
+  await writeFile(target, "nextbuf", { flag: "wx" });
+  await rm(target, { force: true });
 }
 
 export async function putObject(

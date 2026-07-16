@@ -47,6 +47,10 @@ export function getMailProvider(): MailProvider {
   return mailProvider;
 }
 
+export async function verifySmtpConnection(): Promise<void> {
+  await getTransporter().verify();
+}
+
 export async function sendEmailDelivery(transaction: Prisma.TransactionClient, deliveryId: string) {
   const delivery = await transaction.emailDelivery.findUnique({ where: { id: deliveryId } });
   if (!delivery || delivery.status === "sent") return;

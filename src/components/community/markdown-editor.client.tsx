@@ -120,7 +120,9 @@ export function MarkdownEditor({
             ? "附件超过允许大小。"
             : result.code === "attachment_rate_limited"
               ? "附件上传过于频繁，请稍后再试。"
-              : "附件格式不受支持或上传失败。",
+              : result.code === "uploads_disabled"
+                ? "站点当前已暂停上传附件。"
+                : "附件格式不受支持或上传失败。",
         );
       } else {
         insert({ before: "\n", after: "\n", fallback: result.markdown });

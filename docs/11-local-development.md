@@ -1,6 +1,6 @@
 # 本地开发手册
 
-本文定义 NextBuf 开发环境的实际命令和工作流。`v0.10.0` 已实现 PostgreSQL、Redis、Mailpit、Better Auth、SMTP/附件/浏览/通知/信任重算 Worker、失败重放与周期调度、真实身份/资料/社区/互动/搜索/通知/治理/信任集成测试、同时运行 standalone Web 与 Worker 的 Playwright E2E、本地/S3 存储，以及真实节点、主题、回复、Markdown、附件、互动、内容发现、通知和治理链路。
+本文定义 NextBuf 开发环境的实际命令和工作流。`v0.11.0` 已在既有真实身份、社区、互动、通知、治理和 Worker 链路上增加 PostgreSQL 站点设置、完整管理后台、Provider 连接诊断、审计查询/导出和 Session 绑定的管理员二次验证。
 
 ## 1. 前置条件
 
@@ -210,7 +210,7 @@ pnpm test:e2e
 
 Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalone/server.js` 和已构建 Worker。测试服务继承当前进程的完整环境配置，显式绑定 `127.0.0.1:3000`，并以 `/api/health/live` 作为启动探针，避免 CI Runner 自带的 `HOSTNAME` 改变 standalone 监听地址。`build:web` 会自动整理 `.next/static` 与 `public`，不能把启动命令改回不支持 standalone 的 `next start`。
 
-`v0.10.0` E2E 依赖 PostgreSQL、Redis、Mailpit、Web 和 Worker，覆盖：
+`v0.11.0` E2E 依赖 PostgreSQL、Redis、Mailpit、Web 和 Worker，覆盖：
 
 - 1440px 下 1380px 最大宽度、230px/300px 侧栏和 16px 间距。
 - 1024px 双栏和右侧面板弹窗。
@@ -221,6 +221,7 @@ Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalon
 - 注册用户名、用户菜单中的 `@username`/UID/真实 TL、公开用户页、信任说明页和账号中心保护。
 - 真实社区首页、节点路由、页内筛选、PostgreSQL 搜索、Markdown 预览、附件上传、发布/编辑主题、回复、提及、引用、点赞、收藏、用户/主题关注、个人列表、编辑回复、软删除/恢复和“我的主题”。
 - 真实未读计数、通知列表、全部已读、归档和通知渠道偏好保存。
+- 普通登录用户直接调用管理后台 Provider API 返回 403，不依赖导航隐藏作为授权边界。
 
 身份/资料集成测试还会验证 UID/Profile 迁移、未激活资料不可公开、用户名历史别名与冷却、头像媒体写入/替换、隐私设置和 14 天注销申请幂等。头像测试文件写入 `STORAGE_LOCAL_PATH`，测试清理与工作区忽略规则必须保持一致。
 
@@ -257,7 +258,7 @@ Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalon
 
 ## 10. 开发环境完成标准
 
-`v0.10.0` 后，新贡献者应能够只阅读本手册完成：
+`v0.11.0` 后，新贡献者应能够只阅读本手册完成：
 
 1. 安装依赖。
 2. 启动 PostgreSQL、Redis 与 Mailpit。

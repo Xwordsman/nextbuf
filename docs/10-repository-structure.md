@@ -44,7 +44,7 @@ NextBuf/
 │  │  ├─ moderation/
 │  │  ├─ trust/
 │  │  ├─ settings/
-│  │  └─ audit/
+│  │  └─ admin/               后台授权、仪表盘、用户/内容、Provider 与审计用例
 │  ├─ infrastructure/
 │  │  ├─ database/
 │  │  ├─ cache/
@@ -223,12 +223,13 @@ src/app/
 │  └─ members/[username]/      用户公开页
 ├─ account/                    登录用户账号中心
 ├─ auth/                       登录、注册、验证和重置页面
-├─ admin/                      后台
+├─ admin/                      后台壳、仪表盘、用户、内容、节点、设置、审计、治理和 Worker
 └─ api/
    ├─ auth/[...all]/           Better Auth 处理入口
    ├─ identity/register/       NextBuf 注册策略边界
    ├─ community/topics/        主题创建和状态写入
    ├─ community/nodes/         受权节点配置写入
+   ├─ admin/                  同源后台写入、step-up、Provider 测试和受控导出，不视为公开合同
    ├─ internal/               站内专用接口，不视为公开合同
    └─ v1/                     V2.0.0 后的公开 API
 ```

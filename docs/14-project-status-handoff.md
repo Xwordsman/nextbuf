@@ -3,8 +3,8 @@
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
 - 最后更新：2026-07-16
-- 当前完成版本：`v0.10.0`
-- 下一开发版本：`v0.11.0` 管理后台与站点配置
+- 当前完成版本：`v0.11.0`
+- 下一开发版本：`v0.12.0` 安装、Docker、Actions 和运维
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -130,6 +130,18 @@
 - 页头和公开用户页读取真实 TL；`/account/trust` 展示规则版本、指标、宽限期、等级历史和本人治理记录；主题、回复和用户页已接入举报弹窗。
 - 决策、默认阈值、权限矩阵和回退边界见 [ADR-0013](./adr/0013-governance-roles-trust.md)。
 
+### `v0.11.0` 管理后台与站点配置
+
+- 新增统一 `/admin` 后台壳与按角色裁剪的导航；站点管理员可访问仪表盘、用户、内容、节点、设置、审计和 Worker，全局/节点版主只进入既有范围内的治理案件工作台。
+- 仪表盘读取真实 PostgreSQL 注册、30 日活跃、主题/回复、举报/案件、Outbox、邮件、失败任务、Worker 和信任批次，并读取 BullMQ 队列状态；Redis 不可用时显示明确降级而不伪造数据。
+- 用户后台支持 UID/用户名/昵称/邮箱和状态筛选、稳定 UID 分页、详情、角色、脱敏会话/Provider、制裁、内容计数和信任历史；批量会话撤销最多 50 人，并在同一授权/审计工作流执行。
+- 内容工作台检索主题和回复并链接到既有编辑/治理流程；节点页复用受审计更新用例；聚焦案件与 Worker 页面纳入同一后台布局。
+- 新增 PostgreSQL 单例 `site_settings`：站点名称、注册模式、主题/回复/上传开关和每小时上限，带数据库 CHECK、Zod、修订号、行锁、最后修改者和治理审计。注册、OAuth 新用户、主题、回复和附件事务读取该事实。
+- Provider 配置仍由环境变量提供；后台只显示 SMTP、本地/S3、GitHub OAuth 的脱敏状态并执行服务端真实连接测试，完整 Password/Secret/Token 不进入浏览器或站点设置表。
+- 审计页合并 identity/community/governance 不可变事件，支持来源、操作、操作者 UID、日期、分页与最多 500 条受控 CSV；敏感键递归脱敏并防止公式注入。
+- Better Auth `verifyPassword` 为当前 Session 建立十分钟 `admin_reauthentications`。角色变更、人工 TL4、信任规则激活、站点设置、批量会话撤销和审计导出同时要求 step-up 与固定确认文本；Session 撤销级联清除提升状态。
+- 决策、在线/引导配置分层、OAuth-only 限制、审计和回退见 [ADR-0014](./adr/0014-administration-settings-and-reauthentication.md)。
+
 ## 2. 关键命令
 
 ```text
@@ -151,9 +163,9 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 ## 3. 测试与验证边界
 
-- 本地已通过：Prisma generate/validate、Prettier、ESLint、TypeScript、40 个单元测试、Worker/CLI 构建和 Next.js standalone 生产构建；全部 8 份迁移冷启动由 CI 的 PostgreSQL 18 验证。
-- 集成测试共 27 项：3 项运行时、6 项身份/资料、7 项社区、4 项互动/搜索、4 项通知/Worker、3 项治理/信任；新增覆盖举报聚合去重、制裁即时授权与撤销、角色范围、规则预览/激活、批次重算和 TL4 独立性。
-- Playwright 共 6 项：5 项真实社区多视口/筛选/无障碍测试和 1 项注册、验证、Markdown/附件、回复/提及/引用、点赞/收藏/关注/搜索、通知未读/归档/偏好、编辑/删除/恢复、会话与密码重置完整旅程。
+- 本地已通过：Prisma generate/validate、Prettier、ESLint、TypeScript、44 个单元测试、Worker/CLI 构建和 Next.js standalone 生产构建。全部 9 份迁移冷启动由 CI 的 PostgreSQL 18 验证。
+- 集成测试共 31 项：原 27 项运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任，加 4 项后台设置/二次验证/用户分页与批量会话/审计导出；本机无真实服务，最终结果以 CI 为准。
+- Playwright 共 6 项：5 项真实社区多视口/筛选/无障碍测试和 1 项完整身份/社区旅程；`v0.11.0` 额外断言普通用户直接调用后台 Provider API 返回 403。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
@@ -171,6 +183,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - 结构化通知、渠道偏好、站内/邮件投递结果、加密邮件、Worker 最终失败、重放请求、周期任务租约和运行结果。
 - 举报来源与目标快照、治理案件、不可变处置、可撤销制裁、角色授予原因和治理审计。
 - 规则版本、真实信任指标、当前/自动/人工 TL、降级宽限期、等级历史、预估/应用批次及 UID 游标。
+- 站点设置单例、设置修订/最后修改者和当前 Session 绑定的管理员二次验证状态。
 
 仍是明确占位：
 
@@ -178,11 +191,11 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 尚未实现：
 
-- 最终注销执行器、在线成员跟踪和完整运营活动仪表盘。
-- 通用管理后台、站点设置、用户搜索及角色/规则可视化配置；当前只有聚焦治理案件与 Worker 运维页面。
+- 最终注销执行器和在线成员跟踪。
+- OAuth-only 管理员的 TOTP/Passkey/WebAuthn step-up；当前密码二次验证基础不应被绕过。
 - 生产 Dockerfile、生产四容器 Compose、GHCR 镜像、`nextbufctl`、备份恢复和首次安装向导。
 
-不得为尚未实现的在线状态重新引入演示数据。不得在 `v0.11.0` 提前实现插件、交易、生产发布包或无关功能。
+不得为尚未实现的在线状态重新引入演示数据。不得在 `v0.12.0` 混入插件、交易或无关产品功能。
 
 ## 5. 已确定且不得自行更改
 
@@ -203,14 +216,15 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 15. 互动、浏览、热门与搜索遵循 ADR-0011：PostgreSQL 保存关系和接受桶，Worker 幂等聚合浏览，热门只计算，搜索遵守公开可见性。
 16. 通知、普通邮件与 Worker 恢复遵循 ADR-0012：结构化通知和失败/调度状态以 PostgreSQL 为事实，Redis 可清空，安全邮件不读取普通偏好。
 17. 举报、角色、制裁和信任遵循 ADR-0013：有效制裁直接参与服务端授权，TL 不授予管理角色，规则必须先预估再分批应用。
+18. 后台、站点设置和管理员二次验证遵循 ADR-0014：在线运营设置与启动密钥分层，高风险操作绑定当前 Better Auth Session，Provider Secret 不进入浏览器。
 
-## 6. 下一步只做 `v0.11.0`
+## 6. 下一步只做 `v0.12.0`
 
-入口：[详细开发计划 v0.11.0](./09-detailed-development-plan.md#v0110管理后台与站点配置)
+入口：[详细开发计划 v0.12.0](./09-detailed-development-plan.md#v0120安装dockeractions-和运维)
 
-下一阶段在既有领域用例之上建设后台仪表盘、用户搜索与详情、角色/制裁/信任管理、内容与案件工作台、站点配置、Provider 连接测试和审计查询。后台页面只能调用现有或新增的受控服务，不能直接成为任意数据库 CRUD。
+下一阶段把当前可构建的 Web、Worker、CLI 和迁移入口封装为普通用户可安装、升级、诊断、备份和恢复的生产发行物：一个多入口应用镜像、默认四容器 Compose、`nextbufctl`、首次管理员初始化、GHCR amd64/arm64、SBOM、宝塔文档和非 Docker 发布包。
 
-`v0.11.0` 不改变 ADR-0013 的角色、制裁或 TL 语义，不提前实现插件、交易、支付、开放 API 或 `v0.12.0` 生产部署产物。高风险后台操作需要二次确认，并为后续管理员二次验证保留明确边界。
+`v0.12.0` 不改变 ADR-0014 的在线配置和 step-up 语义，不实现插件、交易、支付或开放 API。部署脚本必须调用同一公开迁移/setup/doctor 入口，不能隐藏第二套初始化逻辑。
 
 ## 7. 文档优先级与交接规则
 

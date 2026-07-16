@@ -87,6 +87,12 @@ test.describe.serial("identity authentication", () => {
     await expect(page.getByRole("heading", { name: "账号中心" })).toBeVisible();
     await expect(page.getByLabel("@username")).toHaveValue(username);
     await expect(page.getByText(`UID`, { exact: false }).first()).toBeVisible();
+    const forbiddenAdminCall = await page.evaluate(async () =>
+      fetch("/api/admin/providers/mail/test", { method: "POST" }).then(
+        (response) => response.status,
+      ),
+    );
+    expect(forbiddenAdminCall).toBe(403);
 
     const topicTitle = `E2E 用户主题 ${Date.now()}`;
     await page.goto("/topics/new");

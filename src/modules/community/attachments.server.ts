@@ -19,6 +19,7 @@ import {
 import { CommunityError } from "@/modules/community/errors";
 import { requireCommunityContentActor } from "@/modules/community/authorization.server";
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
+import { getSiteSettings } from "@/modules/settings/settings.server";
 
 export const ATTACHMENT_PROCESS_TOPIC = "nextbuf.community.attachment.process";
 export const ATTACHMENT_COLLECT_TOPIC = "nextbuf.community.attachment.collect";
@@ -81,14 +82,19 @@ export async function createCommunityAttachment(input: {
         Prisma.sql`SELECT "id" FROM "users" WHERE "id" = CAST(${input.uploaderId} AS uuid) FOR UPDATE`,
       );
       await requireCommunityContentActor(transaction, input.uploaderId);
+      const settings = await getSiteSettings(transaction);
+      if (!settings.uploadsEnabled) throw new CommunityError("uploads_disabled", 409);
       const recentUploads = await transaction.communityAttachment.count({
         where: {
           uploaderId: input.uploaderId,
           createdAt: { gte: new Date(Date.now() - 3_600_000) },
         },
       });
-      if (recentUploads >= MAX_ATTACHMENTS_PER_HOUR) {
-        throw new CommunityError("attachment_rate_limited", 429, { retryAfter: 3600 });
+      if (recentUploads >= settings.maxUploadsPerHour) {
+        throw new CommunityError("attachment_rate_limited", 429, {
+          retryAfter: 3600,
+          limit: settings.maxUploadsPerHour,
+        });
       }
       storedDriver = await storeAttachment(storageKey, input.bytes, format.contentType);
       const attachment = await transaction.communityAttachment.create({
