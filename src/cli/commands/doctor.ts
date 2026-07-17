@@ -6,6 +6,7 @@ import { getRedisKeyspaces } from "@/infrastructure/cache/keys";
 import { getAuthEnvironment, runtimeEnv } from "@/shared/config/runtime-env";
 import { getMigrationStatus } from "@/infrastructure/database/migrations";
 import { getSystemQueueHealth } from "@/infrastructure/queue/health";
+import { closeSystemQueue } from "@/infrastructure/queue/system-queue";
 import { verifySmtpConnection } from "@/infrastructure/mail/smtp";
 import { verifyObjectStorageConnection } from "@/infrastructure/storage/object-storage";
 import { getWorkerHealthStatus } from "@/infrastructure/health/status";
@@ -91,7 +92,6 @@ export async function doctor(): Promise<void> {
     console.log(JSON.stringify(report, null, 2));
     if (!ok) throw new Error("NextBuf doctor found failed checks");
   } finally {
-    await disconnectRedisClient();
-    await disconnectPrismaClient();
+    await Promise.all([closeSystemQueue(), disconnectRedisClient(), disconnectPrismaClient()]);
   }
 }

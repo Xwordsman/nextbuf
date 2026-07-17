@@ -185,7 +185,7 @@ jobs:
           RUN_RESTORE: ${{ matrix.architecture == 'amd64' && '1' || '0' }}
         run: |
           chmod +x nextbufctl tests/smoke/docker-smoke.sh
-          tests/smoke/docker-smoke.sh "${{ matrix.architecture }}"
+          timeout --signal=TERM --kill-after=30s 20m tests/smoke/docker-smoke.sh "${{ matrix.architecture }}"
 
   archive-smoke:
     needs: check

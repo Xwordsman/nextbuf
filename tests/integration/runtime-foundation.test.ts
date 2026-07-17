@@ -1,5 +1,6 @@
 import type IORedis from "ioredis";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { doctor } from "@/cli/commands/doctor";
 import { setup } from "@/cli/commands/setup";
 import { getRedisClient, disconnectRedisClient } from "@/infrastructure/cache/redis";
 import { disconnectPrismaClient, getPrismaClient } from "@/infrastructure/database/client";
@@ -7,7 +8,7 @@ import { checkDatabaseHealth } from "@/infrastructure/database/health";
 import { createOutboxEvent } from "@/infrastructure/outbox/create-event";
 import { dispatchOutboxBatch } from "@/infrastructure/outbox/dispatcher";
 import { RUNTIME_PROBE_TOPIC } from "@/infrastructure/queue/contracts";
-import { closeSystemQueue } from "@/infrastructure/queue/system-queue";
+import { closeSystemQueue, getSystemQueue } from "@/infrastructure/queue/system-queue";
 import { createOutboxWorker } from "@/worker/processors/outbox";
 
 async function waitFor(assertion: () => Promise<boolean>, timeoutMs = 15_000): Promise<void> {
@@ -136,5 +137,19 @@ describe("PostgreSQL, Redis, Outbox and Worker integration", () => {
     });
 
     await closeWorker(worker);
+  });
+
+  it("closes the BullMQ diagnostic queue when doctor finishes", async () => {
+    const queue = getSystemQueue();
+    await queue.waitUntilReady();
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      await doctor().catch(() => undefined);
+      expect(queue.closing).toBeDefined();
+      await expect(queue.closing).resolves.toBeUndefined();
+    } finally {
+      consoleLog.mockRestore();
+    }
   });
 });
