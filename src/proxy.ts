@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isInstallationComplete } from "@/modules/installation/status.server";
 import { createContentSecurityPolicy } from "@/shared/http/security-headers";
 import { resolveRequestId } from "@/shared/http/request-id";
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const requestId = resolveRequestId(request.headers.get("x-request-id"));
   const nonce = crypto.randomUUID().replaceAll("-", "");
   const development = process.env.NODE_ENV === "development";
@@ -17,11 +18,17 @@ export function proxy(request: NextRequest) {
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", contentSecurityPolicy);
 
-  const response = NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
+  const redirectToSetup =
+    ["GET", "HEAD"].includes(request.method) &&
+    request.nextUrl.pathname === "/" &&
+    !(await isInstallationComplete());
+  const response = redirectToSetup
+    ? NextResponse.redirect(new URL("/setup", request.url), 307)
+    : NextResponse.next({
+        request: {
+          headers: requestHeaders,
+        },
+      });
   response.headers.set("x-request-id", requestId);
   response.headers.set("Content-Security-Policy", contentSecurityPolicy);
   response.headers.set("Cross-Origin-Opener-Policy", "same-origin");

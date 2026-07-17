@@ -3,7 +3,7 @@ import { CommunityHome } from "@/components/community/community-home.client";
 import type { CommunityFeedFilter } from "@/modules/community/contracts/home-view";
 import { getCommunityHomeView } from "@/modules/community/queries.server";
 import { getCurrentAccount, getCurrentUserId } from "@/modules/identity/session.server";
-import { isInstallationComplete } from "@/modules/installation/installation.server";
+import { isInstallationComplete } from "@/modules/installation/status.server";
 
 type HomeProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;

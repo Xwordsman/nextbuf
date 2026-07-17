@@ -11,7 +11,7 @@ import { getAuthEnvironment } from "@/shared/config/runtime-env";
 import { isUsernameAvailable } from "@/modules/profiles/username.server";
 import { validateUsername } from "@/modules/profiles/username-policy";
 import { getSiteSettings } from "@/modules/settings/settings.server";
-import { isInstallationComplete } from "@/modules/installation/installation.server";
+import { isInstallationComplete } from "@/modules/installation/status.server";
 import { hasSameOrigin } from "@/shared/http/same-origin";
 
 export const runtime = "nodejs";

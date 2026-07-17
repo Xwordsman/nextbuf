@@ -4,10 +4,13 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { getAuth, getInternalRegistrationHeader } from "@/infrastructure/auth/better-auth";
 import { getPrismaClient } from "@/infrastructure/database/client";
+import {
+  INSTALLATION_COMPLETE_KEY,
+  isInstallationComplete,
+} from "@/modules/installation/status.server";
 import { validateUsername } from "@/modules/profiles/username-policy";
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
 
-const INSTALLATION_COMPLETE_KEY = "installation.completed";
 const INSTALLATION_CLAIM_KEY = "installation.claim";
 const INSTALLATION_LOCK = "nextbuf.installation";
 const CLAIM_TIMEOUT_MS = 10 * 60 * 1_000;
@@ -47,15 +50,6 @@ function claimValue(value: Prisma.JsonValue): {
 async function acquireInstallationLock(transaction: Prisma.TransactionClient): Promise<void> {
   await transaction.$executeRaw(
     Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${INSTALLATION_LOCK}))`,
-  );
-}
-
-export async function isInstallationComplete(): Promise<boolean> {
-  return Boolean(
-    await getPrismaClient().systemState.findUnique({
-      where: { key: INSTALLATION_COMPLETE_KEY },
-      select: { key: true },
-    }),
   );
 }
 

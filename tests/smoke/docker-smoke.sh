@@ -184,12 +184,23 @@ stage 'verify first visit redirect and generic empty node catalog'
 home_headers=/tmp/nextbuf-home-before-setup.headers
 home_status=$(curl --silent --dump-header "$home_headers" --output /dev/null \
   --write-out '%{http_code}' http://127.0.0.1:3100/)
-[ "$home_status" = 307 ]
-tr -d '\r' <"$home_headers" | grep -Eiq '^location: (https?://[^/]+)?/setup$'
+[ "$home_status" = 307 ] || {
+  printf 'Expected first visit status 307, received %s\n' "$home_status" >&2
+  cat "$home_headers" >&2
+  exit 1
+}
+if ! tr -d '\r' <"$home_headers" | grep -Eiq '^location: (https?://[^/]+)?/setup$'; then
+  printf 'First visit did not redirect to /setup\n' >&2
+  cat "$home_headers" >&2
+  exit 1
+fi
 rm -f "$home_headers"
 node_count=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM community_nodes"' | tr -d '\r')
-[ "$node_count" = 0 ]
+[ "$node_count" = 0 ] || {
+  printf 'Expected an empty node catalog, found %s nodes\n' "$node_count" >&2
+  exit 1
+}
 
 stage 'create and reject repeated initial administrator setup'
 response=$(curl --fail-with-body --silent \
