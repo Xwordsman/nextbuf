@@ -5,12 +5,15 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  schedule:
+    - cron: "23 18 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -149,45 +152,82 @@ jobs:
         run: pnpm test:e2e
 
   image-smoke:
+    if: github.event_name != 'pull_request'
     needs: check
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+    name: image-smoke (${{ matrix.architecture }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
-        architecture: [amd64, arm64]
+        include: ${{ fromJSON((startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[{"architecture":"amd64","platform":"linux/amd64","runner":"ubuntu-latest"},{"architecture":"arm64","platform":"linux/arm64","runner":"ubuntu-24.04-arm"}]' || '[{"architecture":"amd64","platform":"linux/amd64","runner":"ubuntu-latest"}]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Resolve application version
+        id: version
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [[ "$GITHUB_REF" == refs/tags/v* ]] && [[ "${GITHUB_REF_NAME#v}" != "$version" ]]; then
+            echo "::error::Tag version ${GITHUB_REF_NAME#v} does not match package version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build smoke image
+      - name: Log in to GHCR
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image once for this architecture
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          load: true
-          platforms: linux/${{ matrix.architecture }}
-          tags: nextbuf-smoke:0.12.0
+          platforms: ${{ matrix.platform }}
+          load: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ startsWith(github.ref, 'refs/tags/v') && format('ghcr.io/xwordsman/nextbuf:{0}-{1}', steps.version.outputs.version, matrix.architecture) || format('nextbuf-smoke:{0}', steps.version.outputs.version) }}
           build-args: |
-            NEXTBUF_VERSION=0.12.0
+            NEXTBUF_VERSION=${{ steps.version.outputs.version }}
             NEXTBUF_COMMIT=${{ github.sha }}
             NEXTBUF_BUILD_TIME=${{ github.event.repository.updated_at }}
-          cache-from: type=gha,scope=smoke-${{ matrix.architecture }}
-          cache-to: type=gha,mode=max,scope=smoke-${{ matrix.architecture }}
+          cache-from: type=gha,scope=image-${{ matrix.architecture }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.architecture }}
+          provenance: ${{ startsWith(github.ref, 'refs/tags/v') && 'mode=max' || 'false' }}
+          sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Load published architecture image for smoke tests
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          image="ghcr.io/xwordsman/nextbuf:${{ steps.version.outputs.version }}-${{ matrix.architecture }}"
+          docker pull "$image"
+          docker tag "$image" "nextbuf-smoke:${{ steps.version.outputs.version }}"
 
       - name: Run Compose, first-admin and recovery smoke tests
         env:
-          RUN_RESTORE: ${{ matrix.architecture == 'amd64' && '1' || '0' }}
+          NEXTBUF_SMOKE_VERSION: ${{ steps.version.outputs.version }}
+          RUN_RESTORE: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
         run: |
           chmod +x nextbufctl tests/smoke/docker-smoke.sh
           timeout --signal=TERM --kill-after=30s 20m tests/smoke/docker-smoke.sh "${{ matrix.architecture }}"
 
-  archive-smoke:
+  archive-build:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -209,31 +249,42 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
-      - name: Build and smoke-test non-Docker archive
+      - name: Build and smoke-test release archive
         run: |
-          pnpm release:archive 0.12.0 release
-          tar -xzf release/nextbuf-0.12.0-linux-x64.tar.gz -C release
-          test "$(release/nextbuf-0.12.0/runtime/deploy/bin/nextbuf version)" = "0.12.0"
-          test -f release/nextbuf-0.12.0/deploy/systemd/nextbuf-web.service
-          test -f release/nextbuf-0.12.0/deploy/pm2/ecosystem.config.cjs
+          version="${GITHUB_REF_NAME#v}"
+          pnpm release:archive "$version" release
+          tar -xzf "release/nextbuf-$version-linux-x64.tar.gz" -C release
+          test "$("release/nextbuf-$version/runtime/deploy/bin/nextbuf" version)" = "$version"
+          test -f "release/nextbuf-$version/deploy/systemd/nextbuf-web.service"
+          test -f "release/nextbuf-$version/deploy/pm2/ecosystem.config.cjs"
+
+      - name: Generate source SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: release/nextbuf-${{ github.ref_name }}-sbom.spdx.json
+
+      - name: Upload verified release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextbuf-release-${{ github.ref_name }}
+          path: |
+            release/*.tar.gz
+            release/*.sha256
+            release/*.spdx.json
+          if-no-files-found: error
+          retention-days: 1
 
   publish-image:
-    if: github.event_name == 'push'
-    needs: [image-smoke, archive-smoke]
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: image-smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 10
     permissions:
       contents: read
       packages: write
-      id-token: write
-      attestations: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -244,65 +295,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate image metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/xwordsman/nextbuf
-          tags: |
-            type=raw,value=edge,enable={{is_default_branch}}
-            type=sha
-            type=semver,pattern={{version}}
-
-      - name: Build and publish multi-architecture image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            NEXTBUF_VERSION=0.12.0
-            NEXTBUF_COMMIT=${{ github.sha }}
-            NEXTBUF_BUILD_TIME=${{ github.event.repository.updated_at }}
-          cache-from: type=gha,scope=publish
-          cache-to: type=gha,mode=max,scope=publish
-          provenance: mode=max
-          sbom: true
+      - name: Publish tested multi-architecture manifest
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          image=ghcr.io/xwordsman/nextbuf
+          docker buildx imagetools create \
+            -t "$image:$version" \
+            -t "$image:latest" \
+            "$image:$version-amd64" \
+            "$image:$version-arm64"
+          docker buildx imagetools inspect "$image:$version"
 
   release-assets:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [image-smoke, archive-smoke]
+    needs: [archive-build, publish-image]
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - name: Download verified release files
+        uses: actions/download-artifact@v4
         with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install and build
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm build
-          pnpm release:archive "${GITHUB_REF_NAME#v}" release
-
-      - name: Generate source SBOM
-        uses: anchore/sbom-action@v0
-        with:
-          path: .
-          format: spdx-json
-          output-file: release/nextbuf-${{ github.ref_name }}-sbom.spdx.json
+          name: nextbuf-release-${{ github.ref_name }}
+          path: release
 
       - name: Publish GitHub Release assets
         uses: softprops/action-gh-release@v2

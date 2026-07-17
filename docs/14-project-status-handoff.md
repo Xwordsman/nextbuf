@@ -149,7 +149,7 @@
 - `nextbufctl` 实现 init/start/stop/status/logs/doctor/backup/restore/upgrade，并保留等价 Compose 命令；升级只接受更高精确版本，迁移成功后不承诺盲目切回旧代码。
 - `/setup` 使用环境中的至少 32 位 `SETUP_TOKEN` 创建首位管理员；账号、密码哈希和邮箱验证仍由 Better Auth 管理，NextBuf 在受锁流程中授予首个站点管理员并写治理审计/安装完成状态。完成前普通邮箱和 OAuth 新用户创建均被拒绝。
 - `nextbuf-backup-v1` 原子归档包含 PostgreSQL custom dump、本地附件、配置、Compose、版本/迁移清单和 SHA-256；恢复可显式覆盖配置或删除空安装卷，Redis 明确不是备份事实。S3 对象仍需 Provider 级版本/快照。
-- GitHub Actions 增加 amd64/arm64 镜像 setup/首次管理员/Web/Worker 冒烟、amd64 空卷恢复、非 Docker x64 归档、GHCR、SBOM、provenance 和标签 Release 资产。
+- GitHub Actions 的日常主分支只追加原生 amd64 镜像冒烟；定时、手动和标签运行通过原生 amd64/arm64 Runner 验证 setup/首次管理员/Web/Worker，amd64 执行空卷恢复。标签中每个架构只构建一次，通过后合并 GHCR manifest，并发布非 Docker x64 归档、SBOM、provenance 和 Release 资产。
 - 发布资产包含 Nginx、宝塔、systemd 和 PM2 两进程示例；部署、初始化、升级、回滚和恢复边界见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)。
 
 ## 2. 关键命令
@@ -181,7 +181,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - 本地已通过：Prisma generate、Prettier、ESLint、TypeScript、46 个单元测试、Worker/CLI、Next.js standalone 生产构建和非 Docker Windows 归档生成。全部 9 份迁移冷启动与 Linux 发布资产仍以 CI 为最终门槛。
 - 集成测试共 32 项：原 27 项运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任，加 4 项后台设置/二次验证/用户分页与批量会话/审计导出，以及 1 项 Doctor Queue 资源关闭回归；本机无真实服务，最终结果以 CI 为准。
 - Playwright 共 6 项：5 项真实社区多视口/筛选/无障碍测试和 1 项完整身份/社区旅程；普通用户直接调用后台 Provider API 返回 403。
-- Actions 另有 amd64/arm64 生产镜像冒烟，验证 setup、一次性管理员、Web/Worker 健康和重复安装拒绝；amd64 额外执行带附件/密钥/数据库的删除卷恢复。非 Docker x64 包解压后运行内置版本入口。
+- Actions 的主分支追加原生 amd64 生产镜像冒烟；每日定时、手动和标签运行追加原生 amd64/arm64 冒烟，验证 setup、一次性管理员、Web/Worker 健康和重复安装拒绝，其中 amd64 执行带附件/密钥/数据库的删除卷恢复。标签运行才合并并发布正式多架构 manifest、供应链证明和经解压验证的非 Docker x64 包。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 

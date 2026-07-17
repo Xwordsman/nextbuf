@@ -7,6 +7,7 @@ cd "$ROOT"
 ARCH=${1:-amd64}
 RUN_RESTORE=${RUN_RESTORE:-0}
 SMOKE_TIMEOUT_SECONDS=${SMOKE_TIMEOUT_SECONDS:-1200}
+SMOKE_VERSION=${NEXTBUF_SMOKE_VERSION:-0.12.0}
 ENV_FILE=.env.smoke
 COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml -f deploy/compose/compose.smoke.yml"
 BASE_COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml"
@@ -64,7 +65,7 @@ watchdog_pid=$!
 cp .env.example "$ENV_FILE"
 sed -i \
   -e 's|^NEXTBUF_IMAGE=.*|NEXTBUF_IMAGE=nextbuf-smoke|' \
-  -e 's|^NEXTBUF_VERSION=.*|NEXTBUF_VERSION=0.12.0|' \
+  -e "s|^NEXTBUF_VERSION=.*|NEXTBUF_VERSION=$SMOKE_VERSION|" \
   -e 's|^WEB_PORT=.*|WEB_PORT=3100|' \
   -e 's|^APP_URL=.*|APP_URL=http://127.0.0.1:3100|' \
   -e 's|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=nextbuf-smoke-postgres|' \
