@@ -40,7 +40,7 @@ for (const viewport of viewports) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto("/");
     const topicPath = await page
-      .getByRole("link", { name: /E2E DNS 解析排查主题/ })
+      .getByRole("link", { name: "E2E DNS 解析排查主题", exact: true })
       .getAttribute("href");
     expect(topicPath).toMatch(/^\/topics\/\d+$/);
 
@@ -70,12 +70,9 @@ test("keyboard navigation and reduced motion remain usable", async ({ page }) =>
   await expect(page.locator("#main-content")).toBeFocused();
 
   await expect(page.locator("html")).toHaveCSS("scroll-behavior", "auto");
-  const motion = await page.locator(".skip-link").evaluate((element) => {
+  const motionDurations = await page.locator(".skip-link").evaluate((element) => {
     const styles = getComputedStyle(element);
-    return {
-      animationDuration: styles.animationDuration,
-      transitionDuration: styles.transitionDuration,
-    };
+    return [parseFloat(styles.animationDuration), parseFloat(styles.transitionDuration)];
   });
-  expect(motion).toEqual({ animationDuration: "0.00001s", transitionDuration: "0.00001s" });
+  expect(motionDurations.every((duration) => duration <= 0.00001)).toBe(true);
 });
