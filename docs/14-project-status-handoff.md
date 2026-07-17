@@ -190,7 +190,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - 本地已通过：Prisma generate、Prettier、ESLint、TypeScript、58 个单元测试和 Next.js/Worker/CLI 构建；本机无 Docker，真实服务与镜像以 Actions 为最终门槛。
 - 集成测试共 32 项，覆盖运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任、后台、容量与迁移索引；周期任务竞争夹具隔离其他到期任务。
 - Playwright 共 10 项，覆盖完整身份/社区旅程、性能样本、三种视口布局，以及四个公开页面的 serious/critical axe、水平溢出、键盘和 reduced-motion。
-- 主分支 `0.13.0` 候选已由 CI #56 完成 amd64 setup、首次管理员、故障注入、空卷恢复和 `v0.12.0` 升级；正式标签仍须重跑 amd64 并追加原生 arm64、manifest、SBOM/provenance、非 Docker x64 归档和 Release。
+- 主分支 `0.13.0` 候选已由 CI #56/#57 完成 amd64 setup、首次管理员、故障注入、空卷恢复和 `v0.12.0` 升级；正式标签 CI #58 已重跑 amd64 并完成原生 arm64、manifest、SBOM/provenance、非 Docker x64 归档和 Release。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
