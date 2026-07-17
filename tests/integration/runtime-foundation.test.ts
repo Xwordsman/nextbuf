@@ -4,8 +4,10 @@ import { doctor } from "@/cli/commands/doctor";
 import { setup } from "@/cli/commands/setup";
 import { getRedisClient, disconnectRedisClient } from "@/infrastructure/cache/redis";
 import { disconnectPrismaClient, getPrismaClient } from "@/infrastructure/database/client";
+import { Prisma } from "@/generated/prisma/client";
 import { checkDatabaseHealth } from "@/infrastructure/database/health";
 import { createOutboxEvent } from "@/infrastructure/outbox/create-event";
+import { getOperationalCapacity } from "@/infrastructure/operations/capacity.server";
 import { dispatchOutboxBatch } from "@/infrastructure/outbox/dispatcher";
 import { RUNTIME_PROBE_TOPIC } from "@/infrastructure/queue/contracts";
 import { closeSystemQueue, getSystemQueue } from "@/infrastructure/queue/system-queue";
@@ -56,6 +58,47 @@ describe("PostgreSQL, Redis, Outbox and Worker integration", () => {
 
   it("reports the PostgreSQL 18 migration as ready", async () => {
     await expect(checkDatabaseHealth()).resolves.toMatchObject({ ok: true });
+  });
+
+  it("keeps public foreign keys backed by valid leading-column indexes", async () => {
+    const missing = await getPrismaClient().$queryRaw<
+      Array<{ tableName: string; constraintName: string }>
+    >(
+      Prisma.sql`
+        SELECT
+          "constraint"."conrelid"::regclass::text AS "tableName",
+          "constraint"."conname" AS "constraintName"
+        FROM "pg_constraint" AS "constraint"
+        JOIN "pg_namespace" AS "namespace"
+          ON "namespace"."oid" = "constraint"."connamespace"
+        WHERE "constraint"."contype" = 'f'
+          AND "namespace"."nspname" = 'public'
+          AND cardinality("constraint"."conkey") = 1
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "pg_index" AS "index"
+            WHERE "index"."indrelid" = "constraint"."conrelid"
+              AND "index"."indisvalid"
+              AND "index"."indisready"
+              AND split_part("index"."indkey"::text, ' ', 1)::smallint = "constraint"."conkey"[1]
+          )
+        ORDER BY "tableName", "constraintName"
+      `,
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it("reports database, Redis, queue and configured capacity without secrets", async () => {
+    const capacity = await getOperationalCapacity();
+    expect(capacity.database).toMatchObject({
+      configuredPoolSizePerProcess: 10,
+      statementTimeoutMs: 15_000,
+    });
+    expect(capacity.database.sizeBytes).toBeGreaterThan(0);
+    expect(capacity.database.maxConnections).toBeGreaterThan(0);
+    expect(capacity.redis.usedMemoryBytes).toBeGreaterThan(0);
+    expect(capacity.worker).toMatchObject({ concurrencyPerProcess: 5, outboxBatchSize: 50 });
+    expect(JSON.stringify(capacity)).not.toContain("nextbuf_test");
   });
 
   it("persists an Outbox intent and consumes it exactly once", async () => {
@@ -136,6 +179,37 @@ describe("PostgreSQL, Redis, Outbox and Worker integration", () => {
       );
     });
 
+    await closeWorker(worker);
+  });
+
+  it("processes a representative Outbox batch within the Beta budget", async () => {
+    const prisma = getPrismaClient();
+    const worker = createOutboxWorker();
+    await worker.worker.waitUntilReady();
+    const events = await prisma.$transaction((transaction) =>
+      Promise.all(
+        Array.from({ length: 25 }, (_, index) =>
+          createOutboxEvent(transaction, {
+            topic: RUNTIME_PROBE_TOPIC,
+            idempotencyKey: `test-runtime-batch-${index}`,
+            payload: { source: "worker-capacity-test", index },
+          }),
+        ),
+      ),
+    );
+    const startedAt = performance.now();
+    await expect(dispatchOutboxBatch("integration-batch-dispatcher")).resolves.toMatchObject({
+      dispatched: 25,
+      failed: 0,
+    });
+    const processedKeys = events.map((event) => `outbox-${event.id}`);
+    await waitFor(async () => {
+      return (
+        (await prisma.processedJob.count({ where: { idempotencyKey: { in: processedKeys } } })) ===
+        events.length
+      );
+    }, 10_000);
+    expect(performance.now() - startedAt).toBeLessThan(10_000);
     await closeWorker(worker);
   });
 

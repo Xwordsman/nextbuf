@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setup } from "@/cli/commands/setup";
 import { disconnectPrismaClient, getPrismaClient } from "@/infrastructure/database/client";
 import { AdminError } from "@/modules/admin/errors";
+import { getAdminDashboard } from "@/modules/admin/dashboard.server";
 import { exportAdminAuditEvents } from "@/modules/admin/audit.server";
 import {
   bulkRevokeUserSessions,
@@ -17,6 +18,7 @@ import {
 
 const emailPrefix = "admin-operations+";
 const emailDomain = "@nextbuf.test";
+const workerId = "admin-operations-worker";
 let originalSettings: Awaited<ReturnType<typeof getSiteSettings>>;
 let adminId = "";
 let targetId = "";
@@ -84,6 +86,17 @@ describe("administration settings, sessions and audit integration", () => {
       },
     });
     adminSessionId = adminSession.id;
+    await prisma.workerHeartbeat.upsert({
+      where: { workerId },
+      create: {
+        workerId,
+        status: "ready",
+        version: "0.12.0",
+        startedAt: new Date(),
+        heartbeatAt: new Date(),
+      },
+      update: { status: "ready", heartbeatAt: new Date(), stoppedAt: null },
+    });
     await prisma.session.createMany({
       data: [
         {
@@ -102,6 +115,7 @@ describe("administration settings, sessions and audit integration", () => {
 
   afterAll(async () => {
     const prisma = getPrismaClient();
+    await prisma.workerHeartbeat.deleteMany({ where: { workerId } });
     if (originalSettings) {
       await prisma.siteSetting.update({
         where: { id: "site" },
@@ -174,6 +188,12 @@ describe("administration settings, sessions and audit integration", () => {
         where: { requestId: "admin-settings-update" },
       }),
     ).resolves.toMatchObject({ action: "site_settings.updated", targetKey: "site" });
+  });
+
+  it("reports ready Worker heartbeats and operational alerts accurately", async () => {
+    const dashboard = await getAdminDashboard(adminId);
+    expect(dashboard.operations.activeWorkers).toBe(1);
+    expect(dashboard.alerts.map((alert) => alert.code)).not.toContain("worker_unavailable");
   });
 
   it("paginates user administration and revokes target sessions in one authorized workflow", async () => {

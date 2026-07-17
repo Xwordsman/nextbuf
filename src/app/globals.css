@@ -3886,6 +3886,29 @@ button:disabled {
   font-size: 26px;
 }
 
+.admin-alert-panel {
+  display: grid;
+  gap: 12px;
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.admin-alert-panel ul {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.admin-alert-panel li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #7f1d1d;
+  line-height: 1.6;
+}
+
 .admin-dashboard-grid,
 .admin-detail-grid {
   display: grid;

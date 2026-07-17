@@ -114,7 +114,7 @@ pnpm audit --prod --json
 | --- | --- | --- |
 | 威胁模型、依赖、CSP、CSRF、SSRF、上传 | 进行中 | 本文第 1-6 节、单元/集成/E2E、生产审计 |
 | 首页、主题、搜索、后台和 Worker 性能基准 | 待完成 | 可重复脚本、样本规模、p50/p95 和查询/队列结果 |
-| 索引、慢查询、连接池、Redis 和积压容量 | 待完成 | EXPLAIN/运行指标和最低资源档位 |
+| 索引、慢查询、连接池、Redis 和积压容量 | 进行中 | 外键索引检查、Doctor 容量快照、后台积压告警和最低资源档位 |
 | 桌面、平板、移动端、键盘和 axe | 进行中 | 多视口 E2E、跳转主内容、reduced-motion、关键页面 axe |
 | 从受支持 Beta 升级、备份和恢复 | 待完成 | `v0.12.0 -> v0.13.0` 镜像升级与空卷恢复 |
 | 故障诊断和管理员告警 | 待完成 | PostgreSQL/Redis/Worker/SMTP/存储故障注入 |
@@ -143,3 +143,50 @@ pnpm test:e2e
 ```
 
 正式 Beta 还必须使用最终 amd64/arm64 镜像执行 Compose、首次管理员、升级、备份和空卷恢复，不能以本地单元测试代替。
+
+## 10. 性能与容量验证
+
+仓库提供不依赖第三方压测包的 HTTP 基准入口：
+
+```bash
+pnpm benchmark:beta -- \
+  --base-url https://community.example.com \
+  --path / \
+  --path '/search?q=NextBuf' \
+  --path /topics/1000 \
+  --requests 100 \
+  --concurrency 10 \
+  --p95-ms 2000 \
+  --max-error-rate 0 \
+  --output beta-benchmark.json
+```
+
+- 每条路径分别输出样本数、并发、错误率、吞吐和 min/p50/p95/p99/max。
+- 需要登录的后台路径从 `NEXTBUF_BENCHMARK_COOKIE` 读取临时 Cookie；命令参数和报告都不记录 Cookie。
+- 正式记录必须说明服务器 CPU/内存、数据库规模、主题/回复/用户数量、网络位置和是否预热。
+- GitHub Actions 浏览器测试对首页、搜索和真实主题页各采样十次，阻断单次运行中 p95 超过 3000ms；该宽松门槛用于发现严重回归，不代表生产容量承诺。
+- Worker 集成基准在真实 PostgreSQL/Redis 中一次发布并消费 25 个 Outbox 事件，十秒为阻断上限。
+
+`nextbuf doctor` 额外报告：
+
+- PostgreSQL 数据库字节数、当前连接数、服务器最大连接数、每进程池上限和 statement timeout。
+- Redis 当前/峰值内存、maxmemory、淘汰策略和使用比例。
+- Worker 并发、Outbox 批量/轮询配置，以及 Queue、Outbox、邮件和持久失败积压。
+
+后台首页将无就绪 Worker 或队列不可用标为严重，将 Queue/Outbox 积压和持久失败标为警告。默认警戒值是等待 Queue 或待发布 Outbox 达到 500；这是早期运营告警，不等于硬容量上限。
+
+## 11. 迁移历史与升级证据
+
+`prisma/migration-baselines/v0.12.0.json` 保存首个受支持 Beta 基线的迁移顺序与 SHA-256。执行：
+
+```bash
+pnpm migration:verify
+```
+
+校验会拒绝删除、重排或修改任何 `v0.12.0` 已发布迁移，但允许在基线之后只追加新迁移。该静态门槛不能替代真实升级；`v0.13.0` 发布候选仍需从精确 `v0.12.0` 镜像创建数据、备份、升级到候选镜像并执行恢复演练。
+
+真实 PostgreSQL 集成测试还会拒绝：
+
+- 未处于 valid/ready 状态的关键索引。
+- 没有以前导列索引支持的单列外键。
+- 与仓库迁移全集不一致的已应用、失败或意外迁移。

@@ -113,6 +113,9 @@ jobs:
       - name: Audit production dependencies
         run: pnpm audit:prod
 
+      - name: Verify immutable migration history
+        run: pnpm migration:verify
+
       - name: Validate development and test Compose files
         run: |
           docker compose -f deploy/compose/compose.dev.yml config --quiet

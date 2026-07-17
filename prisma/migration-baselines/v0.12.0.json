@@ -1,0 +1,42 @@
+{
+  "version": "0.12.0",
+  "provider": "postgresql",
+  "migrations": [
+    {
+      "name": "20260712000000_runtime_foundation",
+      "sha256": "bb518c8b600ce6eb1771ec85d7386350c8303f84c63359663fd8e2d514369c57"
+    },
+    {
+      "name": "20260712173000_identity_authentication",
+      "sha256": "392e60853785a09c2923a355deb96adee16cfdabe1b6fe1c5579cdf4dd50c6c3"
+    },
+    {
+      "name": "20260712211500_user_profiles",
+      "sha256": "ad5de941b983557f0c154495a2f65ffc591dd588b5c7afb79e6c56358257f1d7"
+    },
+    {
+      "name": "20260712220000_community_topics",
+      "sha256": "f9aca17149d1602cce925c4a4e540ce52414d18cc56911a28f929785ef5ccd39"
+    },
+    {
+      "name": "20260713010000_replies_markdown_attachments",
+      "sha256": "147cafd84901fd5bbfbfe820adb358b47018dd5aca9bca71e7b163439031ab5c"
+    },
+    {
+      "name": "20260716000000_interactions_search_discovery",
+      "sha256": "673c0645cd1074dc9c65f36caa9921b02b5064755778cffc0c7b0752317c6628"
+    },
+    {
+      "name": "20260716090000_notifications_mail_worker",
+      "sha256": "62cacb05f58bbe840d4e5351168d9c8369f988ce21480467f08cf193f24be912"
+    },
+    {
+      "name": "20260716120000_governance_roles_trust",
+      "sha256": "402cd88ceceb9d1045747b696b502dd182ff9ce02279a830208a925ca31ea5b9"
+    },
+    {
+      "name": "20260716150000_admin_settings",
+      "sha256": "96c832864e0264a1f0ad8a6ce66160b29e387ae5d2f557db22d0b6c38868c555"
+    }
+  ]
+}

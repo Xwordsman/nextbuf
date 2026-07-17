@@ -12,6 +12,7 @@ const badgeVariants = cva(
         pinned: "border-blue-100 bg-blue-50 text-blue-700",
         essence: "border-emerald-100 bg-emerald-50 text-emerald-700",
         trust: "border-zinc-200 bg-zinc-100 text-zinc-700",
+        danger: "border-red-200 bg-red-50 text-red-700",
       },
     },
     defaultVariants: { variant: "neutral" },

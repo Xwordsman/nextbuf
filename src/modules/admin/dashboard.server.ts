@@ -2,8 +2,10 @@ import "server-only";
 
 import { getPrismaClient } from "@/infrastructure/database/client";
 import { getSystemQueueHealth } from "@/infrastructure/queue/health";
+import { buildOperationalAlerts } from "@/infrastructure/operations/capacity-policy";
 import { requireAdministrator } from "@/modules/admin/authorization.server";
 import { getErrorMessage } from "@/shared/errors/error-message";
+import { getAuthEnvironment } from "@/shared/config/runtime-env";
 
 export async function getAdminDashboard(actorId: string) {
   const prisma = getPrismaClient();
@@ -11,7 +13,7 @@ export async function getAdminDashboard(actorId: string) {
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 86_400_000);
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86_400_000);
-  const staleWorkerAt = new Date(now.getTime() - 30_000);
+  const staleWorkerAt = new Date(now.getTime() - getAuthEnvironment().WORKER_STALE_AFTER_MS);
 
   const [
     totalUsers,
@@ -57,7 +59,7 @@ export async function getAdminDashboard(actorId: string) {
     prisma.emailDelivery.count({ where: { status: "failed" } }),
     prisma.workerJobFailure.count({ where: { resolvedAt: null } }),
     prisma.workerHeartbeat.count({
-      where: { status: "running", heartbeatAt: { gte: staleWorkerAt } },
+      where: { status: "ready", heartbeatAt: { gte: staleWorkerAt } },
     }),
     prisma.trustRecalculationBatch.count({ where: { status: { in: ["pending", "running"] } } }),
     prisma.user.findMany({
@@ -82,6 +84,15 @@ export async function getAdminDashboard(actorId: string) {
     queue = { available: false, error: getErrorMessage(error) };
   }
 
+  const operations = {
+    pendingOutbox,
+    failedOutbox,
+    pendingMail,
+    failedMail,
+    unresolvedJobs,
+    activeWorkers,
+    trustBatches,
+  };
   return {
     generatedAt: now,
     users: {
@@ -92,16 +103,9 @@ export async function getAdminDashboard(actorId: string) {
     },
     content: { topics: totalTopics, replies: totalReplies, topicsToday, repliesToday },
     moderation: { openReports, openCases },
-    operations: {
-      pendingOutbox,
-      failedOutbox,
-      pendingMail,
-      failedMail,
-      unresolvedJobs,
-      activeWorkers,
-      trustBatches,
-    },
+    operations,
     queue,
+    alerts: buildOperationalAlerts({ ...operations, queue }),
     recentUsers,
   };
 }

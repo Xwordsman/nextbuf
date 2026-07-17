@@ -53,6 +53,24 @@ export default async function AdminDashboardPage() {
           </Panel>
         ))}
       </div>
+      {dashboard.alerts.length > 0 ? (
+        <Panel className="admin-alert-panel">
+          <div className="admin-section-head">
+            <h2>运行告警</h2>
+            <Badge variant="danger">{dashboard.alerts.length} 项</Badge>
+          </div>
+          <ul>
+            {dashboard.alerts.map((alert) => (
+              <li key={alert.code}>
+                <Badge variant={alert.severity === "critical" ? "danger" : "neutral"}>
+                  {alert.severity === "critical" ? "严重" : "警告"}
+                </Badge>
+                <span>{alert.message}</span>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      ) : null}
       <div className="admin-dashboard-grid">
         <Panel className="admin-section-panel">
           <div className="admin-section-head">
