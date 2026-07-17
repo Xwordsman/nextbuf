@@ -2,9 +2,9 @@
 
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
-- 最后更新：2026-07-16
-- 当前完成版本：`v0.12.0`
-- 下一开发版本：`v0.13.0` 公开 Beta 加固
+- 最后更新：2026-07-17
+- 当前完成版本：`v0.13.0` 公开 Beta
+- 下一动作：真实服务器与邀请用户验收；未经明确批准不开始 `v1.0.0`
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -152,6 +152,15 @@
 - GitHub Actions 的日常主分支只追加原生 amd64 镜像冒烟；定时、手动和标签运行通过原生 amd64/arm64 Runner 验证 setup/首次管理员/Web/Worker，amd64 执行空卷恢复。标签中每个架构只构建一次，通过后合并 GHCR manifest，并发布非 Docker x64 归档、SBOM、provenance 和 Release 资产。
 - 发布资产包含 Nginx、宝塔、systemd 和 PM2 两进程示例；部署、初始化、升级、回滚和恢复边界见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)。
 
+### `v0.13.0` 公开 Beta 加固
+
+- 安全：nonce/strict-dynamic CSP、全部自有写接口同源扫描、日志递归脱敏、上传结构与安全文件名校验，生产依赖审计为 0 项。
+- 数据库与性能：冻结 `v0.12.0` 迁移哈希，追加外键索引迁移；公共页面 p50/p95、25 个 Outbox 任务预算、容量快照和后台积压告警进入 CI。
+- 无障碍：390/1024/1440 视口覆盖首页、节点、搜索、主题页 serious/critical axe、水平溢出、键盘跳转和 reduced-motion；修复灰底次要文字对比度。
+- 运维恢复：候选流水线注入 PostgreSQL、Redis、Worker、SMTP 和存储故障，恢复后完整 doctor 必须通过；空卷恢复继续验证数据库、附件和配置。
+- 跨版本：`nextbufctl upgrade` 使用目标镜像幂等 setup；`v0.12.0 -> v0.13.0` 验证升级前备份、首位管理员、附件、迁移和运行时版本。
+- 交付：公开 Beta 已知限制、2 vCPU/4 GiB/40 GiB 最低档位、性能报告、人工安装/旅程/升级/恢复验收模板见 [Beta 就绪记录](./16-public-beta-readiness.md)。
+
 ## 2. 关键命令
 
 ```text
@@ -165,7 +174,7 @@ pnpm nextbuf migrate             只部署已有迁移
 pnpm nextbuf invite create ...   创建注册邀请码
 pnpm nextbuf mail test --to ...  通过 Outbox 发送 SMTP 测试邮件
 pnpm build                       构建 Prisma Client、Worker/CLI、Next.js standalone
-pnpm release:archive 0.12.0      生成非 Docker 平台归档和 SHA-256
+pnpm release:archive 0.13.0      生成非 Docker 平台归档和 SHA-256
 pnpm check                       格式、Lint、类型和单元测试
 pnpm test:integration            PostgreSQL/Redis/Mailpit 真实集成测试
 pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
@@ -178,10 +187,10 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 ## 3. 测试与验证边界
 
-- 本地已通过：Prisma generate、Prettier、ESLint、TypeScript、46 个单元测试、Worker/CLI、Next.js standalone 生产构建和非 Docker Windows 归档生成。全部 9 份迁移冷启动与 Linux 发布资产仍以 CI 为最终门槛。
-- 集成测试共 32 项：原 27 项运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任，加 4 项后台设置/二次验证/用户分页与批量会话/审计导出，以及 1 项 Doctor Queue 资源关闭回归；本机无真实服务，最终结果以 CI 为准。
-- Playwright 共 6 项：5 项真实社区多视口/筛选/无障碍测试和 1 项完整身份/社区旅程；普通用户直接调用后台 Provider API 返回 403。
-- Actions 的主分支追加原生 amd64 生产镜像冒烟；每日定时、手动和标签运行追加原生 amd64/arm64 冒烟，验证 setup、一次性管理员、Web/Worker 健康和重复安装拒绝，其中 amd64 执行带附件/密钥/数据库的删除卷恢复。标签运行才合并并发布正式多架构 manifest、供应链证明和经解压验证的非 Docker x64 包。
+- 本地已通过：Prisma generate、Prettier、ESLint、TypeScript、57 个单元测试和 Next.js/Worker/CLI 构建；本机无 Docker，真实服务与镜像以 Actions 为最终门槛。
+- 集成测试共 32 项，覆盖运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任、后台、容量与迁移索引；周期任务竞争夹具隔离其他到期任务。
+- Playwright 共 10 项，覆盖完整身份/社区旅程、性能样本、三种视口布局，以及四个公开页面的 serious/critical axe、水平溢出、键盘和 reduced-motion。
+- 主分支 `0.13.0` 候选执行完整 amd64 setup、首次管理员、故障注入、空卷恢复和 `v0.12.0` 升级；正式标签追加原生 arm64、manifest、SBOM/provenance、非 Docker x64 归档和 Release。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
@@ -235,13 +244,13 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 18. 后台、站点设置和管理员二次验证遵循 ADR-0014：在线运营设置与启动密钥分层，高风险操作绑定当前 Better Auth Session，Provider Secret 不进入浏览器。
 19. 生产打包、首次管理员、备份恢复与升级遵循 ADR-0015：一个镜像多入口、setup 门禁、Better Auth 首账号、可验证备份和迁移后保守回滚。
 
-## 6. 下一步只做 `v0.13.0`
+## 6. 下一步只做 Beta 验收
 
-入口：[详细开发计划 v0.13.0](./09-detailed-development-plan.md#v0130公开-beta-加固)
+入口：[公开 Beta 人工验收模板](./17-public-beta-acceptance-template.md)
 
-下一阶段冻结 V1 功能范围，集中执行安全威胁建模、依赖审计、性能/索引/队列容量基准、移动端与键盘无障碍、跨 Beta 迁移、日志脱敏、故障注入和邀请安装测试。
+在真实域名和目标服务器上执行安装、SMTP/存储、注册、发帖、举报、升级和空卷恢复，按阻断/重要/增强记录结果。任何阻断问题回到 `v0.13.x` 修复并重跑完整门槛。
 
-`v0.13.0` 不增加插件、交易、支付或开放 API；优先关闭安全、数据损坏、安装升级、恢复和严重体验阻断项。
+未经用户明确批准，不开始 `v1.0.0`、插件、交易、支付或开放 API。
 
 ## 7. 文档优先级与交接规则
 

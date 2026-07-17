@@ -228,14 +228,14 @@ jobs:
       - name: Run Compose, first-admin and recovery smoke tests
         env:
           NEXTBUF_SMOKE_VERSION: ${{ steps.version.outputs.version }}
-          RUN_RESTORE: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
-          RUN_FAULTS: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
+          RUN_RESTORE: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || steps.version.outputs.version == '0.13.0') && '1' || '0' }}
+          RUN_FAULTS: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || steps.version.outputs.version == '0.13.0') && '1' || '0' }}
         run: |
           chmod +x nextbufctl tests/smoke/docker-smoke.sh
           timeout --signal=TERM --kill-after=30s 20m tests/smoke/docker-smoke.sh "${{ matrix.architecture }}"
 
       - name: Upgrade v0.12.0 to the release candidate
-        if: matrix.architecture == 'amd64' && startsWith(github.ref, 'refs/tags/v')
+        if: matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || steps.version.outputs.version == '0.13.0')
         env:
           NEXTBUF_SMOKE_VERSION: ${{ steps.version.outputs.version }}
           NEXTBUF_UPGRADE_BASELINE: 0.12.0

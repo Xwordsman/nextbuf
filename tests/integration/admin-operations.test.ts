@@ -15,6 +15,7 @@ import {
   BULK_SESSION_CONFIRMATION,
   SITE_SETTINGS_CONFIRMATION,
 } from "@/shared/admin-contracts";
+import { PROJECT } from "@/shared/project";
 
 const emailPrefix = "admin-operations+";
 const emailDomain = "@nextbuf.test";
@@ -91,7 +92,7 @@ describe("administration settings, sessions and audit integration", () => {
       create: {
         workerId,
         status: "ready",
-        version: "0.12.0",
+        version: PROJECT.version,
         startedAt: new Date(),
         heartbeatAt: new Date(),
       },

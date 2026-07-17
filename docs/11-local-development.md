@@ -1,6 +1,6 @@
 # 本地开发手册
 
-本文定义 NextBuf 开发环境的实际命令和工作流。`v0.12.0` 额外增加生产镜像/Compose、setup/preflight、一次性首次管理员、备份恢复和发布包；开发 Compose 仍只启动 PostgreSQL、Redis 与 Mailpit。
+本文定义 NextBuf 开发环境的实际命令和工作流。`v0.13.0` 在生产镜像/Compose、setup/preflight、首次管理员和备份恢复基础上增加安全、容量、迁移、故障恢复和无障碍门槛；开发 Compose 仍只启动 PostgreSQL、Redis 与 Mailpit。
 
 ## 1. 前置条件
 
@@ -211,7 +211,7 @@ pnpm test:e2e
 
 Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalone/server.js` 和已构建 Worker。测试服务继承当前进程的完整环境配置，显式绑定 `127.0.0.1:3000`，并以 `/api/health/live` 作为启动探针，避免 CI Runner 自带的 `HOSTNAME` 改变 standalone 监听地址。`build:web` 会自动整理 `.next/static` 与 `public`，不能把启动命令改回不支持 standalone 的 `next start`。
 
-`v0.12.0` E2E 依赖 PostgreSQL、Redis、Mailpit、Web 和 Worker，覆盖：
+`v0.13.0` E2E 依赖 PostgreSQL、Redis、Mailpit、Web 和 Worker，覆盖：
 
 - 1440px 下 1380px 最大宽度、230px/300px 侧栏和 16px 间距。
 - 1024px 双栏和右侧面板弹窗。
@@ -259,7 +259,7 @@ Playwright 配置会执行 `pnpm start:e2e`，同时启动 `node .next/standalon
 
 ## 10. 开发环境完成标准
 
-`v0.12.0` 后，新贡献者应能够只阅读本手册完成：
+`v0.13.0` 后，新贡献者应能够只阅读本手册完成：
 
 1. 安装依赖。
 2. 启动 PostgreSQL、Redis 与 Mailpit。
