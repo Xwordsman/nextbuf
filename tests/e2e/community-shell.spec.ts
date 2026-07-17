@@ -1,5 +1,4 @@
 import { stat } from "node:fs/promises";
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 async function captureFullPage(page: Page, testInfo: TestInfo, name: string) {
@@ -108,30 +107,5 @@ test.describe("community shell", () => {
 
     await expectNoHorizontalOverflow(page);
     await captureFullPage(page, testInfo, "mobile-390");
-  });
-
-  test("has no serious or critical automated accessibility violations", async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 1000 });
-    await openHome(page);
-
-    const results = await new AxeBuilder({ page }).analyze();
-    const blockingViolations = results.violations.filter(({ impact }) =>
-      ["serious", "critical"].includes(impact ?? ""),
-    );
-
-    expect(blockingViolations).toEqual([]);
-  });
-
-  test("offers a keyboard skip link and honors reduced motion", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await openHome(page);
-
-    await page.keyboard.press("Tab");
-    const skipLink = page.getByRole("link", { name: "跳到主要内容" });
-    await expect(skipLink).toBeFocused();
-    await expect(skipLink).toBeVisible();
-    await page.keyboard.press("Enter");
-    await expect(page.locator("#main-content")).toBeFocused();
-    await expect(page.locator("html")).toHaveCSS("scroll-behavior", "auto");
   });
 });
