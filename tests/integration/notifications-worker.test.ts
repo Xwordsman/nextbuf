@@ -228,6 +228,13 @@ describe("notifications, mail and Worker recovery integration", () => {
 
   it("allows only one Worker to claim the same scheduled run", async () => {
     const prisma = getPrismaClient();
+    await prisma.workerScheduledTask.updateMany({
+      data: {
+        nextRunAt: new Date(Date.now() + 86_400_000),
+        lockedAt: null,
+        lockOwner: null,
+      },
+    });
     const before = await prisma.workerScheduledTask.update({
       where: { name: WORKER_MAINTENANCE_TASK },
       data: { nextRunAt: new Date(0), lockedAt: null, lockOwner: null },
