@@ -9,7 +9,7 @@
 | 验收人 / 日期 |  |
 | 应用版本 / Git SHA |  |
 | 镜像精确标签 / Digest |  |
-| 部署方式 | 宝塔 Compose / CLI Compose / 非 Docker |
+| 部署方式 | 宝塔单文件 Compose / CLI 受控 Compose / 非 Docker |
 | 架构 | amd64 / arm64 |
 | CPU / RAM / 磁盘 |  |
 | PostgreSQL / Redis | 内置版本或托管服务名称与版本 |
@@ -30,7 +30,8 @@
 
 ## 3. 首次安装
 
-- [ ] 使用发布包中的 `compose.yml` 和 `.env.example`，镜像为精确版本而非 `latest`。
+- [ ] 宝塔使用发布包中的 `compose.baota.yml` 且不依赖 `.env`；CLI 受控部署使用 `compose.yml`、`.env.example` 和精确版本。
+- [ ] 宝塔模板中的 `latest` 来自正式标签发布；记录容器实际应用版本和镜像 Digest，不能只记录可变标签。
 - [ ] PostgreSQL、Redis 不发布公网端口；Web 只绑定回环地址并由 HTTPS 反向代理。
 - [ ] `nextbufctl init` 或等价面板配置生成独立强密钥，示例值全部替换。
 - [ ] 空数据库通过默认 Compose 自动完成 setup；Web 未健康前 Worker 不启动，编排中只有四个常驻容器且没有停止的 setup 记录。

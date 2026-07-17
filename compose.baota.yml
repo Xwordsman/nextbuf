@@ -1,0 +1,145 @@
+name: nextbuf
+
+# Single-file BaoTa deployment. Before the first start, replace every value
+# beginning with "replace-", replace MAIL_PAYLOAD_KEY, and change APP_URL and
+# SMTP_FROM. Repeated PostgreSQL and Redis passwords must use the same value in
+# every occurrence. AUTH_SECRET, SETUP_TOKEN and MAIL_PAYLOAD_KEY must differ.
+
+x-nextbuf-app: &nextbuf-app
+  image: ghcr.io/xwordsman/nextbuf:latest
+  restart: unless-stopped
+  environment:
+    NODE_ENV: production
+    TZ: Asia/Shanghai
+    APP_URL: https://community.example.com
+    AUTH_SECRET: replace-with-at-least-32-random-characters
+    SETUP_TOKEN: replace-with-at-least-32-random-characters
+    AUTH_REGISTRATION_MODE: invite
+    MAIL_PAYLOAD_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    SMTP_HOST: smtp.example.com
+    SMTP_PORT: "465"
+    SMTP_SECURE: "true"
+    SMTP_USER: replace-with-smtp-user
+    SMTP_PASSWORD: replace-with-smtp-password
+    SMTP_FROM: NextBuf <noreply@example.com>
+    DATABASE_URL: postgresql://nextbuf:replace-with-64-hex-postgres-password@postgres:5432/nextbuf
+    DATABASE_DIRECT_URL: postgresql://nextbuf:replace-with-64-hex-postgres-password@postgres:5432/nextbuf
+    REDIS_URL: redis://:replace-with-64-hex-redis-password@redis:6379/0
+    REDIS_PREFIX: nextbuf
+    STORAGE_DRIVER: local
+    STORAGE_LOCAL_PATH: /app/data/uploads
+  volumes:
+    - nextbuf_uploads:/app/data/uploads
+  networks:
+    - nextbuf
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "5"
+
+services:
+  web:
+    <<: *nextbuf-app
+    command:
+      - sh
+      - -ec
+      - |
+        node dist/cli/index.mjs setup
+        node dist/cli/index.mjs preflight web
+        exec node scripts/start-standalone.mjs
+    stop_grace_period: 30s
+    ports:
+      - 127.0.0.1:3000:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  worker:
+    <<: *nextbuf-app
+    command: ["worker"]
+    stop_grace_period: 45s
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://web:3000/health/worker').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nextbuf
+      POSTGRES_USER: nextbuf
+      POSTGRES_PASSWORD: replace-with-64-hex-postgres-password
+      PGDATA: /var/lib/postgresql/18/docker
+      TZ: Asia/Shanghai
+    volumes:
+      - nextbuf_postgres:/var/lib/postgresql
+    networks:
+      - nextbuf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextbuf -d nextbuf"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: replace-with-64-hex-redis-password
+      TZ: Asia/Shanghai
+    command:
+      - sh
+      - -ec
+      - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+    volumes:
+      - nextbuf_redis:/data
+    networks:
+      - nextbuf
+    healthcheck:
+      test: ["CMD-SHELL", 'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+networks:
+  nextbuf:
+
+volumes:
+  nextbuf_postgres:
+  nextbuf_redis:
+  nextbuf_uploads:

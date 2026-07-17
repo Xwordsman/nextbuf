@@ -99,6 +99,7 @@ if (process.platform !== "win32") {
 
 for (const item of [
   "compose.yml",
+  "compose.baota.yml",
   ".env.example",
   "nextbufctl",
   "LICENSE",
