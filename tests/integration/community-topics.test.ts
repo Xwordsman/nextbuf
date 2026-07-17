@@ -9,7 +9,7 @@ import {
   collectCommunityAttachment,
   createCommunityAttachment,
 } from "@/modules/community/attachments.server";
-import { updateCommunityNode } from "@/modules/community/nodes.server";
+import { createCommunityNode, updateCommunityNode } from "@/modules/community/nodes.server";
 import { getCommunityHomeView, getTopicPageView } from "@/modules/community/queries.server";
 import {
   createTopic,
@@ -25,6 +25,7 @@ import {
   saveReplyDraft,
   updateReply,
 } from "@/modules/community/replies.server";
+import { ensureCommunityNodeFixtures } from "../support/community-node-fixtures";
 
 const emailPrefix = "community-integration+";
 const emailDomain = "@nextbuf.test";
@@ -59,24 +60,46 @@ describe("community topics integration", () => {
     await prisma.communityTopic.deleteMany({ where: { authorId: { in: userIds } } });
     await prisma.communityAttachment.deleteMany({ where: { uploaderId: { in: userIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    await prisma.communityNode.deleteMany({ where: { slug: "integration-created" } });
+    await ensureCommunityNodeFixtures();
   });
 
   afterAll(async () => {
     await disconnectPrismaClient();
   });
 
-  it("creates the default node catalog", async () => {
-    const nodes = await getPrismaClient().communityNode.findMany({
-      where: { visibility: "public" },
-    });
-    expect(nodes.map((node) => node.slug).sort()).toEqual([
-      "ai",
-      "domain",
-      "host",
-      "ops",
-      "showcase",
-      "site",
+  it("allows only administrators to create unique audited nodes", async () => {
+    const prisma = getPrismaClient();
+    const [admin, ordinary] = await Promise.all([
+      createActor("Create Node Admin"),
+      createActor("Create Node Ordinary"),
     ]);
+    await prisma.communityRoleAssignment.create({
+      data: { userId: admin.id, role: "admin", scopeKey: "site" },
+    });
+    const input = {
+      slug: "integration-created",
+      name: "集成测试节点",
+      description: "由管理员显式创建",
+      color: "#334455",
+      icon: "grid",
+      sortOrder: 70,
+      visibility: "public" as const,
+    };
+    await expect(createCommunityNode({ userId: ordinary.id }, input)).rejects.toMatchObject({
+      code: "forbidden",
+    });
+    await expect(
+      createCommunityNode({ userId: admin.id, requestId: "node-create-test" }, input),
+    ).resolves.toMatchObject({ slug: input.slug, name: input.name });
+    await expect(createCommunityNode({ userId: admin.id }, input)).rejects.toMatchObject({
+      code: "node_conflict",
+    });
+    await expect(
+      prisma.communityAuditEvent.count({
+        where: { action: "node.created", node: { slug: input.slug } },
+      }),
+    ).resolves.toBe(1);
   });
 
   it("keeps topic, first post, revisions and authorization consistent", async () => {

@@ -14,7 +14,8 @@ export default async function SetupPage() {
     >
       {status.complete ? (
         <p className="auth-message is-success">
-          站点已经完成首次安装。<Link href="/auth/sign-in">前往登录</Link>
+          站点已经完成首次安装。
+          <Link href="/auth/sign-in?next=/admin/nodes">登录并创建节点</Link>
         </p>
       ) : status.setupAvailable ? (
         <SetupForm />

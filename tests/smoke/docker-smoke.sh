@@ -8,7 +8,7 @@ ARCH=${1:-amd64}
 RUN_RESTORE=${RUN_RESTORE:-0}
 RUN_FAULTS=${RUN_FAULTS:-0}
 SMOKE_TIMEOUT_SECONDS=${SMOKE_TIMEOUT_SECONDS:-1200}
-SMOKE_VERSION=${NEXTBUF_SMOKE_VERSION:-0.13.0}
+SMOKE_VERSION=${NEXTBUF_SMOKE_VERSION:-0.13.1}
 ENV_FILE=.env.smoke
 COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml -f deploy/compose/compose.smoke.yml"
 BASE_COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml"
@@ -180,6 +180,17 @@ until curl --fail --silent http://127.0.0.1:3100/health/ready >/dev/null 2>&1; d
   sleep 2
 done
 
+stage 'verify first visit redirect and generic empty node catalog'
+home_headers=/tmp/nextbuf-home-before-setup.headers
+home_status=$(curl --silent --dump-header "$home_headers" --output /dev/null \
+  --write-out '%{http_code}' http://127.0.0.1:3100/)
+[ "$home_status" = 307 ]
+tr -d '\r' <"$home_headers" | grep -Eiq '^location: (https?://[^/]+)?/setup$'
+rm -f "$home_headers"
+node_count=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM community_nodes"' | tr -d '\r')
+[ "$node_count" = 0 ]
+
 stage 'create and reject repeated initial administrator setup'
 response=$(curl --fail-with-body --silent \
   -H 'origin: http://127.0.0.1:3100' \
@@ -194,6 +205,7 @@ repeat_status=$(curl --silent -o /tmp/nextbuf-setup-repeat.json -w '%{http_code}
   -d '{"token":"nextbuf-smoke-setup-token-at-least-32-characters","name":"Other Admin","username":"other_admin","email":"other-admin@nextbuf.test","password":"other-admin-password-12345"}' \
   http://127.0.0.1:3100/api/setup)
 [ "$repeat_status" = 409 ]
+curl --fail --silent http://127.0.0.1:3100/ >/dev/null
 
 stage 'wait for Worker health'
 deadline=$(( $(date +%s) + 180 ))

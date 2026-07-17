@@ -1,7 +1,9 @@
+import { redirect } from "next/navigation";
 import { CommunityHome } from "@/components/community/community-home.client";
 import type { CommunityFeedFilter } from "@/modules/community/contracts/home-view";
 import { getCommunityHomeView } from "@/modules/community/queries.server";
 import { getCurrentAccount, getCurrentUserId } from "@/modules/identity/session.server";
+import { isInstallationComplete } from "@/modules/installation/installation.server";
 
 type HomeProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -12,6 +14,7 @@ function single(value: string | string[] | undefined) {
 }
 
 export default async function Home({ searchParams }: HomeProps) {
+  if (!(await isInstallationComplete())) redirect("/setup");
   const params = await searchParams;
   const requestedFilter = single(params.filter);
   const filter: CommunityFeedFilter = ["hot", "essence"].includes(requestedFilter ?? "")

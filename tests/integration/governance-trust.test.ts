@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setup } from "@/cli/commands/setup";
+import { ensureCommunityNodeFixtures } from "../support/community-node-fixtures";
 import {
   getCommunityPermissions,
   requireCommunityContentActor,
@@ -68,6 +69,7 @@ async function completeTrustBatch(batchId: string): Promise<void> {
 describe("governance, sanctions and trust integration", () => {
   beforeAll(async () => {
     await setup();
+    await ensureCommunityNodeFixtures();
     const prisma = getPrismaClient();
     const existing = await prisma.user.findMany({
       where: { email: { startsWith: emailPrefix, endsWith: emailDomain } },

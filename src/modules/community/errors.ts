@@ -15,6 +15,7 @@ export class CommunityError extends Error {
       | "topic_posting_disabled"
       | "reply_posting_disabled"
       | "uploads_disabled"
+      | "node_conflict"
       | "node_unavailable"
       | "topic_not_found"
       | "topic_rate_limited"

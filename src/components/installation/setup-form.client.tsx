@@ -55,7 +55,7 @@ export function SetupForm() {
     return (
       <div className="auth-message is-success" role="status">
         首位管理员已创建。请先完成邮箱验证，再登录后台；随后从部署配置中删除 SETUP_TOKEN 并重启
-        Web。
+        Web，然后创建当前社区的第一个节点。
       </div>
     );
   }

@@ -127,6 +127,12 @@ runtime_version=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh
 migration_count=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260717150000_beta_index_hardening'\'' AND finished_at IS NOT NULL"' | tr -d '\r')
 [ "$migration_count" = 1 ]
+generic_node_migration=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260717200000_remove_builtin_nodes'\'' AND finished_at IS NOT NULL"' | tr -d '\r')
+[ "$generic_node_migration" = 1 ]
+preserved_nodes=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM community_nodes WHERE id IN ('\''10000000-0000-4000-8000-000000000001'\'', '\''10000000-0000-4000-8000-000000000002'\'', '\''10000000-0000-4000-8000-000000000003'\'', '\''10000000-0000-4000-8000-000000000004'\'', '\''10000000-0000-4000-8000-000000000005'\'', '\''10000000-0000-4000-8000-000000000006'\'')"' | tr -d '\r')
+[ "$preserved_nodes" = 6 ]
 find "$BACKUP_DIR" -maxdepth 1 -name "nextbuf-$BASELINE_VERSION-*.tar.gz" -print -quit | grep -q .
 NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor
 

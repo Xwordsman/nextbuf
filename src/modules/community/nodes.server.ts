@@ -15,6 +15,52 @@ type UpdateNodeInput = {
   archived: boolean;
 };
 
+type CreateNodeInput = Omit<UpdateNodeInput, "archived"> & { slug: string };
+
+const NODE_CREATE_LOCK = "nextbuf.community.node.create";
+
+export async function createCommunityNode(
+  context: { userId: string; requestId?: string },
+  input: CreateNodeInput,
+) {
+  return getPrismaClient().$transaction(async (transaction) => {
+    const permissions = await requireActiveCommunityActor(transaction, context.userId);
+    if (!permissions.isAdmin) throw new CommunityError("forbidden", 403);
+    await transaction.$executeRaw(
+      Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${NODE_CREATE_LOCK}))`,
+    );
+    const slug = input.slug.trim().toLowerCase();
+    if (await transaction.communityNode.findUnique({ where: { slug }, select: { id: true } })) {
+      throw new CommunityError("node_conflict", 409);
+    }
+    const node = await transaction.communityNode.create({
+      data: {
+        slug,
+        name: input.name.trim(),
+        description: input.description.trim(),
+        color: input.color.toLowerCase(),
+        icon: input.icon,
+        sortOrder: input.sortOrder,
+        visibility: input.visibility,
+      },
+    });
+    await transaction.communityAuditEvent.create({
+      data: {
+        actorId: context.userId,
+        action: "node.created",
+        nodeId: node.id,
+        requestId: context.requestId,
+        metadata: {
+          slug: node.slug,
+          visibility: node.visibility,
+          sortOrder: node.sortOrder,
+        },
+      },
+    });
+    return node;
+  });
+}
+
 export async function updateCommunityNode(
   context: { userId: string; requestId?: string },
   slug: string,

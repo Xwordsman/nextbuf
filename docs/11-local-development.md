@@ -48,7 +48,7 @@ Copy-Item .env.example .env
 - 开发 Compose 只启动依赖；Web 和 Worker 默认在宿主机运行，便于热更新和调试。
 - `db:seed` 只创建明确的开发基础数据，重复执行必须幂等。
 - 测试数据和生产种子数据分开，生产 setup 不创建演示主题。
-- 全新开发库执行 setup 后访问 `/setup`，使用开发 `.env` 的 `SETUP_TOKEN` 创建首位管理员并从 Mailpit 完成邮箱验证；普通注册在安装完成前被拒绝。
+- 全新开发库执行 setup 后访问根地址会自动跳转 `/setup`，使用开发 `.env` 的 `SETUP_TOKEN` 创建首位管理员并从 Mailpit 完成邮箱验证；随后在 `/admin/nodes` 创建开发所需节点。普通注册在安装完成前被拒绝，生产迁移不创建业务分类。
 
 ## 3. 启动开发服务
 

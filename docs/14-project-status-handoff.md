@@ -3,7 +3,7 @@
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
 - 最后更新：2026-07-17
-- 当前完成版本：`v0.13.0` 公开 Beta
+- 当前完成版本：`v0.13.1` 公开 Beta 补丁
 - 下一动作：真实服务器与邀请用户验收；未经明确批准不开始 `v1.0.0`
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
@@ -69,7 +69,7 @@
 
 - 新增 `community_nodes`、`community_topics`、`community_posts`、`community_post_revisions`、`community_role_assignments` 和 `community_audit_events`，带完整外键、CHECK、唯一约束和查询索引。
 - Topic 使用 UUID 内部主键和不可变递增数字公开编号；主题、position=1 首帖和 version=1 修订在同一 PostgreSQL 事务创建。
-- 迁移初始化人工智能、建站开发、主机云服务、域名 DNS、运维网络和项目展示六个节点；节点支持排序、public/hidden 可见性和归档。
+- 早期迁移曾初始化人工智能、建站开发、主机云服务、域名 DNS、运维网络和项目展示六个节点；`v0.13.1` 空安装已不再保留业务分类，已有用户/内容/自定义节点的实例不删除。节点支持管理员创建/更新、排序、public/hidden 可见性和归档。
 - 首页和节点页已删除演示 ViewModel，改为真实 PostgreSQL 主题流；支持最新、精华、30 天窗口计算热门和包含置顶/活动时间/编号的双向 opaque cursor。
 - 实现 `/nodes`、`/nodes/[slug]`、`/topics/new`、`/topics/[number]`、`/topics/[number]/edit` 和 `/account/topics`。
 - 实现草稿、纯文本预览、发布、编辑、节点移动、软删除、恢复、置顶、精华、关闭和隐藏；React 转义正文并保留换行，Markdown 尚未启用。
@@ -160,6 +160,7 @@
 - 运维恢复：候选流水线注入 PostgreSQL、Redis、Worker、SMTP 和存储故障，恢复后完整 doctor 必须通过；空卷恢复继续验证数据库、附件和配置。
 - 跨版本：`nextbufctl upgrade` 使用目标镜像幂等 setup；`v0.12.0 -> v0.13.0` 验证升级前备份、首位管理员、附件、迁移和运行时版本。
 - 面板部署修订：默认 Compose 只创建 Web、Worker、PostgreSQL、Redis；Web 启动前幂等执行 setup/preflight，Worker 等待 Web 健康，setup 工具 profile 不再留下导致宝塔误报项目停止的容器。决策见 [ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)。
+- 通用发行版修订（`v0.13.1`）：空数据库追加迁移后没有预置业务节点，管理员可在 `/admin/nodes` 创建稳定 slug 节点；已有站点升级保留节点。未完成首次管理员安装时，访问首页服务端 307 跳转 `/setup`。
 - 交付：公开 Beta 已知限制、2 vCPU/4 GiB/40 GiB 最低档位、性能报告、人工安装/旅程/升级/恢复验收模板见 [Beta 就绪记录](./16-public-beta-readiness.md)。
 
 ## 2. 关键命令
@@ -175,7 +176,7 @@ pnpm nextbuf migrate             只部署已有迁移
 pnpm nextbuf invite create ...   创建注册邀请码
 pnpm nextbuf mail test --to ...  通过 Outbox 发送 SMTP 测试邮件
 pnpm build                       构建 Prisma Client、Worker/CLI、Next.js standalone
-pnpm release:archive 0.13.0      生成非 Docker 平台归档和 SHA-256
+pnpm release:archive 0.13.1      生成非 Docker 平台归档和 SHA-256
 pnpm check                       格式、Lint、类型和单元测试
 pnpm test:integration            PostgreSQL/Redis/Mailpit 真实集成测试
 pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E

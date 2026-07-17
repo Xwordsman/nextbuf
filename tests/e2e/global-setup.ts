@@ -39,6 +39,30 @@ export default async function globalSetup() {
     create: { key: "installation.completed", value: { source: "e2e-fixture" } },
     update: { value: { source: "e2e-fixture" } },
   });
+  for (const node of [
+    {
+      slug: "ai",
+      name: "人工智能",
+      description: "E2E 人工智能节点",
+      color: "#7c3aed",
+      icon: "bot",
+      sortOrder: 10,
+    },
+    {
+      slug: "domain",
+      name: "域名 DNS",
+      description: "E2E 域名节点",
+      color: "#c2410c",
+      icon: "globe",
+      sortOrder: 20,
+    },
+  ]) {
+    await prisma.communityNode.upsert({
+      where: { slug: node.slug },
+      create: node,
+      update: { ...node, visibility: "public", archivedAt: null },
+    });
+  }
   const nodes = await prisma.communityNode.findMany({ where: { slug: { in: ["ai", "domain"] } } });
   const bySlug = new Map(nodes.map((node) => [node.slug, node]));
 

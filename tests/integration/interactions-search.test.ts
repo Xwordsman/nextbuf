@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setup } from "@/cli/commands/setup";
+import { ensureCommunityNodeFixtures } from "../support/community-node-fixtures";
 import { disconnectPrismaClient, getPrismaClient } from "@/infrastructure/database/client";
 import { searchContent } from "@/infrastructure/search/index.server";
 import { createReply } from "@/modules/community/replies.server";
@@ -41,6 +42,7 @@ async function createActor(name: string) {
 describe("interactions, search and discovery integration", () => {
   beforeAll(async () => {
     await setup();
+    await ensureCommunityNodeFixtures();
     const prisma = getPrismaClient();
     const users = await prisma.user.findMany({
       where: { email: { startsWith: emailPrefix, endsWith: emailDomain } },

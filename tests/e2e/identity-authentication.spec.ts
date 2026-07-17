@@ -94,6 +94,31 @@ test.describe.serial("identity authentication", () => {
     );
     expect(forbiddenAdminCall).toBe(403);
 
+    const prisma = getPrismaClient();
+    const registeredUser = await prisma.user.findUniqueOrThrow({ where: { email } });
+    await prisma.communityRoleAssignment.upsert({
+      where: {
+        userId_role_scopeKey: { userId: registeredUser.id, role: "admin", scopeKey: "site" },
+      },
+      create: {
+        userId: registeredUser.id,
+        role: "admin",
+        scopeKey: "site",
+        reason: "E2E node creation",
+      },
+      update: {},
+    });
+    const nodeSlug = `e2e-node-${Date.now().toString(36)}`;
+    await page.goto("/admin/nodes");
+    await page.getByLabel("节点标识").fill(nodeSlug);
+    await page.getByLabel("名称", { exact: true }).fill("E2E 自定义节点");
+    await page.getByLabel("简介", { exact: true }).fill("由浏览器测试显式创建的节点");
+    await page.getByRole("button", { name: "创建节点" }).click();
+    await expect(page.getByText(nodeSlug, { exact: true })).toBeVisible();
+    await prisma.communityRoleAssignment.deleteMany({
+      where: { userId: registeredUser.id, role: "admin", scopeKey: "site" },
+    });
+
     const topicTitle = `E2E 用户主题 ${Date.now()}`;
     await page.goto("/topics/new");
     await page.getByLabel("标题").fill(topicTitle);
@@ -158,7 +183,6 @@ test.describe.serial("identity authentication", () => {
     const firstReply = page.locator("#post-2");
     await expect(firstReply.getByText("这是第一条浏览器回复", { exact: false })).toBeVisible();
 
-    const prisma = getPrismaClient();
     const [recipient, actor, notificationTopic] = await Promise.all([
       prisma.user.findUniqueOrThrow({ where: { email } }),
       prisma.user.findUniqueOrThrow({ where: { username: "community_fixture" } }),
