@@ -39,6 +39,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:check": "prisma migrate status",
+    "audit:prod": "pnpm audit --prod --audit-level high",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -199,6 +199,8 @@ Redis 用于快速计数，关键封禁与制裁保存在 PostgreSQL。代理和
 - 错误响应不包含堆栈、连接串、环境变量和用户隐私数据。
 - 依赖更新通过自动检查进入合并请求，不能在生产启动时自动更新。
 
+`v0.13.0` 将 CSP 脚本策略收紧为每请求随机 nonce 与 `strict-dynamic`，生产不允许 `script-src 'unsafe-inline'`；所有 NextBuf 自有写入 Route Handler 由自动扫描测试强制执行精确同源检查，Better Auth Handler 继续使用其原生 trusted origin 与 Cookie 防线。完整威胁模型和审计证据见[公开 Beta 就绪与加固记录](./16-public-beta-readiness.md)。
+
 ## 9. 管理后台安全
 
 - 管理后台使用与前台相同的认证核心，但实施更严格的授权和会话策略。

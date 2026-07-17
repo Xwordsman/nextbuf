@@ -110,6 +110,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Audit production dependencies
+        run: pnpm audit:prod
+
       - name: Validate development and test Compose files
         run: |
           docker compose -f deploy/compose/compose.dev.yml config --quiet

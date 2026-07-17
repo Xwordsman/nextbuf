@@ -36,6 +36,7 @@ NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开
 | [13-installation-operations-runbook.md](./13-installation-operations-runbook.md) | Docker、宝塔、非 Docker、升级、备份与恢复步骤 | 部署、运维 |
 | [14-project-status-handoff.md](./14-project-status-handoff.md) | 当前状态、下一步、阻断项和交接规则 | 所有参与者、AI |
 | [15-license-attribution-policy.md](./15-license-attribution-policy.md) | AGPLv3、页脚署名、商标和贡献许可规则 | 所有参与者、部署者 |
+| [16-public-beta-readiness.md](./16-public-beta-readiness.md) | `v0.13.0` 威胁模型、安全、性能、迁移、恢复和 Beta 验收记录 | 安全、测试、发布、运维 |
 | [adr/](./adr/) | 关键架构决策的背景、取舍和后果 | 架构、维护者 |
 
 ## 推荐阅读顺序

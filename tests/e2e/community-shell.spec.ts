@@ -121,4 +121,17 @@ test.describe("community shell", () => {
 
     expect(blockingViolations).toEqual([]);
   });
+
+  test("offers a keyboard skip link and honors reduced motion", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await openHome(page);
+
+    await page.keyboard.press("Tab");
+    const skipLink = page.getByRole("link", { name: "跳到主要内容" });
+    await expect(skipLink).toBeFocused();
+    await expect(skipLink).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#main-content")).toBeFocused();
+    await expect(page.locator("html")).toHaveCSS("scroll-behavior", "auto");
+  });
 });

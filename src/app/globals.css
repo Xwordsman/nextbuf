@@ -55,6 +55,21 @@ html {
   scroll-behavior: smooth;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 body {
   min-height: 100vh;
   margin: 0;
@@ -122,9 +137,33 @@ button:disabled {
   grid-template-rows: auto 1fr auto;
 }
 
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--foreground);
+  box-shadow: var(--shadow-dropdown);
+  transform: translateY(calc(-100% - 16px));
+}
+
+.skip-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  transform: translateY(0);
+}
+
 .page-frame {
   width: 100%;
   min-width: 0;
+}
+
+.page-frame:focus {
+  outline: none;
 }
 
 .site-header {

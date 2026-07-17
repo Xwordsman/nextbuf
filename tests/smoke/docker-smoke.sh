@@ -118,12 +118,14 @@ done
 
 stage 'create and reject repeated initial administrator setup'
 response=$(curl --fail-with-body --silent \
+  -H 'origin: http://127.0.0.1:3100' \
   -H 'content-type: application/json' \
   -d '{"token":"nextbuf-smoke-setup-token-at-least-32-characters","name":"Smoke Admin","username":"smoke_admin","email":"smoke-admin@nextbuf.test","password":"smoke-admin-password-12345"}' \
   http://127.0.0.1:3100/api/setup)
 printf '%s' "$response" | grep -q '"ok":true'
 
 repeat_status=$(curl --silent -o /tmp/nextbuf-setup-repeat.json -w '%{http_code}' \
+  -H 'origin: http://127.0.0.1:3100' \
   -H 'content-type: application/json' \
   -d '{"token":"nextbuf-smoke-setup-token-at-least-32-characters","name":"Other Admin","username":"other_admin","email":"other-admin@nextbuf.test","password":"other-admin-password-12345"}' \
   http://127.0.0.1:3100/api/setup)

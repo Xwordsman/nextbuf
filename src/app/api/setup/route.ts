@@ -5,6 +5,7 @@ import {
   InstallationError,
 } from "@/modules/installation/installation.server";
 import { resolveRequestId } from "@/shared/http/request-id";
+import { hasSameOrigin } from "@/shared/http/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,9 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  if (!hasSameOrigin(request)) {
+    return Response.json({ ok: false, code: "invalid_origin" }, { status: 403 });
+  }
   const input = setupSchema.safeParse(await request.json().catch(() => null));
   if (!input.success) return Response.json({ ok: false, code: "invalid_setup" }, { status: 400 });
 

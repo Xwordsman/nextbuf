@@ -40,12 +40,17 @@ export default async function RootLayout({
         <TooltipProvider>
           <CommunityUiProvider>
             <div className="app-shell">
+              <a className="skip-link" href="#main-content">
+                跳到主要内容
+              </a>
               <SiteHeader
                 account={account}
                 siteName={settings.siteName}
                 registrationOpen={settings.registrationMode !== "closed"}
               />
-              <div className="page-frame">{children}</div>
+              <div id="main-content" className="page-frame" tabIndex={-1}>
+                {children}
+              </div>
               <SiteFooter siteName={settings.siteName} />
             </div>
           </CommunityUiProvider>

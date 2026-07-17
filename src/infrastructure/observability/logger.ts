@@ -10,15 +10,43 @@ const levelPriority: Record<LogLevel, number> = {
   error: 40,
 };
 
-const redactedKeys = /authorization|cookie|password|secret|token|database_url|redis_url/i;
+const redactedKeys =
+  /authorization|cookie|password|secret|token|credential|database_?url|redis_?url|mail_?payload|email|ip_?address|payload|request_?body/i;
+const connectionPassword = /\b((?:postgres(?:ql)?|redis(?:s)?):\/\/[^\s:/@]+:)[^\s/@]+@/giu;
+const bearerToken = /\b(Bearer)\s+[A-Za-z0-9._~+/=-]+/giu;
+const headerSecret = /\b(cookie|set-cookie|authorization)\s*[:=]\s*[^\r\n]+/giu;
 
-function redact(context: LogContext): LogContext {
+function redactString(value: string): string {
+  return value
+    .replace(connectionPassword, "$1[REDACTED]@")
+    .replace(bearerToken, "$1 [REDACTED]")
+    .replace(headerSecret, "$1: [REDACTED]");
+}
+
+function redactValue(value: unknown, seen: WeakSet<object>, depth: number): unknown {
+  if (typeof value === "string") return redactString(value);
+  if (value === null || typeof value !== "object") return value;
+  if (value instanceof Date) return value;
+  if (depth >= 8) return "[TRUNCATED]";
+  if (seen.has(value)) return "[CIRCULAR]";
+  seen.add(value);
+
+  if (value instanceof Error) {
+    return { name: value.name, message: redactString(value.message) };
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactValue(item, seen, depth + 1));
+  }
   return Object.fromEntries(
-    Object.entries(context).map(([key, value]) => [
+    Object.entries(value).map(([key, nested]) => [
       key,
-      redactedKeys.test(key) ? "[REDACTED]" : value,
+      redactedKeys.test(key) ? "[REDACTED]" : redactValue(nested, seen, depth + 1),
     ]),
   );
+}
+
+export function redactLogContext(context: LogContext): LogContext {
+  return redactValue(context, new WeakSet(), 0) as LogContext;
 }
 
 function write(level: LogLevel, message: string, context: LogContext = {}): void {
@@ -26,11 +54,12 @@ function write(level: LogLevel, message: string, context: LogContext = {}): void
     return;
   }
 
+  const safeContext = redactLogContext(context);
   const entry = {
     timestamp: new Date().toISOString(),
     level,
-    message,
-    ...redact(context),
+    message: redactString(message),
+    ...safeContext,
   };
 
   if (runtimeEnv.LOG_FORMAT === "json") {
@@ -39,8 +68,8 @@ function write(level: LogLevel, message: string, context: LogContext = {}): void
   }
 
   console[level === "debug" ? "log" : level](
-    `[${entry.timestamp}] ${level}: ${message}`,
-    redact(context),
+    `[${entry.timestamp}] ${level}: ${entry.message}`,
+    safeContext,
   );
 }
 

@@ -12,6 +12,7 @@ import { isUsernameAvailable } from "@/modules/profiles/username.server";
 import { validateUsername } from "@/modules/profiles/username-policy";
 import { getSiteSettings } from "@/modules/settings/settings.server";
 import { isInstallationComplete } from "@/modules/installation/installation.server";
+import { hasSameOrigin } from "@/shared/http/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +51,7 @@ function acceptedResponse(): Response {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  if (!hasSameOrigin(request)) return errorResponse("invalid_origin", 403);
   const input = registrationSchema.safeParse(await request.json().catch(() => null));
   if (!input.success) return errorResponse("invalid_registration", 400);
 

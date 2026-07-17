@@ -161,6 +161,23 @@ const authEnvironmentSchema = serviceEnvironmentSchema
           });
         }
       }
+      if (environment.S3_ENDPOINT) {
+        const endpoint = new URL(environment.S3_ENDPOINT);
+        if (!["http:", "https:"].includes(endpoint.protocol)) {
+          context.addIssue({
+            code: "custom",
+            path: ["S3_ENDPOINT"],
+            message: "S3_ENDPOINT must use http or https",
+          });
+        }
+        if (endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+          context.addIssue({
+            code: "custom",
+            path: ["S3_ENDPOINT"],
+            message: "S3_ENDPOINT must not contain credentials, query parameters or fragments",
+          });
+        }
+      }
     }
 
     if (environment.NODE_ENV === "production") {
