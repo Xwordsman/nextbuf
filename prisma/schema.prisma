@@ -166,6 +166,7 @@ model CommunityPost {
   @@unique([topicId, position], map: "community_posts_topic_position_key")
   @@index([authorId, createdAt], map: "community_posts_author_created_idx")
   @@index([topicId, status], map: "community_posts_topic_status_idx")
+  @@index([deletedById], map: "community_posts_deleted_by_idx")
   @@map("community_posts")
 }
 
@@ -203,6 +204,7 @@ model CommunityPostDraft {
 
   @@unique([topicId, authorId], map: "community_post_drafts_topic_author_key")
   @@index([authorId, updatedAt], map: "community_post_drafts_author_updated_idx")
+  @@index([quotedPostId], map: "community_post_drafts_quoted_post_idx")
   @@map("community_post_drafts")
 }
 
@@ -299,6 +301,8 @@ model CommunityRoleAssignment {
 
   @@unique([userId, role, scopeKey], map: "community_role_assignments_user_role_scope_key")
   @@index([role, scopeKey], map: "community_role_assignments_role_scope_idx")
+  @@index([nodeId], map: "community_role_assignments_node_idx")
+  @@index([grantedById], map: "community_role_assignments_granted_by_idx")
   @@map("community_role_assignments")
 }
 
@@ -333,6 +337,8 @@ model ModerationCase {
   @@index([topicId, createdAt], map: "moderation_cases_topic_idx")
   @@index([postId, createdAt], map: "moderation_cases_post_idx")
   @@index([reportedUserId, createdAt], map: "moderation_cases_user_idx")
+  @@index([createdById], map: "moderation_cases_created_by_idx")
+  @@index([assignedToId], map: "moderation_cases_assigned_to_idx")
   @@map("moderation_cases")
 }
 
@@ -364,6 +370,9 @@ model ModerationReport {
   @@unique([reporterId, activeTargetKey], map: "moderation_reports_reporter_active_target_key")
   @@index([caseId, createdAt], map: "moderation_reports_case_created_idx")
   @@index([reporterId, createdAt], map: "moderation_reports_reporter_created_idx")
+  @@index([topicId], map: "moderation_reports_topic_idx")
+  @@index([postId], map: "moderation_reports_post_idx")
+  @@index([reportedUserId], map: "moderation_reports_reported_user_idx")
   @@map("moderation_reports")
 }
 
@@ -395,6 +404,10 @@ model ModerationAction {
 
   @@index([caseId, createdAt], map: "moderation_actions_case_created_idx")
   @@index([actorId, createdAt], map: "moderation_actions_actor_created_idx")
+  @@index([topicId], map: "moderation_actions_topic_idx")
+  @@index([postId], map: "moderation_actions_post_idx")
+  @@index([targetUserId], map: "moderation_actions_target_user_idx")
+  @@index([nodeId], map: "moderation_actions_node_idx")
   @@map("moderation_actions")
 }
 
@@ -423,6 +436,9 @@ model ModerationSanction {
 
   @@index([userId, revokedAt, startsAt, endsAt], map: "moderation_sanctions_user_active_idx")
   @@index([nodeId, userId, revokedAt], map: "moderation_sanctions_node_user_idx")
+  @@index([caseId], map: "moderation_sanctions_case_idx")
+  @@index([createdById], map: "moderation_sanctions_created_by_idx")
+  @@index([revokedById], map: "moderation_sanctions_revoked_by_idx")
   @@map("moderation_sanctions")
 }
 
@@ -459,6 +475,7 @@ model TrustRuleVersion {
   batches     TrustRecalculationBatch[]
 
   @@index([status, createdAt], map: "trust_rule_versions_status_created_idx")
+  @@index([createdById], map: "trust_rule_versions_created_by_idx")
   @@map("trust_rule_versions")
 }
 
@@ -478,6 +495,7 @@ model TrustUserState {
   ruleVersion    TrustRuleVersion @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
 
   @@index([currentLevel, calculatedAt], map: "trust_user_states_level_calculated_idx")
+  @@index([ruleVersionId], map: "trust_user_states_rule_version_idx")
   @@map("trust_user_states")
 }
 
@@ -501,6 +519,8 @@ model TrustLevelHistory {
 
   @@index([userId, createdAt], map: "trust_level_history_user_created_idx")
   @@index([batchId], map: "trust_level_history_batch_idx")
+  @@index([ruleVersionId], map: "trust_level_history_rule_version_idx")
+  @@index([actorId], map: "trust_level_history_actor_idx")
   @@map("trust_level_history")
 }
 
@@ -525,6 +545,7 @@ model TrustRecalculationBatch {
   histories      TrustLevelHistory[]
 
   @@index([status, createdAt], map: "trust_recalculation_batches_status_created_idx")
+  @@index([requestedById], map: "trust_recalculation_batches_requested_by_idx")
   @@map("trust_recalculation_batches")
 }
 
@@ -547,6 +568,7 @@ model CommunityAuditEvent {
   @@index([postId, createdAt], map: "community_audit_post_created_idx")
   @@index([actorId, createdAt], map: "community_audit_actor_created_idx")
   @@index([action, createdAt], map: "community_audit_action_created_idx")
+  @@index([nodeId, createdAt], map: "community_audit_node_created_idx")
   @@map("community_audit_events")
 }
 
@@ -612,6 +634,7 @@ model InteractionTopicReadState {
 
   @@id([userId, topicId], map: "interaction_topic_read_states_pkey")
   @@index([userId, lastReadAt], map: "interaction_topic_read_states_user_read_idx")
+  @@index([topicId], map: "interaction_topic_read_states_topic_idx")
   @@map("interaction_topic_read_states")
 }
 
@@ -685,6 +708,7 @@ model SiteSetting {
   updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   updatedBy         User?    @relation("SiteSettingUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
 
+  @@index([updatedById], map: "site_settings_updated_by_idx")
   @@map("site_settings")
 }
 
@@ -803,6 +827,9 @@ model Notification {
 
   @@index([recipientId, archivedAt, createdAt], map: "notifications_recipient_archive_created_idx")
   @@index([recipientId, readAt, createdAt], map: "notifications_recipient_read_created_idx")
+  @@index([actorId], map: "notifications_actor_idx")
+  @@index([topicId], map: "notifications_topic_idx")
+  @@index([postId], map: "notifications_post_idx")
   @@map("notifications")
 }
 
@@ -913,6 +940,7 @@ model WorkerJobFailure {
   @@unique([queueName, jobId], map: "worker_job_failures_queue_job_key")
   @@index([resolvedAt, failedAt], map: "worker_job_failures_resolved_failed_idx")
   @@index([replayRequestedAt, replayedAt], map: "worker_job_failures_replay_idx")
+  @@index([replayRequestedById], map: "worker_job_failures_replay_requested_by_idx")
   @@map("worker_job_failures")
 }
 
