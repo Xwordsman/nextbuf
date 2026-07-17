@@ -194,7 +194,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - Playwright 共 10 项，覆盖完整身份/社区旅程、性能样本、三种视口布局，以及四个公开页面的 serious/critical axe、水平溢出、键盘和 reduced-motion。
 - 主分支 `0.13.0` 候选已由 CI #56/#57 完成 amd64 setup、首次管理员、故障注入、空卷恢复和 `v0.12.0` 升级；正式标签 CI #58 已重跑 amd64 并完成原生 arm64、manifest、SBOM/provenance、非 Docker x64 归档和 Release。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
-- 面板启动协调修订已增加容器冒烟合同：空库默认启动、setup 失败门禁、仅四个生产服务且不存在停止的 setup 容器；本地静态检查通过后仍需等待主分支原生 amd64 Actions 验证。
+- `v0.13.1` 主分支 CI #63 已通过完整检查与原生 amd64 镜像冒烟；标签 CI #64 已通过 amd64/arm64 空安装、无预置节点、首次访问 307 跳转 `/setup`、首次管理员、升级保留既有节点、恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release 发布。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
 ## 4. 当前真实数据边界
