@@ -112,29 +112,14 @@ function accountRequest(
   });
 }
 
-function avatarRequest(cookie: string, marker: number) {
+function avatarRequest(cookie: string) {
   const form = new FormData();
   form.set(
     "avatar",
     new File(
       [
         new Uint8Array([
-          0x52,
-          0x49,
-          0x46,
-          0x46,
-          8 + marker,
-          0,
-          0,
-          0,
-          0x57,
-          0x45,
-          0x42,
-          0x50,
-          0x56,
-          0x50,
-          0x38,
-          0x4c,
+          0x52, 0x49, 0x46, 0x46, 8, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x4c,
         ]),
       ],
       "avatar.webp",
@@ -328,7 +313,7 @@ describe("identity authentication integration", () => {
     );
     expect(cooldown.status).toBe(429);
 
-    const firstAvatar = await updateAvatar(avatarRequest(cookie, 1));
+    const firstAvatar = await updateAvatar(avatarRequest(cookie));
     expect(firstAvatar.status).toBe(200);
     const firstImage = String((await firstAvatar.json()).image);
     const firstKey = firstImage.split("/").at(-1);
@@ -339,7 +324,7 @@ describe("identity authentication integration", () => {
       }),
     ).resolves.toMatchObject({ status: 200 });
 
-    const secondAvatar = await updateAvatar(avatarRequest(cookie, 2));
+    const secondAvatar = await updateAvatar(avatarRequest(cookie));
     expect(secondAvatar.status).toBe(200);
     await expect(
       readAvatar(new Request(`http://127.0.0.1:3000${firstImage}`), {
