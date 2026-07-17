@@ -56,13 +56,27 @@ wait_for_container_health() {
 expect_doctor_failure() {
   check=$1
   report="/tmp/nextbuf-doctor-$check-$$.log"
-  if NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor >"$report" 2>&1; then
+  passed=0
+  if [ "$check" = storage ]; then
+    if NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE --profile tools run --rm --no-deps \
+      -e STORAGE_LOCAL_PATH=/proc/nextbuf-storage-probe doctor >"$report" 2>&1; then
+      passed=1
+    fi
+  elif NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor >"$report" 2>&1; then
+    passed=1
+  fi
+  if [ "$passed" = 1 ]; then
     printf 'Doctor unexpectedly passed while %s was unavailable\n' "$check" >&2
     cat "$report" >&2
     rm -f "$report"
     return 1
   fi
-  if ! sed -n "/\"$check\": {/,/^[[:space:]]*},*$/p" "$report" | grep -q '"ok": false'; then
+  if ! awk -v marker="\"$check\":" '
+    index($0, marker) { active = 1; next }
+    active && /"ok": false/ { found = 1; exit }
+    active && /^    "[a-z]/ { exit }
+    END { exit found ? 0 : 1 }
+  ' "$report"; then
     printf 'Doctor did not attribute the failure to %s\n' "$check" >&2
     cat "$report" >&2
     rm -f "$report"
@@ -221,10 +235,8 @@ if [ "$RUN_FAULTS" = 1 ]; then
   NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d mailpit
   wait_for_container_health mailpit 120
 
-  stage 'inject and diagnose an unwritable local storage volume'
-  NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --user root --entrypoint sh setup -ec 'chmod 0500 /app/data/uploads'
+  stage 'inject and diagnose an unwritable local storage target'
   expect_doctor_failure storage
-  NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --user root --entrypoint sh setup -ec 'chmod 0700 /app/data/uploads'
 
   stage 'verify all dependencies after fault recovery'
   NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor
