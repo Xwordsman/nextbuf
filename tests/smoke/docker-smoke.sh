@@ -6,6 +6,7 @@ cd "$ROOT"
 
 ARCH=${1:-amd64}
 RUN_RESTORE=${RUN_RESTORE:-0}
+RUN_FAULTS=${RUN_FAULTS:-0}
 SMOKE_TIMEOUT_SECONDS=${SMOKE_TIMEOUT_SECONDS:-1200}
 SMOKE_VERSION=${NEXTBUF_SMOKE_VERSION:-0.12.0}
 ENV_FILE=.env.smoke
@@ -17,6 +18,57 @@ watchdog_pid=
 stage() {
   SMOKE_STAGE=$1
   printf '==> %s\n' "$SMOKE_STAGE"
+}
+
+wait_for_url() {
+  url=$1
+  timeout=${2:-180}
+  deadline=$(( $(date +%s) + timeout ))
+  until curl --fail --silent --max-time 5 "$url" >/dev/null 2>&1; do
+    [ "$(date +%s)" -lt "$deadline" ] || return 1
+    sleep 2
+  done
+}
+
+expect_url_failure() {
+  url=$1
+  timeout=${2:-30}
+  deadline=$(( $(date +%s) + timeout ))
+  while curl --fail --silent --max-time 5 "$url" >/dev/null 2>&1; do
+    [ "$(date +%s)" -lt "$deadline" ] || return 1
+    sleep 1
+  done
+}
+
+wait_for_container_health() {
+  service=$1
+  timeout=${2:-120}
+  deadline=$(( $(date +%s) + timeout ))
+  while :; do
+    id=$(NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE ps -q "$service")
+    status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id" 2>/dev/null || true)
+    [ "$status" = healthy ] && return 0
+    [ "$(date +%s)" -lt "$deadline" ] || return 1
+    sleep 2
+  done
+}
+
+expect_doctor_failure() {
+  check=$1
+  report="/tmp/nextbuf-doctor-$check-$$.log"
+  if NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor >"$report" 2>&1; then
+    printf 'Doctor unexpectedly passed while %s was unavailable\n' "$check" >&2
+    cat "$report" >&2
+    rm -f "$report"
+    return 1
+  fi
+  if ! sed -n "/\"$check\": {/,/^[[:space:]]*},*$/p" "$report" | grep -q '"ok": false'; then
+    printf 'Doctor did not attribute the failure to %s\n' "$check" >&2
+    cat "$report" >&2
+    rm -f "$report"
+    return 1
+  fi
+  rm -f "$report"
 }
 
 diagnose_failure() {
@@ -140,6 +192,44 @@ done
 
 stage 'run doctor and prepare backup fixture'
 NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor
+
+if [ "$RUN_FAULTS" = 1 ]; then
+  stage 'inject and recover a PostgreSQL outage'
+  NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE stop postgres
+  expect_url_failure http://127.0.0.1:3100/health/ready
+  NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d postgres
+  wait_for_container_health postgres 180
+  wait_for_url http://127.0.0.1:3100/health/ready 180
+
+  stage 'inject and recover a Redis outage'
+  NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE stop redis
+  expect_url_failure http://127.0.0.1:3100/health/ready
+  NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d redis
+  wait_for_container_health redis 120
+  wait_for_url http://127.0.0.1:3100/health/ready 180
+  wait_for_url http://127.0.0.1:3100/health/worker 180
+
+  stage 'inject and recover a Worker outage'
+  NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE stop worker
+  expect_url_failure http://127.0.0.1:3100/health/worker 60
+  NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d --no-deps worker
+  wait_for_url http://127.0.0.1:3100/health/worker 180
+
+  stage 'inject and diagnose an SMTP outage'
+  NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE stop mailpit
+  expect_doctor_failure mail
+  NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d mailpit
+  wait_for_container_health mailpit 120
+
+  stage 'inject and diagnose an unwritable local storage volume'
+  NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --user root --entrypoint sh setup -ec 'chmod 0500 /app/data/uploads'
+  expect_doctor_failure storage
+  NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --user root --entrypoint sh setup -ec 'chmod 0700 /app/data/uploads'
+
+  stage 'verify all dependencies after fault recovery'
+  NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor
+fi
+
 printf 'attachment-smoke-%s\n' "$ARCH" | NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup -ec 'cat > /app/data/uploads/restore-proof.txt'
 
 if [ "$RUN_RESTORE" = 1 ]; then

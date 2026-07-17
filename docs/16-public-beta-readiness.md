@@ -117,7 +117,7 @@ pnpm audit --prod --json
 | 索引、慢查询、连接池、Redis 和积压容量 | 进行中 | 外键索引检查、Doctor 容量快照、后台积压告警和最低资源档位 |
 | 桌面、平板、移动端、键盘和 axe | 已完成 | 390/1024/1440 三种视口；首页、节点、搜索、主题页 serious/critical axe 门槛；跳转主内容和 reduced-motion |
 | 从受支持 Beta 升级、备份和恢复 | 待完成 | `v0.12.0 -> v0.13.0` 镜像升级与空卷恢复 |
-| 故障诊断和管理员告警 | 待完成 | PostgreSQL/Redis/Worker/SMTP/存储故障注入 |
+| 故障诊断和管理员告警 | 候选验证 | PostgreSQL/Redis/Worker readiness 恢复；SMTP/存储 doctor 归因；后台积压告警 |
 | 邀请用户安装和核心旅程 | 待人工验收 | 安装、注册、发帖、举报、升级、恢复记录 |
 
 ## 8. 当前已知限制
@@ -202,3 +202,15 @@ Playwright 在 Chromium 中固定执行以下公开页面矩阵：
 - 动效门槛：`prefers-reduced-motion: reduce` 关闭平滑滚动，并把动画和过渡降到近零时长。
 
 axe 是自动回归门槛，不替代读屏器、缩放至 200%、高对比度和真实键盘旅程的人工验收。邀请测试记录仍需覆盖登录、编辑器、对话框和后台高风险操作。
+
+## 13. 故障注入与恢复
+
+定时、手动和正式标签流水线在 amd64 候选镜像上执行真实 Compose 故障演练：
+
+- 停止 PostgreSQL 和 Redis 后，`/health/ready` 必须失败；依赖恢复后 Web readiness 必须重新成功。
+- 停止 Worker 后，`/health/worker` 必须失败；重新启动 Worker 后心跳必须恢复。
+- 停止测试 SMTP 后，`nextbuf doctor` 必须失败并把问题归因到 `mail`；Mailpit 恢复后诊断必须通过。
+- 暂时移除本地附件卷写权限后，`nextbuf doctor` 必须失败并把问题归因到 `storage`；恢复权限后诊断必须通过。
+- 全部注入结束后再次执行完整 doctor，防止“单项恢复但整体仍降级”的假阳性。
+
+普通主分支提交不执行这组慢速故障演练，仍执行 Web/Worker/数据库/Redis/首次管理员基础镜像冒烟。生产环境的托管 PostgreSQL、Redis、SMTP 和 S3 仍需部署者按运行手册完成实例级告警和恢复演练。
