@@ -117,7 +117,26 @@ function avatarRequest(cookie: string, marker: number) {
   form.set(
     "avatar",
     new File(
-      [new Uint8Array([0x52, 0x49, 0x46, 0x46, marker, 0, 0, 0, 0x57, 0x45, 0x42, 0x50])],
+      [
+        new Uint8Array([
+          0x52,
+          0x49,
+          0x46,
+          0x46,
+          8 + marker,
+          0,
+          0,
+          0,
+          0x57,
+          0x45,
+          0x42,
+          0x50,
+          0x56,
+          0x50,
+          0x38,
+          0x4c,
+        ]),
+      ],
       "avatar.webp",
       { type: "image/webp" },
     ),
@@ -227,6 +246,7 @@ describe("identity authentication integration", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
+          origin: "http://127.0.0.1:3000",
           "x-forwarded-for": "192.0.2.20",
         },
         body: JSON.stringify({
