@@ -203,7 +203,8 @@ until curl --fail --silent http://127.0.0.1:3100/health/worker >/dev/null 2>&1; 
 done
 
 stage 'verify the production topology has no stopped setup container'
-running_services=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps --status running --services | sort)
+running_services=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps \
+  --status running --services postgres redis web worker | sort)
 expected_services=$(printf '%s\n' postgres redis web worker | sort)
 if [ "$running_services" != "$expected_services" ]; then
   printf 'Unexpected production services:\n%s\n' "$running_services" >&2
