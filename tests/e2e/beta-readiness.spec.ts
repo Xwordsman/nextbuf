@@ -1,3 +1,4 @@
+import { appendFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
 function percentile(values: number[], ratio: number): number {
@@ -34,5 +35,25 @@ test("captures repeatable public read latency budgets", async ({ page, request }
     body: Buffer.from(`${JSON.stringify(results, null, 2)}\n`),
     contentType: "application/json",
   });
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    const rows = results.map(
+      (result) =>
+        `| \`${result.path}\` | ${result.samples} | ${result.p50Ms} | ${result.p95Ms} | ${result.maxMs} |`,
+    );
+    await appendFile(
+      process.env.GITHUB_STEP_SUMMARY,
+      [
+        "## Public read latency sample",
+        "",
+        "| Path | Samples | p50 ms | p95 ms | max ms |",
+        "| --- | ---: | ---: | ---: | ---: |",
+        ...rows,
+        "",
+        "> Ephemeral GitHub Actions services, one request at a time. This is a regression gate, not a production capacity claim.",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+  }
   for (const result of results) expect(result.p95Ms, result.path).toBeLessThan(3_000);
 });
