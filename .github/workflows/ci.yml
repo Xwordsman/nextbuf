@@ -129,6 +129,7 @@ jobs:
           sh -n deploy/bin/nextbuf
           sh -n deploy/bin/nextbuf-service
           sh -n tests/smoke/docker-smoke.sh
+          sh -n tests/smoke/docker-upgrade-smoke.sh
 
       - name: Check formatting
         run: pnpm format:check
@@ -232,6 +233,15 @@ jobs:
         run: |
           chmod +x nextbufctl tests/smoke/docker-smoke.sh
           timeout --signal=TERM --kill-after=30s 20m tests/smoke/docker-smoke.sh "${{ matrix.architecture }}"
+
+      - name: Upgrade v0.12.0 to the release candidate
+        if: matrix.architecture == 'amd64' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          NEXTBUF_SMOKE_VERSION: ${{ steps.version.outputs.version }}
+          NEXTBUF_UPGRADE_BASELINE: 0.12.0
+        run: |
+          chmod +x nextbufctl tests/smoke/docker-upgrade-smoke.sh
+          timeout --signal=TERM --kill-after=30s 12m tests/smoke/docker-upgrade-smoke.sh "${{ matrix.architecture }}"
 
   archive-build:
     if: startsWith(github.ref, 'refs/tags/v')

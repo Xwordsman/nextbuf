@@ -302,10 +302,10 @@ do_upgrade() {
     die "image pull failed; configuration restored to $current"
   fi
   compose stop web worker
-  if ! compose --profile tools run --rm migrate; then
+  if ! compose run --rm setup; then
     env_set NEXTBUF_VERSION "$current"
     compose up -d --no-deps web worker || true
-    die "migration failed; image version restored. Backup: $backup_path"
+    die "upgrade setup failed; image version restored. Backup: $backup_path"
   fi
   compose up -d --no-deps web worker
   wait_for_service web 180
