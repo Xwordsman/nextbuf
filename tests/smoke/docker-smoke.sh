@@ -12,6 +12,7 @@ SMOKE_VERSION=${NEXTBUF_SMOKE_VERSION:-0.13.0}
 ENV_FILE=.env.smoke
 COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml -f deploy/compose/compose.smoke.yml"
 BASE_COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml"
+STORAGE_BLOCKER=/app/data/uploads/.nextbuf-storage-blocker
 SMOKE_STAGE=bootstrap
 watchdog_pid=
 
@@ -58,11 +59,13 @@ expect_doctor_failure() {
   report="/tmp/nextbuf-doctor-$check-$$.log"
   passed=0
   if [ "$check" = storage ]; then
-    if NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE --profile tools run --rm --no-deps \
-      -e STORAGE_LOCAL_PATH=/proc/nextbuf-storage-probe doctor >"$report" 2>&1; then
+    if NEXTBUF_ENV_FILE="$ENV_FILE" timeout --signal=TERM --kill-after=5s 60s \
+      $BASE_COMPOSE --profile tools run --rm --no-deps \
+      -e STORAGE_LOCAL_PATH="$STORAGE_BLOCKER" doctor >"$report" 2>&1; then
       passed=1
     fi
-  elif NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor >"$report" 2>&1; then
+  elif NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml \
+    timeout --signal=TERM --kill-after=5s 60s ./nextbufctl doctor >"$report" 2>&1; then
     passed=1
   fi
   if [ "$passed" = 1 ]; then
@@ -235,8 +238,12 @@ if [ "$RUN_FAULTS" = 1 ]; then
   NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d mailpit
   wait_for_container_health mailpit 120
 
-  stage 'inject and diagnose an unwritable local storage target'
+  stage 'inject and diagnose an invalid local storage root'
+  NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup \
+    -ec ': > /app/data/uploads/.nextbuf-storage-blocker'
   expect_doctor_failure storage
+  NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup \
+    -ec 'rm -f /app/data/uploads/.nextbuf-storage-blocker'
 
   stage 'verify all dependencies after fault recovery'
   NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor
