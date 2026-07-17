@@ -159,6 +159,7 @@
 - 无障碍：390/1024/1440 视口覆盖首页、节点、搜索、主题页 serious/critical axe、水平溢出、键盘跳转和 reduced-motion；修复灰底次要文字对比度。
 - 运维恢复：候选流水线注入 PostgreSQL、Redis、Worker、SMTP 和存储故障，恢复后完整 doctor 必须通过；空卷恢复继续验证数据库、附件和配置。
 - 跨版本：`nextbufctl upgrade` 使用目标镜像幂等 setup；`v0.12.0 -> v0.13.0` 验证升级前备份、首位管理员、附件、迁移和运行时版本。
+- 面板部署修订：默认 Compose 只创建 Web、Worker、PostgreSQL、Redis；Web 启动前幂等执行 setup/preflight，Worker 等待 Web 健康，setup 工具 profile 不再留下导致宝塔误报项目停止的容器。决策见 [ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)。
 - 交付：公开 Beta 已知限制、2 vCPU/4 GiB/40 GiB 最低档位、性能报告、人工安装/旅程/升级/恢复验收模板见 [Beta 就绪记录](./16-public-beta-readiness.md)。
 
 ## 2. 关键命令
@@ -192,6 +193,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - Playwright 共 10 项，覆盖完整身份/社区旅程、性能样本、三种视口布局，以及四个公开页面的 serious/critical axe、水平溢出、键盘和 reduced-motion。
 - 主分支 `0.13.0` 候选已由 CI #56/#57 完成 amd64 setup、首次管理员、故障注入、空卷恢复和 `v0.12.0` 升级；正式标签 CI #58 已重跑 amd64 并完成原生 arm64、manifest、SBOM/provenance、非 Docker x64 归档和 Release。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
+- 面板启动协调修订已增加容器冒烟合同：空库默认启动、setup 失败门禁、仅四个生产服务且不存在停止的 setup 容器；本地静态检查通过后仍需等待主分支原生 amd64 Actions 验证。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
 ## 4. 当前真实数据边界
@@ -243,6 +245,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 17. 举报、角色、制裁和信任遵循 ADR-0013：有效制裁直接参与服务端授权，TL 不授予管理角色，规则必须先预估再分批应用。
 18. 后台、站点设置和管理员二次验证遵循 ADR-0014：在线运营设置与启动密钥分层，高风险操作绑定当前 Better Auth Session，Provider Secret 不进入浏览器。
 19. 生产打包、首次管理员、备份恢复与升级遵循 ADR-0015：一个镜像多入口、setup 门禁、Better Auth 首账号、可验证备份和迁移后保守回滚。
+20. 默认面板 Compose 启动遵循 ADR-0016：单机 Web 协调幂等 setup/preflight，Worker 等待 Web 健康，显式 setup 只作为临时工具运行。
 
 ## 6. 下一步只做 Beta 验收
 

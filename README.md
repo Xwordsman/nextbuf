@@ -18,7 +18,7 @@ NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开
 - 幂等点赞/收藏/关注、阅读状态、反滥用浏览聚合和热门算法 v1
 - PostgreSQL FTS/`pg_trgm` 搜索与可替换 `SearchProvider`
 - 一个应用镜像，Web 与 Worker 分开运行
-- 生产 Dockerfile、四容器 Compose、setup/preflight 门禁和 GHCR 多架构发布
+- 生产 Dockerfile、面板友好的四容器 Compose、setup/preflight 门禁和 GHCR 多架构发布
 - `nextbufctl` 初始化、状态、日志、诊断、备份、恢复与升级
 - 事务性 Outbox、数据库内幂等任务和 Web/Worker 健康检查
 - 结构化通知、普通邮件偏好、持久化失败任务、手工重放和分布式周期调度

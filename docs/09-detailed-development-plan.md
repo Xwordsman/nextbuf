@@ -392,7 +392,7 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 实现结果（`v0.12.0`）：
 
 - 根目录生产 `Dockerfile` 构建一个非 root Node.js 24 镜像，统一包含 Web、Worker、Prisma 迁移、setup、preflight、doctor、邀请和邮件 CLI；Web/Worker 启动前验证镜像版本、迁移全集、依赖、存储和 PostgreSQL 运行门禁。
-- `compose.yml` 默认运行 Web、Worker、PostgreSQL 18、Redis 8 四个常驻服务，setup 成功退出后才允许应用启动；PostgreSQL、Redis、附件使用独立命名卷，只有 Web 绑定宿主机 loopback。
+- `compose.yml` 默认运行 Web、Worker、PostgreSQL 18、Redis 8 四个常驻服务；面板兼容修订由单机 Web 在启动前幂等执行 setup/preflight，Worker 等待 Web 健康，默认不保留停止的 setup 容器。PostgreSQL、Redis、附件使用独立命名卷，只有 Web 绑定宿主机 loopback。
 - `nextbufctl` 实现 init/start/stop/status/logs/doctor/backup/restore/upgrade，保留等价 Compose 命令。备份格式 `nextbuf-backup-v1` 包含 PostgreSQL custom dump、本地附件、配置、版本清单与 SHA-256；Redis 明确可重建。
 - `/setup` 使用环境中的一次性 `SETUP_TOKEN`，通过 Better Auth 创建首位邮箱密码账号，在受锁事务内授予唯一首个站点管理员并写治理审计/安装完成状态；普通邮箱/OAuth 注册在安装完成前被拒绝。
 - GitHub Actions 的日常主分支只追加原生 amd64 冒烟；定时、手动和标签运行使用原生 amd64/arm64 Runner 分别执行 setup、首次管理员与 Web/Worker 冒烟，amd64 额外执行删除卷后的空安装恢复。标签中每个架构只构建一次，通过后合并 GHCR manifest，并发布 SBOM/provenance、非 Docker x64 tar.gz、SHA-256 和 GitHub Release 资产。

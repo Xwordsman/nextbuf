@@ -128,11 +128,9 @@ do_start() {
   require_files
   compose config --quiet
   compose pull
-  compose up -d postgres redis
-  wait_for_service postgres 180
-  wait_for_service redis 120
-  compose run --rm setup
-  compose up -d --no-deps web worker
+  # Remove a legacy panel-visible one-shot container if it still exists.
+  compose rm -sf setup >/dev/null 2>&1 || true
+  compose up -d postgres redis web worker
   wait_for_service web 180
   wait_for_service worker 180
   info "NextBuf is running. Complete first administrator setup at $(env_get APP_URL)/setup"

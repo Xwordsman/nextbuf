@@ -33,7 +33,7 @@
 - [ ] 使用发布包中的 `compose.yml` 和 `.env.example`，镜像为精确版本而非 `latest`。
 - [ ] PostgreSQL、Redis 不发布公网端口；Web 只绑定回环地址并由 HTTPS 反向代理。
 - [ ] `nextbufctl init` 或等价面板配置生成独立强密钥，示例值全部替换。
-- [ ] setup 一次性任务成功；setup 前 Web/Worker 不会绕过门禁启动。
+- [ ] 空数据库通过默认 Compose 自动完成 setup；Web 未健康前 Worker 不启动，编排中只有四个常驻容器且没有停止的 setup 记录。
 - [ ] `/setup` 创建唯一首位管理员；重复请求被拒绝。
 - [ ] 删除 `SETUP_TOKEN` 并重启 Web，`doctor` 全部通过。
 - [ ] `Powered by NextBuf` 在桌面和移动端可见且链接正确。

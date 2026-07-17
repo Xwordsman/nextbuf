@@ -151,7 +151,7 @@ Playwright 覆盖核心用户旅程：
 
 ### 部署测试
 
-CI 使用发布镜像启动完整 Compose，验证 setup、Web、Worker、PostgreSQL 和 Redis。至少验证一次优雅停止与任务恢复。
+CI 使用发布镜像启动完整 Compose，验证空数据库自动 setup、Web、Worker、PostgreSQL、Redis，以及默认编排不残留停止的 setup 容器。至少验证一次优雅停止与任务恢复。
 
 `v0.13.0` 起，`pnpm migration:verify` 校验所有已发布 Beta 迁移的顺序与 SHA-256，历史迁移只能通过新迁移修正，不能原地编辑。性能变化使用 `pnpm benchmark:beta` 保存样本、并发、错误率和 p50/p95；共享 CI 的宽松预算只阻断严重回归，生产容量结论必须附带数据规模和机器配置。
 

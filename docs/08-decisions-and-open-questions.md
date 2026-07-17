@@ -14,7 +14,7 @@
 | D-006 | Redis 8 + BullMQ | 支持缓存、限流、可靠队列和独立 Worker | Redis 成为运行依赖但不是事实来源 |
 | D-007 | 构建一个应用镜像 | 简化版本、发布和用户理解 | 镜像同时包含 Web、Worker、迁移入口 |
 | D-008 | 默认四个常驻容器 | Web/Worker 故障隔离，数据库和 Redis 独立持久化 | Web、Worker、PostgreSQL、Redis |
-| D-009 | setup/migrate 是一次性任务 | 避免多个 Web 实例争抢迁移 | Compose 需等待 setup 成功 |
+| D-009 | setup/migrate 是幂等一次性能力 | 升级和多 Web 发布显式运行；默认单机 Web 启动时协调 setup | 默认 Compose 不保留停止容器，Worker 等待 Web 健康；见 ADR-0016 |
 | D-010 | 权限角色、信任等级、专业声誉、交易信用分离 | 四者来源、风险和生命周期不同 | UI 和数据模型不得合成一个等级 |
 | D-011 | V1 不运行任意第三方服务端插件 | 插件安全、迁移和兼容成本过高 | 先保留事件和 Provider 扩展点 |
 | D-012 | 同时支持 Docker 与非 Docker 部署 | 覆盖宝塔用户和传统 Linux 运维 | 发布需包含镜像与 standalone 包 |

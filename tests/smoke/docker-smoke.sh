@@ -152,34 +152,29 @@ stage 'validate Compose and start dependencies'
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE config --quiet
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d postgres redis mailpit
 
-stage 'verify pre-setup startup gate'
-NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d --no-deps web worker
-for service in web worker; do
-  deadline=$(( $(date +%s) + 180 ))
-  until NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE logs "$service" 2>&1 | \
-    grep -Eq 'preflight|dependencies are unavailable|setup has not completed'; do
-    if curl --fail --silent http://127.0.0.1:3100/health/ready >/dev/null 2>&1; then
-      echo "Web became ready before setup" >&2
-      exit 1
-    fi
-    [ "$(date +%s)" -lt "$deadline" ] || {
-      echo "$service did not expose the expected preflight rejection" >&2
-      exit 1
-    }
-    sleep 2
-  done
-done
-NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE rm -sf web worker
+stage 'verify failed bootstrap cannot start Web'
+bootstrap_report=/tmp/nextbuf-bootstrap-failure.log
+if NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE run --rm --no-deps \
+  -e AUTH_SECRET=too-short web >"$bootstrap_report" 2>&1; then
+  echo 'Web bootstrap unexpectedly accepted an invalid production secret' >&2
+  cat "$bootstrap_report" >&2
+  exit 1
+fi
+grep -Eq 'AUTH_SECRET|at least|too small' "$bootstrap_report"
+rm -f "$bootstrap_report"
+if curl --fail --silent http://127.0.0.1:3100/health/ready >/dev/null 2>&1; then
+  echo 'Web became ready after a failed bootstrap' >&2
+  exit 1
+fi
 
-stage 'initialize runtime and start application services'
-NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE run --rm setup
-NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d --no-deps web worker
+stage 'bootstrap an empty database through the default Compose startup'
+NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d
 
 deadline=$(( $(date +%s) + 180 ))
 until curl --fail --silent http://127.0.0.1:3100/health/ready >/dev/null 2>&1; do
   [ "$(date +%s)" -lt "$deadline" ] || {
     NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE ps
-    NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE logs web worker setup
+    NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE logs web worker
     exit 1
   }
   sleep 2
@@ -206,6 +201,22 @@ until curl --fail --silent http://127.0.0.1:3100/health/worker >/dev/null 2>&1; 
   [ "$(date +%s)" -lt "$deadline" ] || exit 1
   sleep 2
 done
+
+stage 'verify the production topology has no stopped setup container'
+running_services=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps --status running --services | sort)
+expected_services=$(printf '%s\n' postgres redis web worker | sort)
+if [ "$running_services" != "$expected_services" ]; then
+  printf 'Unexpected production services:\n%s\n' "$running_services" >&2
+  exit 1
+fi
+setup_container=$(docker ps -a \
+  --filter label=com.docker.compose.project=nextbuf \
+  --filter label=com.docker.compose.service=setup \
+  --quiet)
+if [ -n "$setup_container" ]; then
+  echo 'Default Compose left a setup container record behind' >&2
+  exit 1
+fi
 
 stage 'run doctor and prepare backup fixture'
 NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor
