@@ -13,7 +13,7 @@ COPY prisma/schema.prisma ./prisma/schema.prisma
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 FROM dependencies AS build
-ARG NEXTBUF_VERSION=0.13.3
+ARG NEXTBUF_VERSION=0.13.4
 ARG NEXTBUF_COMMIT=unknown
 ARG NEXTBUF_BUILD_TIME=unknown
 ENV NEXTBUF_VERSION=$NEXTBUF_VERSION
@@ -28,7 +28,7 @@ RUN --mount=type=cache,id=pnpm-runtime,target=/pnpm/store \
   pnpm --dir /runtime-deps install --prod --frozen-lockfile
 
 FROM node:24-bookworm-slim AS runtime
-ARG NEXTBUF_VERSION=0.13.3
+ARG NEXTBUF_VERSION=0.13.4
 ARG NEXTBUF_COMMIT=unknown
 ARG NEXTBUF_BUILD_TIME=unknown
 ENV NODE_ENV=production
