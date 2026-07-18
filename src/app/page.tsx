@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { CommunityHome } from "@/components/community/community-home.client";
+import { CommunityHomeShadcn } from "@/components/community/community-home-shadcn.client";
 import type { CommunityFeedFilter } from "@/modules/community/contracts/home-view";
 import { getCommunityHomeView } from "@/modules/community/queries.server";
 import { getCurrentAccount, getCurrentUserId } from "@/modules/identity/session.server";
@@ -30,5 +30,5 @@ export default async function Home({ searchParams }: HomeProps) {
     }),
     getCurrentAccount(),
   ]);
-  return <CommunityHome view={view} account={account} activeNode={null} filter={filter} />;
+  return <CommunityHomeShadcn view={view} account={account} filter={filter} />;
 }
