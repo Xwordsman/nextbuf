@@ -109,11 +109,12 @@ test.describe.serial("identity authentication", () => {
       update: {},
     });
     const nodeSlug = `e2e-node-${Date.now().toString(36)}`;
-    await page.goto("/admin/nodes");
+    await page.goto("/admin/nodes/new");
     await page.getByLabel("节点标识").fill(nodeSlug);
     await page.getByLabel("名称", { exact: true }).fill("E2E 自定义节点");
     await page.getByLabel("简介", { exact: true }).fill("由浏览器测试显式创建的节点");
     await page.getByRole("button", { name: "创建节点" }).click();
+    await expect(page).toHaveURL(`/admin/nodes/${nodeSlug}`);
     await expect(page.getByText(nodeSlug, { exact: true })).toBeVisible();
     await prisma.communityRoleAssignment.deleteMany({
       where: { userId: registeredUser.id, role: "admin", scopeKey: "site" },
