@@ -4,6 +4,7 @@ import { Bold, Code2, Italic, Link2, LoaderCircle, Paperclip, Quote } from "luci
 import { useEffect, useRef, useState } from "react";
 import { MarkdownContent } from "@/components/community/markdown-content";
 import { Button } from "@/components/shadcn/ui/button";
+import { Input } from "@/components/shadcn/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/shadcn/ui/tabs";
 import { Textarea } from "@/components/shadcn/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/shadcn/ui/tooltip";
@@ -205,7 +206,7 @@ export function MarkdownEditor({
           )}
         </div>
       </TabsContent>
-      <input
+      <Input
         ref={fileRef}
         type="file"
         className="sr-only"

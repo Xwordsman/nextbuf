@@ -184,16 +184,18 @@ export function SiteHeader({ account, siteName, registrationOpen }: SiteHeaderPr
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    className="grid size-9 place-items-center overflow-hidden rounded-full border bg-background outline-none transition-colors hover:border-foreground/35 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=open]:border-foreground/35"
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-9 overflow-hidden rounded-full border border-border bg-background p-0 hover:border-foreground/35 hover:bg-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=open]:border-foreground/35"
                     aria-label="账户菜单"
                   >
                     <Avatar className="size-full border-0">
                       <AvatarImage src={account.image ?? undefined} alt={account.name} />
                       <AvatarFallback>{account.initials}</AvatarFallback>
                     </Avatar>
-                  </button>
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-64" align="end">
                   <DropdownMenuLabel className="flex items-center gap-2.5 px-2 py-2">

@@ -87,6 +87,12 @@ test.describe.serial("identity authentication", () => {
     await expect(page.getByRole("heading", { name: "账号中心" })).toBeVisible();
     await expect(page.getByLabel("@username")).toHaveValue(username);
     await expect(page.getByText(`UID`, { exact: false }).first()).toBeVisible();
+    await page.goto("/account/activity");
+    await expect(page.getByRole("heading", { name: "我的参与" })).toBeVisible();
+    expect(await page.locator("#main-content [data-slot]").count()).toBeGreaterThan(0);
+    await page.goto("/account/trust");
+    await expect(page.getByRole("heading", { name: "信任等级" })).toBeVisible();
+    expect(await page.locator("#main-content [data-slot]").count()).toBeGreaterThan(0);
     const forbiddenAdminCall = await page.evaluate(async () =>
       fetch("/api/admin/providers/mail/test", { method: "POST" }).then(
         (response) => response.status,
