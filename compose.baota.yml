@@ -39,8 +39,9 @@ x-nextbuf-app: &nextbuf-app
       max-file: "5"
 
 services:
-  web:
+  nextbuf:
     <<: *nextbuf-app
+    container_name: nextbuf
     command:
       - sh
       - -ec
@@ -69,17 +70,18 @@ services:
 
   worker:
     <<: *nextbuf-app
+    container_name: nextbuf-worker
     command: ["worker"]
     stop_grace_period: 45s
     depends_on:
-      web:
+      nextbuf:
         condition: service_healthy
     healthcheck:
       test:
         - CMD
         - node
         - -e
-        - fetch('http://web:3000/health/worker').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+        - fetch('http://nextbuf:3000/health/worker').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
       interval: 10s
       timeout: 5s
       retries: 12
@@ -87,6 +89,7 @@ services:
 
   postgres:
     image: postgres:18-alpine
+    container_name: nextbuf-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: nextbuf
@@ -112,6 +115,7 @@ services:
 
   redis:
     image: redis:8-alpine
+    container_name: nextbuf-redis
     restart: unless-stopped
     environment:
       REDIS_PASSWORD: replace-with-64-hex-redis-password

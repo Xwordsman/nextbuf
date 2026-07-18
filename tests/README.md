@@ -4,7 +4,7 @@
 - PostgreSQL/Redis/Mailpit 集成测试位于 `tests/integration`，必须使用独立真实服务运行。
 - Playwright 端到端测试位于 `tests/e2e`，通过构建后的 CLI 执行 setup，并同时运行 Next.js standalone Web 与 Worker，覆盖多视口社区外壳和真实身份邮件旅程。
 
-当前 `v0.13.2` 基线包含 60 项单元测试、32 项真实服务集成测试和 10 项 Playwright；容器冒烟由 GitHub Actions 单独执行，并验证宝塔单文件 Compose 不依赖 `.env`、只包含四个服务且使用正式 `latest` 通道。覆盖建立在 `v0.12.0` 的 setup token、首次管理员、生产 Compose、amd64/arm64 镜像和空卷恢复之上。
+当前 `v0.13.3` 基线包含 60 项单元测试、32 项真实服务集成测试和 10 项 Playwright；容器冒烟由 GitHub Actions 单独执行，并验证宝塔单文件 Compose 不依赖 `.env`、只包含四个服务、使用正式 `latest` 通道且具有四个固定容器名。覆盖建立在 `v0.12.0` 的 setup token、首次管理员、生产 Compose、amd64/arm64 镜像和空卷恢复之上。
 
 Pull Request 只执行完整代码/真实服务/E2E 检查；主分支额外执行原生 amd64 镜像冒烟。每日定时、手动和 `v*` 标签运行使用原生 amd64/arm64 Runner，amd64 追加空卷恢复；只有标签运行生成供应链证明、合并正式 GHCR manifest 并发布非 Docker 资产。
 

@@ -8,7 +8,7 @@ ARCH=${1:-amd64}
 RUN_RESTORE=${RUN_RESTORE:-0}
 RUN_FAULTS=${RUN_FAULTS:-0}
 SMOKE_TIMEOUT_SECONDS=${SMOKE_TIMEOUT_SECONDS:-1200}
-SMOKE_VERSION=${NEXTBUF_SMOKE_VERSION:-0.13.2}
+SMOKE_VERSION=${NEXTBUF_SMOKE_VERSION:-0.13.3}
 ENV_FILE=.env.smoke
 COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml -f deploy/compose/compose.smoke.yml"
 BASE_COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml"
@@ -150,16 +150,25 @@ sed -i \
 mkdir -p backups
 stage 'validate Compose and start dependencies'
 panel_services=$(docker compose -f compose.baota.yml config --services | sort)
-[ "$panel_services" = "postgres
+[ "$panel_services" = "nextbuf
+postgres
 redis
-web
 worker" ] || {
-  printf 'BaoTa Compose must contain exactly postgres, redis, web and worker\n' >&2
+  printf 'BaoTa Compose must contain exactly nextbuf, postgres, redis and worker\n' >&2
   printf '%s\n' "$panel_services" >&2
   exit 1
 }
 panel_config=$(docker compose -f compose.baota.yml config)
 printf '%s\n' "$panel_config" | grep -q 'image: ghcr.io/xwordsman/nextbuf:latest'
+panel_container_names=$(printf '%s\n' "$panel_config" | awk '$1 == "container_name:" { print $2 }' | sort)
+[ "$panel_container_names" = "nextbuf
+nextbuf-postgres
+nextbuf-redis
+nextbuf-worker" ] || {
+  printf 'BaoTa Compose must use the four fixed NextBuf container names\n' >&2
+  printf '%s\n' "$panel_container_names" >&2
+  exit 1
+}
 if printf '%s\n' "$panel_config" | grep -q 'env_file:'; then
   printf 'BaoTa Compose must not require an env file\n' >&2
   exit 1

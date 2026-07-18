@@ -3,7 +3,7 @@
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
 - 最后更新：2026-07-18
-- 当前完成版本：`v0.13.2` 公开 Beta 补丁
+- 当前完成版本：`v0.13.3` 公开 Beta 补丁
 - 下一动作：真实服务器与邀请用户验收；未经明确批准不开始 `v1.0.0`
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
@@ -162,6 +162,7 @@
 - 面板部署修订：默认 Compose 只创建 Web、Worker、PostgreSQL、Redis；Web 启动前幂等执行 setup/preflight，Worker 等待 Web 健康，setup 工具 profile 不再留下导致宝塔误报项目停止的容器。决策见 [ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)。
 - 通用发行版修订（`v0.13.1`）：空数据库追加迁移后没有预置业务节点，管理员可在 `/admin/nodes` 创建稳定 slug 节点；已有站点升级保留节点。未完成首次管理员安装时，访问首页服务端 307 跳转 `/setup`。
 - 面板体验修订（`v0.13.2`）：新增无需 `.env` 的 `compose.baota.yml`，直接使用正式 `latest` 通道并内联首次配置；后续升级只需在面板拉取和重建。镜像内部仍保留精确版本，受控 `compose.yml + nextbufctl` 入口继续承担原子备份、恢复和精确升级。决策见 [ADR-0017](./adr/0017-single-file-panel-compose.md)。
+- 面板命名修订（`v0.13.3`）：宝塔单实例模板的主服务改为 `nextbuf`，并固定显示 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis`；标准 Compose 保留默认命名和扩容能力。
 - 交付：公开 Beta 已知限制、2 vCPU/4 GiB/40 GiB 最低档位、性能报告、人工安装/旅程/升级/恢复验收模板见 [Beta 就绪记录](./16-public-beta-readiness.md)。
 
 ## 2. 关键命令
@@ -177,7 +178,7 @@ pnpm nextbuf migrate             只部署已有迁移
 pnpm nextbuf invite create ...   创建注册邀请码
 pnpm nextbuf mail test --to ...  通过 Outbox 发送 SMTP 测试邮件
 pnpm build                       构建 Prisma Client、Worker/CLI、Next.js standalone
-pnpm release:archive 0.13.2      生成非 Docker 平台归档和 SHA-256
+pnpm release:archive 0.13.3      生成非 Docker 平台归档和 SHA-256
 pnpm check                       格式、Lint、类型和单元测试
 pnpm test:integration            PostgreSQL/Redis/Mailpit 真实集成测试
 pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
