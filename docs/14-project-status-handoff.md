@@ -198,6 +198,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
 - `v0.13.1` 主分支 CI #63 已通过完整检查与原生 amd64 镜像冒烟；标签 CI #64 已通过 amd64/arm64 空安装、无预置节点、首次访问 307 跳转 `/setup`、首次管理员、升级保留既有节点、恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release 发布。
 - `v0.13.2` 主分支 CI #65 已通过完整检查与原生 amd64 镜像冒烟；标签 CI #66 已通过 amd64/arm64、宝塔单文件 Compose、空安装、首次管理员、升级/恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release。GHCR `latest` 与 `0.13.2` 均为包含 amd64/arm64 的 OCI image index。
+- `v0.13.3` 主分支 CI #68 已通过完整检查、宝塔固定容器名断言与原生 amd64 镜像冒烟；标签 CI #69 已通过 amd64/arm64、空安装、首次管理员、升级/恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release。GHCR `latest` 与 `0.13.3` 均指向 OCI index `sha256:f1923bfa9418d4ca00a51251ce96a9e5ccef3790ff20b66a104a2a5194313e09`。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
 ## 4. 当前真实数据边界
