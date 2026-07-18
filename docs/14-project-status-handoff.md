@@ -3,7 +3,7 @@
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
 - 最后更新：2026-07-18
-- 当前完成版本：`v0.13.5` 公开 Beta 补丁
+- 当前完成版本：`v0.13.6` 公开 Beta 补丁
 - 下一动作：真实服务器与邀请用户验收；未经明确批准不开始 `v1.0.0`
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
@@ -165,6 +165,7 @@
 - 面板命名修订（`v0.13.3`）：宝塔单实例模板的主服务改为 `nextbuf`，并固定显示 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis`；标准 Compose 保留默认命名和扩容能力。
 - UID 与后台修订（`v0.13.4`）：追加式迁移仅在空的历史 UID 序列上将首个 UID 改为 1，绝不重写已有公开 UID；后台将内容与节点管理拆分为各自的列表、新建和编辑工作流。
 - 后台界面修订（`v0.13.5`）：`components/admin/ui` 使用官方 shadcn/ui `radix-nova` 原语，管理后台采用响应式 Sidebar、Card、Table、Dialog、Select、Switch 和 Alert；社区前台既有 `components/ui` 不被替换。该补丁不修改 PostgreSQL、环境变量、Better Auth、授权、部署或镜像拓扑合同；站点设置成功后以 API 返回 revision 更新客户端状态，避免连续保存产生冲突。
+- 首页界面修订（`v0.13.6`）：仅公开首页 `/` 使用官方 shadcn/ui `radix-nova` Card、Tabs、Badge、Button、Avatar 和 Sheet，继续读取真实 PostgreSQL 节点、主题、概览与热议数据，在线成员保持明确空状态；1380px/230px/300px/16px 布局、搜索、筛选和 cursor 分页合同不变。`/nodes/[slug]` 继续使用既有呈现层，该补丁不修改数据库、Better Auth、授权、配置、部署或镜像拓扑合同。
 - 交付：公开 Beta 已知限制、2 vCPU/4 GiB/40 GiB 最低档位、性能报告、人工安装/旅程/升级/恢复验收模板见 [Beta 就绪记录](./16-public-beta-readiness.md)。
 
 ## 2. 关键命令
@@ -180,7 +181,7 @@ pnpm nextbuf migrate             只部署已有迁移
 pnpm nextbuf invite create ...   创建注册邀请码
 pnpm nextbuf mail test --to ...  通过 Outbox 发送 SMTP 测试邮件
 pnpm build                       构建 Prisma Client、Worker/CLI、Next.js standalone
-pnpm release:archive 0.13.5      生成非 Docker 平台归档和 SHA-256
+pnpm release:archive 0.13.6      生成非 Docker 平台归档和 SHA-256
 pnpm check                       格式、Lint、类型和单元测试
 pnpm test:integration            PostgreSQL/Redis/Mailpit 真实集成测试
 pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
