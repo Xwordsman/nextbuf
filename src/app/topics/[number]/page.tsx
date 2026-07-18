@@ -109,7 +109,7 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
                 <h1 className="min-w-0 flex-1 text-xl font-semibold tracking-tight break-words sm:text-2xl">
                   {topic.title}
                 </h1>
-                <div className="flex flex-wrap gap-1" aria-label="主题状态">
+                <div className="flex flex-wrap gap-1" role="group" aria-label="主题状态">
                   {topic.isPinned ? (
                     <Badge variant="secondary" className="rounded-md">
                       置顶
