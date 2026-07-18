@@ -1,10 +1,11 @@
 import { headers } from "next/headers";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Plus } from "lucide-react";
-import Link from "next/link";
+import { AdminPage, AdminPageHeader } from "@/components/admin/admin-page-layout";
 import { AdminNodesList } from "@/components/admin/admin-nodes-list";
-import { Button } from "@/components/ui/button";
-import { Panel } from "@/components/ui/panel";
+import { Button } from "@/components/admin/ui/button";
+import { Card, CardContent } from "@/components/admin/ui/card";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { getAdminNodes } from "@/modules/admin/content.server";
 import { AdminError } from "@/modules/admin/errors";
@@ -21,22 +22,26 @@ export default async function AdminNodesPage() {
     if (error instanceof AdminError && error.status === 403) notFound();
     throw error;
   }
+
   return (
-    <main className="admin-page">
-      <div className="admin-page-head">
-        <div>
-          <h1>节点管理</h1>
-          <p>查看节点状态、主题数量与版主配置；新建和编辑在独立工作区完成。</p>
-        </div>
-        <Button asChild>
-          <Link href="/admin/nodes/new">
-            <Plus /> 新建节点
-          </Link>
-        </Button>
-      </div>
-      <Panel className="admin-section-panel admin-table-panel">
-        <AdminNodesList nodes={nodes} />
-      </Panel>
-    </main>
+    <AdminPage>
+      <AdminPageHeader
+        actions={
+          <Button asChild>
+            <Link href="/admin/nodes/new">
+              <Plus aria-hidden="true" />
+              新建节点
+            </Link>
+          </Button>
+        }
+        description="查看节点状态、主题数量与版主配置；新建和编辑在独立工作区完成。"
+        title="节点管理"
+      />
+      <Card>
+        <CardContent className="px-0 py-0">
+          <AdminNodesList nodes={nodes} />
+        </CardContent>
+      </Card>
+    </AdminPage>
   );
 }

@@ -3,7 +3,7 @@
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
 - 最后更新：2026-07-18
-- 当前完成版本：`v0.13.4` 公开 Beta 补丁
+- 当前完成版本：`v0.13.5` 公开 Beta 补丁
 - 下一动作：真实服务器与邀请用户验收；未经明确批准不开始 `v1.0.0`
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
@@ -164,6 +164,7 @@
 - 面板体验修订（`v0.13.2`）：新增无需 `.env` 的 `compose.baota.yml`，直接使用正式 `latest` 通道并内联首次配置；后续升级只需在面板拉取和重建。镜像内部仍保留精确版本，受控 `compose.yml + nextbufctl` 入口继续承担原子备份、恢复和精确升级。决策见 [ADR-0017](./adr/0017-single-file-panel-compose.md)。
 - 面板命名修订（`v0.13.3`）：宝塔单实例模板的主服务改为 `nextbuf`，并固定显示 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis`；标准 Compose 保留默认命名和扩容能力。
 - UID 与后台修订（`v0.13.4`）：追加式迁移仅在空的历史 UID 序列上将首个 UID 改为 1，绝不重写已有公开 UID；后台将内容与节点管理拆分为各自的列表、新建和编辑工作流。
+- 后台界面修订（`v0.13.5`）：`components/admin/ui` 使用官方 shadcn/ui `radix-nova` 原语，管理后台采用响应式 Sidebar、Card、Table、Dialog、Select、Switch 和 Alert；社区前台既有 `components/ui` 不被替换。该补丁不修改 PostgreSQL、环境变量、Better Auth、授权、部署或镜像拓扑合同；站点设置成功后以 API 返回 revision 更新客户端状态，避免连续保存产生冲突。
 - 交付：公开 Beta 已知限制、2 vCPU/4 GiB/40 GiB 最低档位、性能报告、人工安装/旅程/升级/恢复验收模板见 [Beta 就绪记录](./16-public-beta-readiness.md)。
 
 ## 2. 关键命令
@@ -179,7 +180,7 @@ pnpm nextbuf migrate             只部署已有迁移
 pnpm nextbuf invite create ...   创建注册邀请码
 pnpm nextbuf mail test --to ...  通过 Outbox 发送 SMTP 测试邮件
 pnpm build                       构建 Prisma Client、Worker/CLI、Next.js standalone
-pnpm release:archive 0.13.4      生成非 Docker 平台归档和 SHA-256
+pnpm release:archive 0.13.5      生成非 Docker 平台归档和 SHA-256
 pnpm check                       格式、Lint、类型和单元测试
 pnpm test:integration            PostgreSQL/Redis/Mailpit 真实集成测试
 pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
@@ -200,6 +201,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - `v0.13.1` 主分支 CI #63 已通过完整检查与原生 amd64 镜像冒烟；标签 CI #64 已通过 amd64/arm64 空安装、无预置节点、首次访问 307 跳转 `/setup`、首次管理员、升级保留既有节点、恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release 发布。
 - `v0.13.2` 主分支 CI #65 已通过完整检查与原生 amd64 镜像冒烟；标签 CI #66 已通过 amd64/arm64、宝塔单文件 Compose、空安装、首次管理员、升级/恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release。GHCR `latest` 与 `0.13.2` 均为包含 amd64/arm64 的 OCI image index。
 - `v0.13.3` 主分支 CI #68 已通过完整检查、宝塔固定容器名断言与原生 amd64 镜像冒烟；标签 CI #69 已通过 amd64/arm64、空安装、首次管理员、升级/恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release。GHCR `latest` 与 `0.13.3` 均指向 OCI index `sha256:f1923bfa9418d4ca00a51251ce96a9e5ccef3790ff20b66a104a2a5194313e09`。
+- `v0.13.5` 本地已通过 Prettier、ESLint、TypeScript、60 项单元测试、迁移历史校验、生产依赖审计、完整 Web/Worker/CLI 构建和 Windows x64 发布归档版本核对；本机没有 Docker，因此 PostgreSQL/Redis/Mailpit 集成、浏览器 E2E、amd64/arm64 镜像和正式 Release 仍以标签流水线结果为准。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
 ## 4. 当前真实数据边界

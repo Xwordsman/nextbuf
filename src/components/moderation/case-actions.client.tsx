@@ -2,9 +2,28 @@
 
 import { CheckCircle2, LoaderCircle, RotateCcw, ShieldAlert, XCircle } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/admin/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/admin/ui/alert-dialog";
+import { Button } from "@/components/admin/ui/button";
+import { Input } from "@/components/admin/ui/input";
+import { Label } from "@/components/admin/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/admin/ui/select";
 
 type ActionOption = { value: string; label: string; duration: boolean };
 
@@ -97,104 +116,145 @@ export function ModerationCaseActions({
     );
   };
 
+  const canAct = pending === "" && reason.trim().length >= 3;
+
   return (
-    <div className="moderation-action-panel">
-      <div className="moderation-action-fields">
-        <div>
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-[minmax(11rem,0.75fr)_minmax(8rem,0.45fr)_minmax(0,1fr)]">
+        <div className="grid gap-2">
           <Label htmlFor="moderation-action">处置动作</Label>
-          <select
-            id="moderation-action"
-            className="moderation-select"
-            value={action}
-            onChange={(event) => setAction(event.target.value)}
-          >
-            {options.map((option) => (
-              <option value={option.value} key={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <Select onValueChange={setAction} value={action}>
+            <SelectTrigger className="w-full" id="moderation-action">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {options.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         {selected?.duration ? (
-          <div>
+          <div className="grid gap-2">
             <Label htmlFor="moderation-duration">有效小时数</Label>
             <Input
               id="moderation-duration"
-              type="number"
-              min={1}
               max={8760}
-              value={durationHours}
+              min={1}
               onChange={(event) => setDurationHours(event.target.value)}
+              type="number"
+              value={durationHours}
             />
           </div>
-        ) : null}
-        <div className="moderation-reason-field">
+        ) : (
+          <div className="hidden md:block" />
+        )}
+        <div className="grid gap-2">
           <Label htmlFor="moderation-reason">处置理由</Label>
           <Input
             id="moderation-reason"
-            minLength={3}
             maxLength={500}
-            value={reason}
+            minLength={3}
             onChange={(event) => setReason(event.target.value)}
             placeholder="至少 3 个字"
+            value={reason}
           />
         </div>
       </div>
-      <div className="moderation-action-buttons">
-        <Button type="button" onClick={apply} disabled={pending !== "" || reason.trim().length < 3}>
-          {pending === "action" ? <LoaderCircle className="animate-spin" /> : <ShieldAlert />}
-          执行处置
-        </Button>
+
+      <div className="flex flex-wrap gap-2">
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button disabled={!canAct} type="button">
+              {pending === "action" ? (
+                <LoaderCircle aria-hidden="true" className="animate-spin" />
+              ) : (
+                <ShieldAlert aria-hidden="true" />
+              )}
+              执行处置
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>确认执行 {selected?.label}？</AlertDialogTitle>
+              <AlertDialogDescription>
+                该操作会对案件目标生效，并记录治理审计。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction disabled={!canAct} onClick={apply} variant="destructive">
+                确认处置
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <Button
+          disabled={!canAct}
+          onClick={() => close("resolved")}
           type="button"
           variant="outline"
-          onClick={() => close("resolved")}
-          disabled={pending !== "" || reason.trim().length < 3}
         >
-          <CheckCircle2 />
+          <CheckCircle2 aria-hidden="true" />
           结案
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => close("dismissed")}
-          disabled={pending !== "" || reason.trim().length < 3}
-        >
-          <XCircle />
+        <Button disabled={!canAct} onClick={() => close("dismissed")} type="button" variant="ghost">
+          <XCircle aria-hidden="true" />
           驳回举报
         </Button>
       </div>
+
       {sanctions.some((sanction) => !sanction.revokedAt) ? (
-        <div className="moderation-active-sanctions">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-3">
+          <span className="text-sm text-muted-foreground">有效制裁</span>
           {sanctions
             .filter((sanction) => !sanction.revokedAt)
             .map((sanction) => (
-              <Button
-                key={sanction.id}
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={pending !== "" || reason.trim().length < 3}
-                onClick={() =>
-                  void request(
-                    `/api/admin/moderation/sanctions/${sanction.id}`,
-                    "DELETE",
-                    { reason },
-                    `revoke-${sanction.id}`,
-                  )
-                }
-              >
-                {pending === `revoke-${sanction.id}` ? (
-                  <LoaderCircle className="animate-spin" />
-                ) : (
-                  <RotateCcw />
-                )}
-                撤销 {sanction.type}
-              </Button>
+              <AlertDialog key={sanction.id}>
+                <AlertDialogTrigger asChild>
+                  <Button disabled={!canAct} size="sm" type="button" variant="outline">
+                    <RotateCcw aria-hidden="true" />
+                    撤销 {sanction.type}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>撤销 {sanction.type}？</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      撤销同样会写入治理审计，且不会删除历史制裁记录。
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>取消</AlertDialogCancel>
+                    <AlertDialogAction
+                      disabled={!canAct}
+                      onClick={() =>
+                        void request(
+                          `/api/admin/moderation/sanctions/${sanction.id}`,
+                          "DELETE",
+                          { reason },
+                          `revoke-${sanction.id}`,
+                        )
+                      }
+                      variant="destructive"
+                    >
+                      确认撤销
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             ))}
         </div>
       ) : null}
-      {message ? <p className="field-error">{message}</p> : null}
+
+      {message ? (
+        <Alert variant="destructive">
+          <AlertTitle>操作失败</AlertTitle>
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   );
 }

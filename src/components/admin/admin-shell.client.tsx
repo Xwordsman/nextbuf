@@ -3,19 +3,43 @@
 import {
   Activity,
   ArrowUpRight,
-  ChevronRight,
   FileSearch,
   Gavel,
   LayoutDashboard,
   Network,
   ScrollText,
   ServerCog,
-  ShieldCheck,
   Settings,
+  ShieldCheck,
   Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/admin/ui/breadcrumb";
+import { Separator } from "@/components/admin/ui/separator";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/admin/ui/sidebar";
+import { TooltipProvider } from "@/components/admin/ui/tooltip";
 
 type AdminNavigationItem = {
   href: string;
@@ -28,7 +52,6 @@ type AdminNavigationItem = {
 type AdminNavigationGroup = {
   key: "overview" | "community" | "moderation" | "operations" | "system";
   label: string;
-  icon: typeof LayoutDashboard;
   adminOnly?: boolean;
   items: readonly AdminNavigationItem[];
 };
@@ -37,7 +60,6 @@ const adminNavigation: readonly AdminNavigationGroup[] = [
   {
     key: "overview",
     label: "概览",
-    icon: LayoutDashboard,
     items: [
       {
         href: "/admin",
@@ -51,7 +73,6 @@ const adminNavigation: readonly AdminNavigationGroup[] = [
   {
     key: "community",
     label: "社区",
-    icon: Users,
     adminOnly: true,
     items: [
       {
@@ -83,7 +104,6 @@ const adminNavigation: readonly AdminNavigationGroup[] = [
   {
     key: "moderation",
     label: "治理",
-    icon: Gavel,
     items: [
       {
         href: "/admin/moderation",
@@ -96,7 +116,6 @@ const adminNavigation: readonly AdminNavigationGroup[] = [
   {
     key: "operations",
     label: "运维",
-    icon: ServerCog,
     adminOnly: true,
     items: [
       {
@@ -110,7 +129,6 @@ const adminNavigation: readonly AdminNavigationGroup[] = [
   {
     key: "system",
     label: "系统",
-    icon: Settings,
     adminOnly: true,
     items: [
       {
@@ -160,82 +178,109 @@ export function AdminShell({
   const pathname = usePathname();
   const groups = adminNavigation
     .filter((group) => !group.adminOnly || isAdmin)
-    .filter((group) => {
-      return group.key !== "moderation" || canModerate;
-    });
+    .filter((group) => group.key !== "moderation" || canModerate);
   const currentGroup =
     groups.find((group) => group.items.some((item) => isCurrentItem(item, pathname))) ?? groups[0];
   const currentItem = currentGroup?.items.find((item) => isCurrentItem(item, pathname));
 
   return (
-    <div className="admin-shell">
-      <aside className="admin-primary-sidebar" aria-label="后台一级导航">
-        <Link className="admin-brand-mark" href="/admin" title="管理后台" aria-label="管理后台">
-          <Activity aria-hidden="true" />
-        </Link>
-        <nav className="admin-primary-nav" aria-label="后台模块">
-          {groups.map((group) => {
-            const Icon = group.icon;
-            const active = group.key === currentGroup?.key;
-            return (
-              <Link
-                key={group.key}
-                href={group.items[0]!.href}
-                aria-current={active ? "page" : undefined}
-                aria-label={group.label}
-                title={group.label}
-              >
-                <Icon aria-hidden="true" />
-                <span>{group.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-      </aside>
-
-      <aside className="admin-secondary-sidebar" aria-label="后台二级导航">
-        <div className="admin-secondary-heading">
-          <span>{currentGroup?.label}</span>
-          <small>{isAdmin ? "站点管理员" : "内容治理"}</small>
-        </div>
-        <nav className="admin-secondary-nav" aria-label={`${currentGroup?.label ?? "后台"}功能`}>
-          {currentGroup?.items.map((item) => {
-            const Icon = item.icon;
-            const active = isCurrentItem(item, pathname);
-            return (
-              <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined}>
-                <Icon aria-hidden="true" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="admin-secondary-footer">
-          <Link href="/">
-            <ArrowUpRight aria-hidden="true" />
-            返回社区
-          </Link>
-        </div>
-      </aside>
-
-      <div className="admin-content">
-        <header className="admin-topbar">
-          <div className="admin-breadcrumb" aria-label="当前位置">
-            <ShieldCheck aria-hidden="true" />
-            <span>管理后台</span>
-            <ChevronRight aria-hidden="true" />
-            <span>{currentGroup?.label}</span>
+    <TooltipProvider>
+      <SidebarProvider>
+        <a className="skip-link" href="#admin-main-content">
+          跳到后台主要内容
+        </a>
+        <Sidebar collapsible="icon">
+          <SidebarHeader>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild size="lg" tooltip="NextBuf 管理后台">
+                  <Link href="/admin">
+                    <span className="flex size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
+                      <Activity aria-hidden="true" />
+                    </span>
+                    <span className="grid flex-1 text-left leading-tight">
+                      <span className="truncate font-semibold">NextBuf</span>
+                      <span className="truncate text-xs text-sidebar-foreground/70">管理后台</span>
+                    </span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarHeader>
+          <SidebarContent>
+            <nav aria-label="后台导航" id="admin-primary-navigation">
+              {groups.map((group) => (
+                <SidebarGroup key={group.key}>
+                  <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {group.items.map((item) => {
+                        const Icon = item.icon;
+                        const active = isCurrentItem(item, pathname);
+                        return (
+                          <SidebarMenuItem key={item.href}>
+                            <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
+                              <Link href={item.href} aria-current={active ? "page" : undefined}>
+                                <Icon aria-hidden="true" />
+                                <span>{item.label}</span>
+                              </Link>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              ))}
+            </nav>
+          </SidebarContent>
+          <SidebarFooter>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="返回社区">
+                  <Link href="/">
+                    <ArrowUpRight aria-hidden="true" />
+                    <span>返回社区</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarFooter>
+        </Sidebar>
+        <SidebarInset id="admin-main-content" tabIndex={-1}>
+          <header className="sticky top-0 z-10 flex min-h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-6">
+            <SidebarTrigger aria-controls="admin-primary-navigation" aria-label="切换后台导航" />
+            <Separator orientation="vertical" className="h-4" />
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem className="hidden md:block">
+                  <BreadcrumbLink asChild>
+                    <Link href="/admin">管理后台</Link>
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator className="hidden md:block" />
+                {currentGroup ? (
+                  <>
+                    <BreadcrumbItem>
+                      <span>{currentGroup.label}</span>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator />
+                  </>
+                ) : null}
+                <BreadcrumbItem>
+                  <BreadcrumbPage>{currentItem?.label ?? "管理后台"}</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
             {currentItem ? (
-              <>
-                <ChevronRight aria-hidden="true" />
-                <strong>{currentItem.label}</strong>
-              </>
+              <p className="ml-auto hidden max-w-md truncate text-sm text-muted-foreground lg:block">
+                {currentItem.description}
+              </p>
             ) : null}
-          </div>
-          <span className="admin-topbar-description">{currentItem?.description}</span>
-        </header>
-        {children}
-      </div>
-    </div>
+          </header>
+          <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</div>
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }

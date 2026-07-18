@@ -2,6 +2,7 @@ import "server-only";
 
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
+import { AdminPage, AdminPageHeader } from "@/components/admin/admin-page-layout";
 import { AdminSettings, type AdminSettingsSection } from "@/components/admin/admin-settings.client";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { getPrismaClient } from "@/infrastructure/database/client";
@@ -50,13 +51,8 @@ export async function AdminSettingsWorkspace({ section }: { section: AdminSettin
   }
   const copy = sectionCopy[section];
   return (
-    <main className="admin-page">
-      <div className="admin-page-head">
-        <div>
-          <h1>{copy.title}</h1>
-          <p>{copy.description}</p>
-        </div>
-      </div>
+    <AdminPage>
+      <AdminPageHeader description={copy.description} title={copy.title} />
       <AdminSettings
         section={section}
         settings={result.settings}
@@ -64,6 +60,6 @@ export async function AdminSettingsWorkspace({ section }: { section: AdminSettin
         rules={result.trust.rules}
         batches={result.trust.batches}
       />
-    </main>
+    </AdminPage>
   );
 }

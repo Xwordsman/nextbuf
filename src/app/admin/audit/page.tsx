@@ -1,9 +1,25 @@
 import { headers } from "next/headers";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { Filter, Search } from "lucide-react";
+import { AdminPage, AdminPageHeader, AdminPagination } from "@/components/admin/admin-page-layout";
 import { AdminAuditExport } from "@/components/admin/admin-audit-export.client";
-import { Badge } from "@/components/ui/badge";
-import { Panel } from "@/components/ui/panel";
+import { Badge } from "@/components/admin/ui/badge";
+import { Button } from "@/components/admin/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/admin/ui/card";
+import { Input } from "@/components/admin/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/admin/ui/select";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { listAdminAuditEvents, type AuditSource } from "@/modules/admin/audit.server";
 import { AdminError } from "@/modules/admin/errors";
@@ -63,74 +79,111 @@ export default async function AdminAuditPage({
     copy.set("page", String(value));
     return `/admin/audit?${copy}`;
   };
+
   return (
-    <main className="admin-page">
-      <div className="admin-page-head">
-        <div>
-          <h1>审计日志</h1>
-          <p>身份、社区和治理事件的统一只读视图。</p>
-        </div>
-      </div>
-      <Panel className="admin-filter-panel">
-        <form action="/admin/audit">
-          <select name="source" defaultValue={source}>
-            <option value="all">全部来源</option>
-            <option value="identity">identity</option>
-            <option value="community">community</option>
-            <option value="governance">governance</option>
-          </select>
-          <input name="action" defaultValue={params.action ?? ""} placeholder="操作名称" />
-          <input
-            name="actor"
-            defaultValue={params.actor ?? ""}
-            inputMode="numeric"
-            placeholder="操作者 UID"
+    <AdminPage>
+      <AdminPageHeader description="身份、社区和治理事件的统一只读视图。" title="审计日志" />
+
+      <Card>
+        <CardHeader className="border-b">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Filter aria-hidden="true" className="size-4" />
+            筛选审计事件
+          </CardTitle>
+          <CardDescription>导出会记录审计事件，且需要当前管理员重新验证。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form
+            action="/admin/audit"
+            className="grid gap-3 md:grid-cols-2 xl:grid-cols-[10rem_minmax(0,1fr)_10rem_10rem_10rem_auto]"
+          >
+            <Select defaultValue={source} name="source">
+              <SelectTrigger aria-label="审计来源" className="w-full">
+                <SelectValue placeholder="全部来源" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部来源</SelectItem>
+                <SelectItem value="identity">identity</SelectItem>
+                <SelectItem value="community">community</SelectItem>
+                <SelectItem value="governance">governance</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              aria-label="操作名称"
+              defaultValue={params.action ?? ""}
+              name="action"
+              placeholder="操作名称"
+            />
+            <Input
+              aria-label="操作者 UID"
+              defaultValue={params.actor ?? ""}
+              inputMode="numeric"
+              name="actor"
+              placeholder="操作者 UID"
+            />
+            <Input aria-label="开始日期" defaultValue={params.from ?? ""} name="from" type="date" />
+            <Input aria-label="结束日期" defaultValue={params.to ?? ""} name="to" type="date" />
+            <Button type="submit">
+              <Search aria-hidden="true" />
+              筛选
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="border-b">
+          <CardTitle>审计事件</CardTitle>
+          <CardDescription>所有记录均为只读事实，敏感字段会在导出前脱敏。</CardDescription>
+        </CardHeader>
+        <CardContent className="px-0 py-0">
+          <AdminAuditExport
+            filters={{
+              source,
+              action: params.action || undefined,
+              actorUid,
+              from: from?.toISOString(),
+              to: to?.toISOString(),
+            }}
           />
-          <input name="from" type="date" defaultValue={params.from ?? ""} aria-label="开始日期" />
-          <input name="to" type="date" defaultValue={params.to ?? ""} aria-label="结束日期" />
-          <button type="submit">筛选</button>
-        </form>
-      </Panel>
-      <Panel className="admin-section-panel">
-        <AdminAuditExport
-          filters={{
-            source,
-            action: params.action || undefined,
-            actorUid,
-            from: from?.toISOString(),
-            to: to?.toISOString(),
-          }}
-        />
-        <div className="admin-audit-list">
           {result.items.length === 0 ? (
-            <p>没有符合条件的审计事件。</p>
+            <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+              没有符合条件的审计事件。
+            </p>
           ) : (
-            result.items.map((event) => (
-              <article key={event.id}>
-                <div>
-                  <Badge variant="neutral">{event.source}</Badge>
-                  <strong>{event.action}</strong>
-                  <span>{event.createdAt.toLocaleString("zh-CN")}</span>
-                </div>
-                <div>
-                  <span>
-                    {event.actor ? `UID ${event.actor.uid} · @${event.actor.username}` : "system"}
-                  </span>
-                  <span>
-                    {event.targetType}: {event.targetKey}
-                  </span>
-                  {event.requestId ? <code>{event.requestId}</code> : null}
-                </div>
-                <pre>{JSON.stringify(event.detail, null, 2)}</pre>
-              </article>
-            ))
+            <div className="divide-y">
+              {result.items.map((event) => (
+                <article className="space-y-3 px-4 py-4" key={event.id}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{event.source}</Badge>
+                    <strong className="text-sm">{event.action}</strong>
+                    <span className="text-xs text-muted-foreground">
+                      {event.createdAt.toLocaleString("zh-CN")}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                    <span>
+                      {event.actor ? `UID ${event.actor.uid} · @${event.actor.username}` : "system"}
+                    </span>
+                    <span>
+                      {event.targetType}: {event.targetKey}
+                    </span>
+                    {event.requestId ? <code className="text-xs">{event.requestId}</code> : null}
+                  </div>
+                  <pre className="max-h-52 overflow-auto rounded-lg border bg-muted/50 p-3 text-xs whitespace-pre-wrap wrap-break-word">
+                    {JSON.stringify(event.detail, null, 2)}
+                  </pre>
+                </article>
+              ))}
+            </div>
           )}
-        </div>
-      </Panel>
-      <div className="admin-pagination">
-        {page > 1 ? <Link href={pageHref(page - 1)}>上一页</Link> : <span />}
-        {result.hasMore ? <Link href={pageHref(page + 1)}>下一页</Link> : null}
-      </div>
-    </main>
+        </CardContent>
+      </Card>
+
+      <AdminPagination
+        nextHref={result.hasMore ? pageHref(page + 1) : undefined}
+        previousHref={page > 1 ? pageHref(page - 1) : undefined}
+      />
+    </AdminPage>
   );
 }

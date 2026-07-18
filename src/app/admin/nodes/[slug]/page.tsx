@@ -1,8 +1,11 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+import { AdminPage, AdminPageHeader } from "@/components/admin/admin-page-layout";
 import { AdminNodeForm } from "@/components/admin/admin-nodes.client";
-import { Panel } from "@/components/ui/panel";
+import { Button } from "@/components/admin/ui/button";
+import { Card, CardContent } from "@/components/admin/ui/card";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { getAdminNodes } from "@/modules/admin/content.server";
 import { AdminError } from "@/modules/admin/errors";
@@ -24,17 +27,24 @@ export default async function AdminNodePage({ params }: { params: Promise<{ slug
   if (!node) notFound();
 
   return (
-    <main className="admin-page">
-      <div className="admin-page-head">
-        <div>
-          <Link href="/admin/nodes">← 节点列表</Link>
-          <h1>编辑节点</h1>
-          <p>修改展示与运营属性；归档不会删除节点主题或历史审计记录。</p>
-        </div>
-      </div>
-      <Panel className="admin-section-panel admin-node-workspace">
-        <AdminNodeForm node={node} nextSortOrder={node.sortOrder} />
-      </Panel>
-    </main>
+    <AdminPage className="max-w-4xl">
+      <AdminPageHeader
+        actions={
+          <Button asChild size="sm" variant="outline">
+            <Link href="/admin/nodes">
+              <ArrowLeft aria-hidden="true" />
+              节点列表
+            </Link>
+          </Button>
+        }
+        description="修改展示与运营属性；归档不会删除节点主题或历史审计记录。"
+        title="编辑节点"
+      />
+      <Card>
+        <CardContent>
+          <AdminNodeForm node={node} nextSortOrder={node.sortOrder} />
+        </CardContent>
+      </Card>
+    </AdminPage>
   );
 }

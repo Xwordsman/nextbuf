@@ -3,9 +3,17 @@
 import { Archive, LoaderCircle, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/admin/ui/button";
+import { Input } from "@/components/admin/ui/input";
+import { Label } from "@/components/admin/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/admin/ui/select";
+import { Switch } from "@/components/admin/ui/switch";
 
 export type AdminNodeFormValue = {
   id: string;
@@ -98,119 +106,150 @@ export function AdminNodeForm({
   };
 
   return (
-    <form className="admin-node-form" onSubmit={submit}>
+    <form className="space-y-6" onSubmit={submit}>
       {node ? (
-        <div className="admin-node-identity">
-          <span style={{ backgroundColor: form.color }} aria-hidden="true" />
-          <div>
-            <strong>{node.slug}</strong>
-            <small>
+        <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-4">
+          <span
+            aria-hidden="true"
+            className="h-10 w-2 rounded-full"
+            style={{ backgroundColor: form.color }}
+          />
+          <div className="grid gap-0.5">
+            <strong className="font-medium">{node.slug}</strong>
+            <span className="text-sm text-muted-foreground">
               {node._count.topics} 个主题 · {node._count.roleAssignments} 个版主角色
-            </small>
+            </span>
           </div>
         </div>
       ) : null}
-      <div className="admin-node-form-grid">
+
+      <div className="grid gap-5 md:grid-cols-2">
         {isCreate ? (
-          <div className="form-field">
+          <div className="grid gap-2">
             <Label htmlFor="node-slug">节点标识</Label>
             <Input
               id="node-slug"
-              value={form.slug}
-              minLength={2}
               maxLength={64}
-              pattern="[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
+              minLength={2}
               onChange={(event) => setForm({ ...form, slug: event.target.value })}
+              pattern="[a-z][a-z0-9]*(?:-[a-z0-9]+)*"
               required
+              value={form.slug}
             />
+            <p className="text-xs text-muted-foreground">
+              仅允许小写字母、数字和中划线，创建后不可修改。
+            </p>
           </div>
         ) : null}
-        <div className="form-field">
+        <div className="grid gap-2">
           <Label htmlFor="node-name">名称</Label>
           <Input
             id="node-name"
-            value={form.name}
-            minLength={2}
             maxLength={80}
+            minLength={2}
             onChange={(event) => setForm({ ...form, name: event.target.value })}
             required
+            value={form.name}
           />
         </div>
-        <div className="form-field admin-node-form-wide">
+        <div className="grid gap-2 md:col-span-2">
           <Label htmlFor="node-description">简介</Label>
           <Input
             id="node-description"
-            value={form.description}
             maxLength={500}
             onChange={(event) => setForm({ ...form, description: event.target.value })}
+            value={form.description}
           />
         </div>
-        <div className="form-field">
+        <div className="grid gap-2">
           <Label htmlFor="node-color">颜色</Label>
-          <Input
-            id="node-color"
-            type="color"
-            value={form.color}
-            onChange={(event) => setForm({ ...form, color: event.target.value })}
-          />
+          <div className="flex items-center gap-3">
+            <Input
+              className="h-8 w-12 p-1"
+              id="node-color"
+              onChange={(event) => setForm({ ...form, color: event.target.value })}
+              type="color"
+              value={form.color}
+            />
+            <span className="text-sm text-muted-foreground">{form.color.toUpperCase()}</span>
+          </div>
         </div>
-        <div className="form-field">
+        <div className="grid gap-2">
           <Label htmlFor="node-icon">图标</Label>
-          <select
-            id="node-icon"
-            value={form.icon}
-            onChange={(event) => setForm({ ...form, icon: event.target.value })}
-          >
-            {iconOptions.map((icon) => (
-              <option value={icon} key={icon}>
-                {icon}
-              </option>
-            ))}
-          </select>
+          <Select onValueChange={(icon) => setForm({ ...form, icon })} value={form.icon}>
+            <SelectTrigger className="w-full" id="node-icon">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {iconOptions.map((icon) => (
+                <SelectItem key={icon} value={icon}>
+                  {icon}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <div className="form-field">
+        <div className="grid gap-2">
           <Label htmlFor="node-sort-order">排序</Label>
           <Input
             id="node-sort-order"
-            type="number"
-            min={-10_000}
             max={10_000}
-            value={form.sortOrder}
+            min={-10_000}
             onChange={(event) => setForm({ ...form, sortOrder: Number(event.target.value) })}
+            type="number"
+            value={form.sortOrder}
           />
         </div>
-        <div className="form-field">
+        <div className="grid gap-2">
           <Label htmlFor="node-visibility">可见性</Label>
-          <select
-            id="node-visibility"
+          <Select
+            onValueChange={(visibility) => setForm({ ...form, visibility })}
             value={form.visibility}
-            onChange={(event) => setForm({ ...form, visibility: event.target.value })}
           >
-            <option value="public">公开</option>
-            <option value="hidden">隐藏</option>
-          </select>
+            <SelectTrigger className="w-full" id="node-visibility">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="public">公开</SelectItem>
+              <SelectItem value="hidden">隐藏</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
+
       {!isCreate ? (
-        <label className="admin-node-archive-toggle">
-          <input
-            type="checkbox"
+        <div className="flex items-start gap-3 rounded-lg border p-4">
+          <Switch
+            aria-label="归档节点"
             checked={form.archived}
-            onChange={(event) => setForm({ ...form, archived: event.target.checked })}
+            onCheckedChange={(archived) => setForm({ ...form, archived })}
           />
-          <span>
-            <Archive aria-hidden="true" />
-            归档节点
-          </span>
-          <small>归档保留主题与审计记录，不会删除已有内容。</small>
-        </label>
+          <div className="grid gap-1">
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <Archive aria-hidden="true" className="size-4" />
+              归档节点
+            </span>
+            <span className="text-sm text-muted-foreground">
+              归档保留主题与审计记录，不会删除已有内容。
+            </span>
+          </div>
+        </div>
       ) : null}
-      <div className="admin-form-actions">
-        <Button type="submit" disabled={busy}>
-          {busy ? <LoaderCircle className="animate-spin" /> : <Save />}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <Button disabled={busy} type="submit">
+          {busy ? (
+            <LoaderCircle aria-hidden="true" className="animate-spin" />
+          ) : (
+            <Save aria-hidden="true" />
+          )}
           {isCreate ? "创建节点" : "保存更改"}
         </Button>
-        {message ? <span role="status">{message}</span> : null}
+        {message ? (
+          <span className="text-sm text-muted-foreground" role="status">
+            {message}
+          </span>
+        ) : null}
       </div>
     </form>
   );

@@ -2,8 +2,30 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { AlertTriangle, ShieldCheck, UserRoundCog } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/admin/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/admin/ui/alert-dialog";
+import { Badge } from "@/components/admin/ui/badge";
+import { Button } from "@/components/admin/ui/button";
+import { Input } from "@/components/admin/ui/input";
+import { Label } from "@/components/admin/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/admin/ui/select";
 import {
   BULK_SESSION_CONFIRMATION,
   ROLE_CHANGE_CONFIRMATION,
@@ -112,86 +134,169 @@ export function AdminUserActions({
       }),
     );
 
+  const canSubmit = Boolean(password) && reason.trim().length >= 3 && !busy;
+
   return (
-    <div className="admin-user-actions">
-      <div className="admin-action-credentials">
-        <Input
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          placeholder="操作原因"
-        />
-        <Input
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="管理员密码"
-          autoComplete="current-password"
-        />
+    <div className="space-y-6">
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-2">
+          <Label htmlFor="admin-reason">操作原因</Label>
+          <Input
+            id="admin-reason"
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="至少 3 个字符"
+            value={reason}
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="admin-password">管理员密码</Label>
+          <Input
+            autoComplete="current-password"
+            id="admin-password"
+            onChange={(event) => setPassword(event.target.value)}
+            type="password"
+            value={password}
+          />
+        </div>
       </div>
-      <div className="admin-action-group">
-        <h3>角色</h3>
-        <div className="admin-inline-form">
-          <select value={role} onChange={(event) => setRole(event.target.value)}>
-            <option value="global_moderator">全局版主</option>
-            <option value="node_moderator">节点版主</option>
-            <option value="admin">管理员</option>
-          </select>
+
+      <div className="space-y-4 border-t pt-6">
+        <div className="flex items-center gap-2">
+          <UserRoundCog aria-hidden="true" className="size-4" />
+          <h3 className="text-sm font-medium">角色</h3>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[minmax(11rem,1fr)_minmax(11rem,1fr)_auto]">
+          <Label className="sr-only" htmlFor="admin-role">
+            治理角色
+          </Label>
+          <Select onValueChange={setRole} value={role}>
+            <SelectTrigger className="w-full" id="admin-role">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="global_moderator">全局版主</SelectItem>
+              <SelectItem value="node_moderator">节点版主</SelectItem>
+              <SelectItem value="admin">管理员</SelectItem>
+            </SelectContent>
+          </Select>
           {role === "node_moderator" ? (
-            <select value={nodeId} onChange={(event) => setNodeId(event.target.value)}>
-              {nodes.map((node) => (
-                <option value={node.id} key={node.id}>
-                  {node.name}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          <Button type="button" disabled={Boolean(busy)} onClick={grantRole}>
+            <div>
+              <Label className="sr-only" htmlFor="admin-role-node">
+                管理节点
+              </Label>
+              <Select onValueChange={setNodeId} value={nodeId}>
+                <SelectTrigger className="w-full" id="admin-role-node">
+                  <SelectValue placeholder="选择节点" />
+                </SelectTrigger>
+                <SelectContent>
+                  {nodes.map((node) => (
+                    <SelectItem key={node.id} value={node.id}>
+                      {node.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="hidden md:block" />
+          )}
+          <Button disabled={!canSubmit} onClick={grantRole} type="button">
             {busy === "grant" ? "处理中" : "授予角色"}
           </Button>
         </div>
-        <div className="admin-role-list">
+        <div className="divide-y rounded-lg border">
           {roles.length === 0 ? (
-            <span>当前没有治理角色。</span>
+            <p className="px-4 py-3 text-sm text-muted-foreground">当前没有治理角色。</p>
           ) : (
             roles.map((assignment) => (
-              <div key={assignment.id}>
-                <span>
-                  {assignment.role}
-                  {assignment.node ? ` · ${assignment.node.name}` : ""}
+              <div
+                className="flex items-center justify-between gap-3 px-4 py-3"
+                key={assignment.id}
+              >
+                <span className="flex flex-wrap items-center gap-2 text-sm">
+                  <Badge variant="outline">{assignment.role}</Badge>
+                  {assignment.node ? <span>{assignment.node.name}</span> : null}
                 </span>
-                <Button
-                  type="button"
-                  variant="danger"
-                  size="sm"
-                  disabled={Boolean(busy)}
-                  onClick={() => revokeRole(assignment.id)}
-                >
-                  撤销
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button disabled={!canSubmit} size="sm" type="button" variant="destructive">
+                      撤销
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>撤销治理角色？</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        此操作会立即移除该用户的 {assignment.role} 权限，并写入治理审计。
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>取消</AlertDialogCancel>
+                      <AlertDialogAction
+                        disabled={!canSubmit}
+                        onClick={() => revokeRole(assignment.id)}
+                        variant="destructive"
+                      >
+                        确认撤销
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             ))
           )}
         </div>
       </div>
-      <div className="admin-action-group">
-        <h3>信任与会话</h3>
-        <div className="admin-panel-actions">
+
+      <div className="space-y-4 border-t pt-6">
+        <div className="flex items-center gap-2">
+          <ShieldCheck aria-hidden="true" className="size-4" />
+          <h3 className="text-sm font-medium">信任与会话</h3>
+        </div>
+        <div className="flex flex-wrap gap-2">
           <Button
+            disabled={!canSubmit}
+            onClick={() => updateTrust(manualTrustLevel === 4 ? null : 4)}
             type="button"
             variant="outline"
-            disabled={Boolean(busy)}
-            onClick={() => updateTrust(manualTrustLevel === 4 ? null : 4)}
           >
             {manualTrustLevel === 4 ? "撤销人工 TL4" : "授予人工 TL4"}
           </Button>
-          <Button type="button" variant="danger" disabled={Boolean(busy)} onClick={revokeSessions}>
-            撤销全部会话
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button disabled={!canSubmit} type="button" variant="destructive">
+                撤销全部会话
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertTriangle aria-hidden="true" className="size-5 text-destructive" />
+                <AlertDialogTitle>撤销该用户的全部会话？</AlertDialogTitle>
+                <AlertDialogDescription>
+                  用户将需要重新登录。该操作不会删除内容、角色或账号资料。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={!canSubmit}
+                  onClick={revokeSessions}
+                  variant="destructive"
+                >
+                  确认撤销
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
-      <p className="admin-action-message" role="status">
-        {message}
-      </p>
+
+      {message ? (
+        <Alert>
+          <AlertTitle>操作结果</AlertTitle>
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
+      ) : null}
     </div>
   );
 }

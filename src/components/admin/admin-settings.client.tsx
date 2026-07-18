@@ -1,14 +1,34 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { useId, useState } from "react";
+import { CheckCircle2, PlugZap, Save, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/admin/ui/alert";
+import { Badge } from "@/components/admin/ui/badge";
+import { Button } from "@/components/admin/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/admin/ui/card";
+import { Input } from "@/components/admin/ui/input";
+import { Label } from "@/components/admin/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/admin/ui/select";
+import { Switch } from "@/components/admin/ui/switch";
+import { Textarea } from "@/components/admin/ui/textarea";
 import type { SiteSettingsInput } from "@/modules/settings/contracts";
 import { SITE_SETTINGS_CONFIRMATION, TRUST_CHANGE_CONFIRMATION } from "@/shared/admin-contracts";
 
 type SiteSettings = SiteSettingsInput & { revision: number; updatedAt: Date | null };
+type SerializedSiteSettings = Omit<SiteSettings, "updatedAt"> & { updatedAt: string | null };
 type ProviderStatus = {
   mail: {
     configured: boolean;
@@ -64,6 +84,30 @@ async function reauthenticate(password: string) {
   });
 }
 
+function SettingSwitch({
+  checked,
+  description,
+  label,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  description: string;
+  label: string;
+  onCheckedChange: (value: boolean) => void;
+}) {
+  const switchId = useId();
+
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+      <div className="grid gap-1">
+        <Label htmlFor={switchId}>{label}</Label>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      <Switch checked={checked} id={switchId} onCheckedChange={onCheckedChange} />
+    </div>
+  );
+}
+
 export function AdminSettings({
   section,
   settings: initial,
@@ -113,10 +157,19 @@ export function AdminSettings({
         },
       }),
     });
-    const result = (await response.json().catch(() => null)) as { code?: string } | null;
+    const result = (await response.json().catch(() => null)) as {
+      code?: string;
+      settings?: SerializedSiteSettings;
+    } | null;
     setMessage(response.ok ? "站点设置已保存。" : `保存失败：${result?.code ?? response.status}`);
     setBusy("");
     if (response.ok) {
+      if (result?.settings) {
+        setSettings({
+          ...result.settings,
+          updatedAt: result.settings.updatedAt ? new Date(result.settings.updatedAt) : null,
+        });
+      }
       setPassword("");
       router.refresh();
     }
@@ -202,275 +255,326 @@ export function AdminSettings({
   };
 
   return (
-    <div className="admin-settings-stack">
+    <div className="space-y-6">
       {section === "general" ? (
-        <section className="panel admin-section-panel">
-          <div className="admin-section-head">
-            <h2>站点运营设置</h2>
-            <span>修订 {settings.revision}</span>
-          </div>
-          <div className="admin-settings-grid">
-            <label>
-              站点名称
-              <Input
-                value={settings.siteName}
-                onChange={(event) => setSettings({ ...settings, siteName: event.target.value })}
-              />
-            </label>
-            <label>
-              注册策略
-              <select
-                value={settings.registrationMode}
-                onChange={(event) =>
-                  setSettings({
-                    ...settings,
-                    registrationMode: event.target.value as SiteSettings["registrationMode"],
-                  })
-                }
-              >
-                <option value="open">开放</option>
-                <option value="invite">邀请</option>
-                <option value="closed">关闭</option>
-              </select>
-            </label>
-            <label>
-              每小时主题上限
-              <Input
-                type="number"
-                min={1}
-                max={100}
-                value={settings.maxTopicsPerHour}
-                onChange={(event) =>
-                  setSettings({ ...settings, maxTopicsPerHour: Number(event.target.value) })
-                }
-              />
-            </label>
-            <label>
-              每小时回复上限
-              <Input
-                type="number"
-                min={1}
-                max={500}
-                value={settings.maxRepliesPerHour}
-                onChange={(event) =>
-                  setSettings({ ...settings, maxRepliesPerHour: Number(event.target.value) })
-                }
-              />
-            </label>
-            <label>
-              每小时上传上限
-              <Input
-                type="number"
-                min={1}
-                max={200}
-                value={settings.maxUploadsPerHour}
-                onChange={(event) =>
-                  setSettings({ ...settings, maxUploadsPerHour: Number(event.target.value) })
-                }
-              />
-            </label>
-          </div>
-          <div className="admin-toggle-row">
-            <label>
-              <input
-                type="checkbox"
+        <Card>
+          <CardHeader className="border-b">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <SlidersHorizontal aria-hidden="true" className="size-4" />
+                  站点运营设置
+                </CardTitle>
+                <CardDescription>修改会进入治理审计，并要求当前管理员重新验证。</CardDescription>
+              </div>
+              <Badge variant="outline">修订 {settings.revision}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-2">
+                <Label htmlFor="site-name">站点名称</Label>
+                <Input
+                  id="site-name"
+                  onChange={(event) => setSettings({ ...settings, siteName: event.target.value })}
+                  value={settings.siteName}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="registration-mode">注册策略</Label>
+                <Select
+                  onValueChange={(registrationMode) =>
+                    setSettings({
+                      ...settings,
+                      registrationMode: registrationMode as SiteSettings["registrationMode"],
+                    })
+                  }
+                  value={settings.registrationMode}
+                >
+                  <SelectTrigger className="w-full" id="registration-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="open">开放</SelectItem>
+                    <SelectItem value="invite">邀请</SelectItem>
+                    <SelectItem value="closed">关闭</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="topic-limit">每小时主题上限</Label>
+                <Input
+                  id="topic-limit"
+                  max={100}
+                  min={1}
+                  onChange={(event) =>
+                    setSettings({ ...settings, maxTopicsPerHour: Number(event.target.value) })
+                  }
+                  type="number"
+                  value={settings.maxTopicsPerHour}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="reply-limit">每小时回复上限</Label>
+                <Input
+                  id="reply-limit"
+                  max={500}
+                  min={1}
+                  onChange={(event) =>
+                    setSettings({ ...settings, maxRepliesPerHour: Number(event.target.value) })
+                  }
+                  type="number"
+                  value={settings.maxRepliesPerHour}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="upload-limit">每小时上传上限</Label>
+                <Input
+                  id="upload-limit"
+                  max={200}
+                  min={1}
+                  onChange={(event) =>
+                    setSettings({ ...settings, maxUploadsPerHour: Number(event.target.value) })
+                  }
+                  type="number"
+                  value={settings.maxUploadsPerHour}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <SettingSwitch
                 checked={settings.topicsEnabled}
-                onChange={(event) =>
-                  setSettings({ ...settings, topicsEnabled: event.target.checked })
-                }
-              />{" "}
-              允许发布主题
-            </label>
-            <label>
-              <input
-                type="checkbox"
+                description="关闭后普通成员不能发布主题。"
+                label="允许发布主题"
+                onCheckedChange={(topicsEnabled) => setSettings({ ...settings, topicsEnabled })}
+              />
+              <SettingSwitch
                 checked={settings.repliesEnabled}
-                onChange={(event) =>
-                  setSettings({ ...settings, repliesEnabled: event.target.checked })
-                }
-              />{" "}
-              允许发布回复
-            </label>
-            <label>
-              <input
-                type="checkbox"
+                description="关闭后普通成员不能发布回复。"
+                label="允许发布回复"
+                onCheckedChange={(repliesEnabled) => setSettings({ ...settings, repliesEnabled })}
+              />
+              <SettingSwitch
                 checked={settings.uploadsEnabled}
-                onChange={(event) =>
-                  setSettings({ ...settings, uploadsEnabled: event.target.checked })
-                }
-              />{" "}
-              允许上传附件
-            </label>
-          </div>
-          <div className="admin-action-credentials">
-            <Input
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              placeholder="变更原因"
-            />
-            <Input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="管理员密码"
-              autoComplete="current-password"
-            />
-            <Button
-              type="button"
-              onClick={saveSettings}
-              disabled={Boolean(busy) || reason.trim().length < 3 || !password}
-            >
-              {busy === "settings" ? "保存中" : "保存设置"}
-            </Button>
-          </div>
-        </section>
+                description="关闭后普通成员不能上传附件。"
+                label="允许上传附件"
+                onCheckedChange={(uploadsEnabled) => setSettings({ ...settings, uploadsEnabled })}
+              />
+            </div>
+
+            <div className="grid gap-3 border-t pt-6 md:grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_auto] md:items-end">
+              <div className="grid gap-2">
+                <Label htmlFor="settings-reason">变更原因</Label>
+                <Input
+                  id="settings-reason"
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="至少 3 个字符"
+                  value={reason}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="settings-password">管理员密码</Label>
+                <Input
+                  autoComplete="current-password"
+                  id="settings-password"
+                  onChange={(event) => setPassword(event.target.value)}
+                  type="password"
+                  value={password}
+                />
+              </div>
+              <Button
+                disabled={Boolean(busy) || reason.trim().length < 3 || !password}
+                onClick={saveSettings}
+                type="button"
+              >
+                <Save aria-hidden="true" />
+                {busy === "settings" ? "保存中" : "保存设置"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
 
       {section === "providers" ? (
-        <section className="panel admin-section-panel">
-          <div className="admin-section-head">
-            <h2>Provider 配置状态</h2>
-            <span>密钥不返回浏览器</span>
-          </div>
-          <div className="admin-provider-list">
-            <article>
+        <Card>
+          <CardHeader className="border-b">
+            <div className="flex items-center justify-between gap-3">
               <div>
-                <strong>SMTP 邮件</strong>
-                <span>
-                  {providers.mail.host ?? "未配置"}:{providers.mail.port} · {providers.mail.from}
-                </span>
-                <small>
-                  用户 {providers.mail.user ?? "无"} · 密码{" "}
-                  {providers.mail.passwordConfigured ? "已设置" : "未设置"}
-                </small>
+                <CardTitle className="flex items-center gap-2">
+                  <PlugZap aria-hidden="true" className="size-4" />
+                  Provider 配置状态
+                </CardTitle>
+                <CardDescription>完整密钥不进入浏览器，页面只显示脱敏状态。</CardDescription>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={Boolean(busy) || !providers.mail.configured}
-                onClick={() => testProvider("mail")}
-              >
-                {busy === "mail" ? "测试中" : "连接测试"}
-              </Button>
-            </article>
-            <article>
-              <div>
-                <strong>对象存储</strong>
-                <span>
-                  {providers.storage.driver} ·{" "}
-                  {providers.storage.bucket ?? providers.storage.localPath ?? "未配置"}
-                </span>
-                <small>
-                  {providers.storage.endpoint ?? "本地文件系统"} · 凭据{" "}
-                  {providers.storage.secretConfigured || providers.storage.driver === "local"
-                    ? "已就绪"
-                    : "未设置"}
-                </small>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={Boolean(busy) || !providers.storage.configured}
-                onClick={() => testProvider("storage")}
-              >
-                {busy === "storage" ? "测试中" : "连接测试"}
-              </Button>
-            </article>
-            <article>
-              <div>
-                <strong>GitHub OAuth</strong>
-                <span>Client ID {providers.github.clientId ?? "未配置"}</span>
-                <small>
-                  {providers.github.callbackUrl} · Secret{" "}
-                  {providers.github.secretConfigured ? "已设置" : "未设置"}
-                </small>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={Boolean(busy) || !providers.github.configured}
-                onClick={() => testProvider("github")}
-              >
-                {busy === "github" ? "测试中" : "连接测试"}
-              </Button>
-            </article>
-          </div>
-        </section>
+              <Badge variant="outline">密钥不返回浏览器</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="px-0">
+            <div className="divide-y">
+              {[
+                {
+                  key: "mail" as const,
+                  title: "SMTP 邮件",
+                  configured: providers.mail.configured,
+                  detail: `${providers.mail.host ?? "未配置"}:${providers.mail.port} · ${providers.mail.from}`,
+                  meta: `用户 ${providers.mail.user ?? "无"} · 密码 ${providers.mail.passwordConfigured ? "已设置" : "未设置"}`,
+                },
+                {
+                  key: "storage" as const,
+                  title: "对象存储",
+                  configured: providers.storage.configured,
+                  detail: `${providers.storage.driver} · ${providers.storage.bucket ?? providers.storage.localPath ?? "未配置"}`,
+                  meta: `${providers.storage.endpoint ?? "本地文件系统"} · 凭据 ${providers.storage.secretConfigured || providers.storage.driver === "local" ? "已就绪" : "未设置"}`,
+                },
+                {
+                  key: "github" as const,
+                  title: "GitHub OAuth",
+                  configured: providers.github.configured,
+                  detail: `Client ID ${providers.github.clientId ?? "未配置"}`,
+                  meta: `${providers.github.callbackUrl} · Secret ${providers.github.secretConfigured ? "已设置" : "未设置"}`,
+                },
+              ].map((provider) => (
+                <div
+                  className="flex flex-col gap-3 px-6 py-5 sm:flex-row sm:items-center sm:justify-between"
+                  key={provider.key}
+                >
+                  <div className="grid gap-1">
+                    <div className="flex items-center gap-2">
+                      <strong className="text-sm">{provider.title}</strong>
+                      <Badge variant={provider.configured ? "secondary" : "outline"}>
+                        {provider.configured ? "已配置" : "未配置"}
+                      </Badge>
+                    </div>
+                    <span className="text-sm text-muted-foreground">{provider.detail}</span>
+                    <span className="text-xs text-muted-foreground">{provider.meta}</span>
+                  </div>
+                  <Button
+                    disabled={Boolean(busy) || !provider.configured}
+                    onClick={() => testProvider(provider.key)}
+                    type="button"
+                    variant="outline"
+                  >
+                    {busy === provider.key ? "测试中" : "连接测试"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
 
       {section === "trust" ? (
-        <section className="panel admin-section-panel">
-          <div className="admin-section-head">
-            <h2>信任规则</h2>
-            <span>{rules.length} 个版本</span>
-          </div>
-          <Textarea
-            className="admin-rule-editor"
-            value={config}
-            onChange={(event) => setConfig(event.target.value)}
-            aria-label="信任规则 JSON"
-          />
-          <div className="admin-panel-actions">
+        <Card>
+          <CardHeader className="border-b">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <ShieldCheck aria-hidden="true" className="size-4" />
+                  信任规则
+                </CardTitle>
+                <CardDescription>草稿必须先预览，且仅完成的预览才能激活。</CardDescription>
+              </div>
+              <Badge variant="outline">{rules.length} 个版本</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="trust-reason">操作原因</Label>
+                <Input
+                  id="trust-reason"
+                  onChange={(event) => setReason(event.target.value)}
+                  placeholder="至少 3 个字符"
+                  value={reason}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="trust-password">管理员密码</Label>
+                <Input
+                  autoComplete="current-password"
+                  id="trust-password"
+                  onChange={(event) => setPassword(event.target.value)}
+                  type="password"
+                  value={password}
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="trust-rule-json">规则 JSON</Label>
+              <Textarea
+                className="min-h-72 font-mono text-xs"
+                id="trust-rule-json"
+                onChange={(event) => setConfig(event.target.value)}
+                value={config}
+              />
+            </div>
             <Button
-              type="button"
-              variant="outline"
               disabled={Boolean(busy) || reason.trim().length < 3}
               onClick={createRule}
+              type="button"
+              variant="outline"
             >
               {busy === "rule-create" ? "创建中" : "创建规则草稿"}
             </Button>
-          </div>
-          <div className="admin-rule-list">
-            {rules.map((rule) => {
-              const preview = batches.find(
-                (batch) => batch.ruleVersionId === rule.id && batch.mode === "preview",
-              );
-              return (
-                <article key={rule.id}>
-                  <div>
-                    <strong>
-                      v{rule.version} · {rule.status}
-                    </strong>
-                    <small>
-                      {rule.createdAt.toLocaleString("zh-CN")}
-                      {preview
-                        ? ` · 预览 ${preview.status} ${preview.processedUsers}/${preview.totalUsers}`
-                        : ""}
-                    </small>
+            <div className="divide-y border-t">
+              {rules.map((rule) => {
+                const preview = batches.find(
+                  (batch) => batch.ruleVersionId === rule.id && batch.mode === "preview",
+                );
+                return (
+                  <div
+                    className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between"
+                    key={rule.id}
+                  >
+                    <div className="grid gap-1">
+                      <strong className="text-sm">
+                        v{rule.version} · {rule.status}
+                      </strong>
+                      <span className="text-xs text-muted-foreground">
+                        {rule.createdAt.toLocaleString("zh-CN")}
+                        {preview
+                          ? ` · 预览 ${preview.status} ${preview.processedUsers}/${preview.totalUsers}`
+                          : ""}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {["draft", "previewed"].includes(rule.status) ? (
+                        <Button
+                          disabled={Boolean(busy) || reason.trim().length < 3}
+                          onClick={() => previewRule(rule.id)}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          预览
+                        </Button>
+                      ) : null}
+                      {rule.status === "previewed" && preview?.status === "completed" ? (
+                        <Button
+                          disabled={Boolean(busy) || !password || reason.trim().length < 3}
+                          onClick={() => activateRule(rule.id)}
+                          size="sm"
+                          type="button"
+                        >
+                          激活
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
-                  <div>
-                    {["draft", "previewed"].includes(rule.status) ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={Boolean(busy) || reason.trim().length < 3}
-                        onClick={() => previewRule(rule.id)}
-                      >
-                        预览
-                      </Button>
-                    ) : null}
-                    {rule.status === "previewed" && preview?.status === "completed" ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={Boolean(busy) || !password || reason.trim().length < 3}
-                        onClick={() => activateRule(rule.id)}
-                      >
-                        激活
-                      </Button>
-                    ) : null}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
+
       {message ? (
-        <p className="admin-action-message" role="status">
-          {message}
-        </p>
+        <Alert>
+          <CheckCircle2 aria-hidden="true" />
+          <AlertTitle>操作结果</AlertTitle>
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
       ) : null}
     </div>
   );

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Download, KeyRound } from "lucide-react";
+import { Button } from "@/components/admin/ui/button";
+import { Input } from "@/components/admin/ui/input";
 import { AUDIT_EXPORT_CONFIRMATION } from "@/shared/admin-contracts";
 
 type Filters = { source?: string; action?: string; actorUid?: number; from?: string; to?: string };
@@ -12,6 +13,7 @@ export function AdminAuditExport({ filters }: { filters: Filters }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+
   const exportAudit = async () => {
     setBusy(true);
     setMessage("");
@@ -47,29 +49,37 @@ export function AdminAuditExport({ filters }: { filters: Filters }) {
     setPassword("");
     setBusy(false);
   };
+
   return (
-    <div className="admin-export-bar">
+    <div className="grid gap-3 border-b bg-muted/30 p-4 lg:grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_auto] lg:items-center">
       <Input
-        value={reason}
+        aria-label="导出原因"
         onChange={(event) => setReason(event.target.value)}
         placeholder="导出原因"
+        value={reason}
       />
       <Input
-        type="password"
-        value={password}
+        aria-label="管理员密码"
+        autoComplete="current-password"
         onChange={(event) => setPassword(event.target.value)}
         placeholder="管理员密码"
-        autoComplete="current-password"
+        type="password"
+        value={password}
       />
       <Button
-        type="button"
-        variant="outline"
         disabled={busy || !password || reason.trim().length < 3}
         onClick={exportAudit}
+        type="button"
+        variant="outline"
       >
+        {busy ? <KeyRound aria-hidden="true" /> : <Download aria-hidden="true" />}
         {busy ? "导出中" : "导出当前筛选"}
       </Button>
-      <span role="status">{message}</span>
+      {message ? (
+        <p className="text-sm text-muted-foreground lg:col-span-3" role="status">
+          {message}
+        </p>
+      ) : null}
     </div>
   );
 }

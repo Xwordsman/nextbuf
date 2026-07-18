@@ -30,11 +30,11 @@ NextBuf/
 │  │  ├─ error.tsx
 │  │  └─ not-found.tsx
 │  ├─ components/
-│  │  ├─ ui/                  shadcn/ui 与通用界面原语
+│  │  ├─ ui/                  社区前台既有通用界面原语
 │  │  ├─ layout/              导航、三栏框架、页脚
 │  │  ├─ community/           主题、回复、节点展示组件
 │  │  ├─ auth/                身份表单与会话管理组件
-│  │  └─ admin/               后台专用展示组件
+│  │  └─ admin/               后台专用组件；`admin/ui` 为官方 shadcn/ui 原语
 │  ├─ modules/
 │  │  ├─ identity/
 │  │  ├─ profiles/
@@ -117,7 +117,7 @@ NextBuf/
 
 负责视觉和交互。组件接收已经准备好的数据，通过明确回调或 Action 发起操作。
 
-- `ui` 不依赖任何业务模块。
+- `ui` 不依赖任何业务模块。既有社区前台原语保留在 `components/ui`；后台使用 `components/admin/ui` 中由官方 shadcn CLI 生成的 `radix-nova` 原语，避免改变前台既有变体合同。
 - `community` 可以依赖公开 ViewModel 和客户端安全类型。
 - `admin` 只表示后台界面，不意味着拥有管理员权限；权限仍在服务端验证。
 - 全局页脚中的 NextBuf 法律署名属于核心组件，不能作为普通站点设置、主题开关或插件插槽被删除。

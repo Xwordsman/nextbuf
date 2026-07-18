@@ -1,8 +1,25 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
-import { Panel } from "@/components/ui/panel";
+import { ExternalLink, Filter, Search } from "lucide-react";
+import { AdminPage, AdminPageHeader, AdminPagination } from "@/components/admin/admin-page-layout";
+import { Badge } from "@/components/admin/ui/badge";
+import { Button } from "@/components/admin/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/admin/ui/card";
+import { Input } from "@/components/admin/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/admin/ui/select";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { listAdminReplies } from "@/modules/admin/content.server";
 import { AdminError } from "@/modules/admin/errors";
@@ -18,12 +35,13 @@ export default async function AdminRepliesPage({
   if (!session) redirect("/auth/sign-in?next=/admin/content/replies");
   const params = await searchParams;
   const page = params.page && /^\d+$/.test(params.page) ? Number(params.page) : 1;
+  const node = params.node && params.node !== "all" ? params.node : undefined;
   let result: Awaited<ReturnType<typeof listAdminReplies>>;
   try {
     result = await listAdminReplies(session.user.id, {
       query: params.q,
       status: params.status,
-      node: params.node,
+      node,
       page,
     });
   } catch (error) {
@@ -34,7 +52,7 @@ export default async function AdminRepliesPage({
   const query = new URLSearchParams();
   if (params.q) query.set("q", params.q);
   if (params.status) query.set("status", params.status);
-  if (params.node) query.set("node", params.node);
+  if (node) query.set("node", node);
   const pageHref = (nextPage: number) => {
     const copy = new URLSearchParams(query);
     copy.set("page", String(nextPage));
@@ -42,75 +60,122 @@ export default async function AdminRepliesPage({
   };
 
   return (
-    <main className="admin-page">
-      <div className="admin-page-head">
-        <div>
-          <h1>回复管理</h1>
-          <p>按主题编号、正文、作者、节点和状态筛选回复，处置进入原主题或治理案件。</p>
-        </div>
-      </div>
-      <Panel className="admin-filter-panel">
-        <form action="/admin/content/replies">
-          <input name="q" defaultValue={params.q ?? ""} placeholder="主题编号、回复正文或作者" />
-          <select name="status" defaultValue={params.status ?? "all"}>
-            <option value="all">全部状态</option>
-            <option value="published">已发布</option>
-            <option value="hidden">已隐藏</option>
-            <option value="deleted">已删除</option>
-            <option value="draft">草稿</option>
-          </select>
-          <select name="node" defaultValue={params.node ?? ""}>
-            <option value="">全部节点</option>
-            {result.nodes.map((node) => (
-              <option value={node.slug} key={node.id}>
-                {node.name}
-              </option>
-            ))}
-          </select>
-          <button type="submit">筛选</button>
-        </form>
-      </Panel>
-      <Panel className="admin-section-panel">
-        <div className="admin-section-head">
-          <h2>回复列表</h2>
-          <span>{result.replyCount}</span>
-        </div>
-        <div className="admin-content-list">
+    <AdminPage>
+      <AdminPageHeader
+        description="按主题编号、正文、作者、节点和状态筛选回复，处置进入原主题或治理案件。"
+        title="回复管理"
+      />
+
+      <Card>
+        <CardHeader className="border-b">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Filter aria-hidden="true" className="size-4" />
+            筛选回复
+          </CardTitle>
+          <CardDescription>使用主题、正文、作者与节点快速定位内容。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form
+            action="/admin/content/replies"
+            className="grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem_12rem_auto]"
+          >
+            <Input
+              aria-label="搜索回复"
+              defaultValue={params.q ?? ""}
+              name="q"
+              placeholder="主题编号、回复正文或作者"
+            />
+            <Select defaultValue={params.status ?? "all"} name="status">
+              <SelectTrigger aria-label="回复状态" className="w-full">
+                <SelectValue placeholder="全部状态" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部状态</SelectItem>
+                <SelectItem value="published">已发布</SelectItem>
+                <SelectItem value="hidden">已隐藏</SelectItem>
+                <SelectItem value="deleted">已删除</SelectItem>
+                <SelectItem value="draft">草稿</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select defaultValue={node ?? "all"} name="node">
+              <SelectTrigger aria-label="回复节点" className="w-full">
+                <SelectValue placeholder="全部节点" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部节点</SelectItem>
+                {result.nodes.map((node) => (
+                  <SelectItem key={node.id} value={node.slug}>
+                    {node.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="submit">
+              <Search aria-hidden="true" />
+              筛选
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="border-b">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle>回复列表</CardTitle>
+              <CardDescription>按主题楼层显示当前筛选结果。</CardDescription>
+            </div>
+            <Badge variant="secondary">{result.replyCount}</Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="px-0">
           {result.replies.length === 0 ? (
-            <p>没有符合筛选条件的回复。</p>
+            <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+              没有符合筛选条件的回复。
+            </p>
           ) : (
-            result.replies.map((reply) => (
-              <article key={reply.id}>
-                <div>
-                  <Link href={`/topics/${reply.topic.number}#post-${reply.position}`}>
-                    #{reply.topic.number} · {reply.position} 楼
-                  </Link>
-                  <span>
-                    {reply.topic.title} · {reply.topic.node.name} · {reply.author.name} (@
-                    {reply.author.username})
-                  </span>
-                  <p>{reply.bodySource.slice(0, 180)}</p>
-                </div>
-                <div>
-                  <Badge variant="neutral">{reply.status}</Badge>
-                  <span>
-                    {reply.likeCount} 赞 · {reply.revisionCount} 版
-                  </span>
-                  <Link href={`/topics/${reply.topic.number}#post-${reply.position}`}>
-                    查看回复
-                  </Link>
-                </div>
-              </article>
-            ))
+            <div className="divide-y">
+              {result.replies.map((reply) => (
+                <article
+                  className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between"
+                  key={reply.id}
+                >
+                  <div className="min-w-0 space-y-1.5">
+                    <Link
+                      className="font-medium hover:underline"
+                      href={`/topics/${reply.topic.number}#post-${reply.position}`}
+                    >
+                      #{reply.topic.number} · {reply.position} 楼
+                    </Link>
+                    <p className="text-sm text-muted-foreground">
+                      {reply.topic.title} · {reply.topic.node.name} · {reply.author.name} (@
+                      {reply.author.username})
+                    </p>
+                    <p className="line-clamp-2 text-sm text-muted-foreground">{reply.bodySource}</p>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                    <Badge variant="outline">{reply.status}</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {reply.likeCount} 赞 · {reply.revisionCount} 版
+                    </span>
+                    <Button asChild size="sm" variant="ghost">
+                      <Link href={`/topics/${reply.topic.number}#post-${reply.position}`}>
+                        <ExternalLink aria-hidden="true" />
+                        查看
+                      </Link>
+                    </Button>
+                  </div>
+                </article>
+              ))}
+            </div>
           )}
-        </div>
-      </Panel>
-      <div className="admin-pagination">
-        {page > 1 ? <Link href={pageHref(page - 1)}>上一页</Link> : <span />}
-        {page * result.pageSize < result.replyCount ? (
-          <Link href={pageHref(page + 1)}>下一页</Link>
-        ) : null}
-      </div>
-    </main>
+        </CardContent>
+      </Card>
+
+      <AdminPagination
+        nextHref={page * result.pageSize < result.replyCount ? pageHref(page + 1) : undefined}
+        previousHref={page > 1 ? pageHref(page - 1) : undefined}
+      />
+    </AdminPage>
   );
 }
