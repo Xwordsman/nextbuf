@@ -201,7 +201,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - `v0.13.1` 主分支 CI #63 已通过完整检查与原生 amd64 镜像冒烟；标签 CI #64 已通过 amd64/arm64 空安装、无预置节点、首次访问 307 跳转 `/setup`、首次管理员、升级保留既有节点、恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release 发布。
 - `v0.13.2` 主分支 CI #65 已通过完整检查与原生 amd64 镜像冒烟；标签 CI #66 已通过 amd64/arm64、宝塔单文件 Compose、空安装、首次管理员、升级/恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release。GHCR `latest` 与 `0.13.2` 均为包含 amd64/arm64 的 OCI image index。
 - `v0.13.3` 主分支 CI #68 已通过完整检查、宝塔固定容器名断言与原生 amd64 镜像冒烟；标签 CI #69 已通过 amd64/arm64、空安装、首次管理员、升级/恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release。GHCR `latest` 与 `0.13.3` 均指向 OCI index `sha256:f1923bfa9418d4ca00a51251ce96a9e5ccef3790ff20b66a104a2a5194313e09`。
-- `v0.13.5` 本地已通过 Prettier、ESLint、TypeScript、60 项单元测试、迁移历史校验、生产依赖审计、完整 Web/Worker/CLI 构建和 Windows x64 发布归档版本核对；本机没有 Docker，因此 PostgreSQL/Redis/Mailpit 集成、浏览器 E2E、amd64/arm64 镜像和正式 Release 仍以标签流水线结果为准。
+- `v0.13.5` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29639852944) 已通过格式、Lint、类型、60 项单元测试、32 项 PostgreSQL/Redis/Mailpit 集成测试、10 项 Playwright、迁移历史、生产依赖审计、amd64/arm64 空安装与首次管理员、恢复和 `v0.12.0` 升级，并发布非 Docker x64 资产与 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.5)。GHCR `0.13.5` 与 `latest` 均指向包含 linux/amd64、linux/arm64 和证明清单的 OCI index `sha256:0163cdcf3242b1183d1c8efa6e780aff6b70a182df2416d864703eb20dfac3a6`。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
 ## 4. 当前真实数据边界
