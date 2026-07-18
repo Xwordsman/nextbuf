@@ -218,7 +218,7 @@ test.describe.serial("identity authentication", () => {
     await expect(page.getByRole("link", { name: /通知，2 条未读/ })).toBeVisible();
     await expect(page.getByTestId("notification-item")).toHaveCount(2);
     await page.getByRole("button", { name: "全部已读" }).click();
-    await expect(page.getByText("0 条未读")).toBeVisible();
+    await expect(page.getByTestId("unread-notification-count")).toHaveText("0");
     await page.getByRole("button", { name: "归档" }).first().click();
     await expect(page.getByTestId("notification-item")).toHaveCount(1);
     await page.goto("/account/notifications");

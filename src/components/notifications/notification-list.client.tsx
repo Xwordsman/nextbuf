@@ -77,6 +77,7 @@ export function NotificationList({ initialItems }: { initialItems: Item[] }) {
           <Badge
             variant={unreadCount > 0 ? "secondary" : "outline"}
             className="rounded-md tabular-nums"
+            data-testid="unread-notification-count"
           >
             {unreadCount}
           </Badge>
