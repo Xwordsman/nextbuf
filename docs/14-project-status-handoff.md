@@ -3,7 +3,7 @@
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
 - 最后更新：2026-07-18
-- 当前完成版本：`v0.13.2` 公开 Beta 补丁候选
+- 当前完成版本：`v0.13.2` 公开 Beta 补丁
 - 下一动作：真实服务器与邀请用户验收；未经明确批准不开始 `v1.0.0`
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
@@ -196,7 +196,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - 主分支 `0.13.0` 候选已由 CI #56/#57 完成 amd64 setup、首次管理员、故障注入、空卷恢复和 `v0.12.0` 升级；正式标签 CI #58 已重跑 amd64 并完成原生 arm64、manifest、SBOM/provenance、非 Docker x64 归档和 Release。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
 - `v0.13.1` 主分支 CI #63 已通过完整检查与原生 amd64 镜像冒烟；标签 CI #64 已通过 amd64/arm64 空安装、无预置节点、首次访问 307 跳转 `/setup`、首次管理员、升级保留既有节点、恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release 发布。
-- `v0.13.2` 本地验证与远程发布门槛尚待本次变更完成；在标签 CI 通过前不能宣称 `latest` 已包含宝塔单文件入口。
+- `v0.13.2` 主分支 CI #65 已通过完整检查与原生 amd64 镜像冒烟；标签 CI #66 已通过 amd64/arm64、宝塔单文件 Compose、空安装、首次管理员、升级/恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release。GHCR `latest` 与 `0.13.2` 均为包含 amd64/arm64 的 OCI image index。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
 ## 4. 当前真实数据边界
