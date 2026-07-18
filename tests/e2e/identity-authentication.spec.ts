@@ -127,7 +127,7 @@ test.describe.serial("identity authentication", () => {
     await page
       .getByLabel("正文")
       .fill("这是通过真实浏览器发布的 **Markdown 主题正文**，用于验证完整内容流程。");
-    await page.locator('.markdown-editor input[type="file"]').setInputFiles({
+    await page.getByLabel("选择附件").setInputFiles({
       name: "e2e-notes.txt",
       mimeType: "text/plain",
       buffer: Buffer.from("NextBuf E2E attachment"),
@@ -216,11 +216,11 @@ test.describe.serial("identity authentication", () => {
     await page.goto("/notifications");
     await expect(page.getByRole("heading", { name: "通知中心" })).toBeVisible();
     await expect(page.getByRole("link", { name: /通知，2 条未读/ })).toBeVisible();
-    await expect(page.locator(".notification-page-item")).toHaveCount(2);
+    await expect(page.getByTestId("notification-item")).toHaveCount(2);
     await page.getByRole("button", { name: "全部已读" }).click();
     await expect(page.getByText("0 条未读")).toBeVisible();
     await page.getByRole("button", { name: "归档" }).first().click();
-    await expect(page.locator(".notification-page-item")).toHaveCount(1);
+    await expect(page.getByTestId("notification-item")).toHaveCount(1);
     await page.goto("/account/notifications");
     await page.getByLabel("提及我邮件通知").check();
     await page.getByRole("button", { name: "保存偏好" }).click();
@@ -243,7 +243,7 @@ test.describe.serial("identity authentication", () => {
     expect(quotedReplyRequest.postDataJSON()).toMatchObject({ quotedPosition: 2 });
     await expect(page).toHaveURL(/#post-3$/);
     const secondReply = page.locator("#post-3");
-    const secondReplyQuote = secondReply.locator(".reply-quote");
+    const secondReplyQuote = secondReply.getByTestId("reply-quote");
     await expect(secondReplyQuote).toContainText("#2");
     await expect(secondReplyQuote).toContainText("认证测试用户");
     await expect(secondReplyQuote).toContainText("这是第一条浏览器回复");
@@ -288,7 +288,7 @@ test.describe.serial("identity authentication", () => {
     await expect(secondPage).toHaveURL("/");
     await secondPage.goto("/account/security");
     await expect(secondPage.getByRole("heading", { name: "账号安全" })).toBeVisible();
-    await expect(secondPage.locator(".session-item")).toHaveCount(2);
+    await expect(secondPage.getByTestId("session-item")).toHaveCount(2);
 
     await secondPage.goto("/auth/forgot-password");
     await secondPage.getByLabel("邮箱").fill(email);
@@ -314,7 +314,7 @@ test.describe.serial("identity authentication", () => {
     await expect(secondPage).toHaveURL("/");
 
     await secondPage.goto("/account/security");
-    await expect(secondPage.locator(".session-item")).toHaveCount(1);
+    await expect(secondPage.getByTestId("session-item")).toHaveCount(1);
     await expect(secondPage.getByText("当前设备", { exact: true })).toBeVisible();
     await secondContext.close();
   });

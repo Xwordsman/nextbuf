@@ -3,17 +3,17 @@
 import { Archive, LoaderCircle, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { Button } from "@/components/admin/ui/button";
-import { Input } from "@/components/admin/ui/input";
-import { Label } from "@/components/admin/ui/label";
+import { Button } from "@/components/shadcn/ui/button";
+import { Input } from "@/components/shadcn/ui/input";
+import { Label } from "@/components/shadcn/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/admin/ui/select";
-import { Switch } from "@/components/admin/ui/switch";
+} from "@/components/shadcn/ui/select";
+import { Switch } from "@/components/shadcn/ui/switch";
 
 export type AdminNodeFormValue = {
   id: string;

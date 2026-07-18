@@ -2,7 +2,7 @@
 
 import { CheckCircle2, LoaderCircle, RotateCcw, ShieldAlert, XCircle } from "lucide-react";
 import { useState } from "react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/admin/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/shadcn/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,17 +13,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/admin/ui/alert-dialog";
-import { Button } from "@/components/admin/ui/button";
-import { Input } from "@/components/admin/ui/input";
-import { Label } from "@/components/admin/ui/label";
+} from "@/components/shadcn/ui/alert-dialog";
+import { Button } from "@/components/shadcn/ui/button";
+import { Input } from "@/components/shadcn/ui/input";
+import { Label } from "@/components/shadcn/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/admin/ui/select";
+} from "@/components/shadcn/ui/select";
 
 type ActionOption = { value: string; label: string; duration: boolean };
 

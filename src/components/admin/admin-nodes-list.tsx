@@ -1,8 +1,8 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import type { AdminNodeFormValue } from "@/components/admin/admin-nodes.client";
-import { Badge } from "@/components/admin/ui/badge";
-import { Button } from "@/components/admin/ui/button";
+import { Badge } from "@/components/shadcn/ui/badge";
+import { Button } from "@/components/shadcn/ui/button";
 import {
   Table,
   TableBody,
@@ -10,7 +10,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/admin/ui/table";
+} from "@/components/shadcn/ui/table";
 
 export function AdminNodesList({ nodes }: { nodes: AdminNodeFormValue[] }) {
   return (

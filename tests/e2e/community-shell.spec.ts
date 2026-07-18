@@ -99,6 +99,16 @@ test.describe("community shell", () => {
     await captureFullPage(page, testInfo, "tablet-1024");
   });
 
+  test("keeps the account panel accessible through the 1100px rail breakpoint", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1099, height: 900 });
+    await openHome(page);
+
+    await expect(page.locator(".right-column")).toBeHidden();
+    await expect(page.getByRole("button", { name: "我的面板" })).toBeVisible();
+  });
+
   test("supports mobile search and compact layout", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openHome(page);

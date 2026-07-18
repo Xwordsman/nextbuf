@@ -11,9 +11,9 @@ import {
   ServerCog,
   Users,
 } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/admin/ui/alert";
-import { Badge } from "@/components/admin/ui/badge";
-import { Button } from "@/components/admin/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/shadcn/ui/alert";
+import { Badge } from "@/components/shadcn/ui/badge";
+import { Button } from "@/components/shadcn/ui/button";
 import {
   Card,
   CardContent,
@@ -21,7 +21,7 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/admin/ui/card";
+} from "@/components/shadcn/ui/card";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { AdminError } from "@/modules/admin/errors";
 import { getAdminDashboard } from "@/modules/admin/dashboard.server";

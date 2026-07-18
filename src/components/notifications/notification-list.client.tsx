@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Archive, Check, CheckCheck, Inbox } from "lucide-react";
 import { useState } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/shadcn/ui/avatar";
+import { Badge } from "@/components/shadcn/ui/badge";
+import { Button } from "@/components/shadcn/ui/button";
 import type { NotificationSnapshot, NotificationType } from "@/modules/notifications/contracts";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 
 type Item = {
   id: string;
@@ -66,26 +67,42 @@ export function NotificationList({ initialItems }: { initialItems: Item[] }) {
     setBusy(null);
   };
 
+  const unreadCount = items.filter((item) => !item.readAt).length;
+
   return (
     <>
-      <div className="notification-page-toolbar">
-        <span>{items.filter((item) => !item.readAt).length} 条未读</span>
+      <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 border-b bg-muted/30 px-5 py-3 sm:px-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>未读通知</span>
+          <Badge
+            variant={unreadCount > 0 ? "secondary" : "outline"}
+            className="rounded-md tabular-nums"
+          >
+            {unreadCount}
+          </Badge>
+        </div>
         <Button type="button" variant="outline" onClick={markAll} disabled={busy !== null}>
-          <CheckCheck /> 全部已读
+          <CheckCheck aria-hidden="true" /> 全部已读
         </Button>
       </div>
+
       {items.length === 0 ? (
-        <div className="notification-page-empty">
-          <Inbox />
-          <p>这里暂时没有通知。</p>
+        <div className="grid min-h-64 place-items-center content-center gap-2 px-5 py-10 text-center text-muted-foreground">
+          <Inbox className="size-7" aria-hidden="true" />
+          <p className="text-sm">这里暂时没有通知。</p>
         </div>
       ) : (
-        <div className="notification-page-list">
+        <div>
           {items.map((item) => {
             const href = `/topics/${item.snapshot.topicNumber}${item.snapshot.postPosition ? `#post-${item.snapshot.postPosition}` : ""}`;
             return (
-              <article className="notification-page-item" data-unread={!item.readAt} key={item.id}>
-                <Avatar className="size-10">
+              <article
+                className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-start gap-3 border-b px-5 py-4 last:border-b-0 data-[unread=true]:bg-muted/40 max-sm:grid-cols-[36px_minmax(0,1fr)] max-sm:px-4"
+                data-testid="notification-item"
+                data-unread={!item.readAt}
+                key={item.id}
+              >
+                <Avatar size="lg" className="max-sm:size-9">
                   <AvatarImage
                     src={item.actor?.image ?? undefined}
                     alt={item.actor?.name ?? "系统"}
@@ -94,9 +111,10 @@ export function NotificationList({ initialItems }: { initialItems: Item[] }) {
                     {item.snapshot.actorName.slice(0, 1).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <div className="notification-page-copy">
-                  <p>{summary(item)}</p>
+                <div className="grid min-w-0 gap-1">
+                  <p className="text-sm leading-5 text-foreground">{summary(item)}</p>
                   <Link
+                    className="w-fit max-w-full truncate text-sm font-medium text-foreground underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                     href={href}
                     onClick={(event) => {
                       if (!item.readAt) {
@@ -107,11 +125,11 @@ export function NotificationList({ initialItems }: { initialItems: Item[] }) {
                   >
                     {item.snapshot.topicTitle}
                   </Link>
-                  <time dateTime={item.createdAt}>
+                  <time className="text-xs text-muted-foreground" dateTime={item.createdAt}>
                     {new Date(item.createdAt).toLocaleString("zh-CN")}
                   </time>
                 </div>
-                <div className="notification-page-actions">
+                <div className="flex items-center gap-1 max-sm:col-start-2 max-sm:justify-end">
                   {!item.readAt ? (
                     <Button
                       type="button"
@@ -122,7 +140,7 @@ export function NotificationList({ initialItems }: { initialItems: Item[] }) {
                       disabled={busy !== null}
                       onClick={() => void mutate(item.id, "read")}
                     >
-                      <Check />
+                      <Check aria-hidden="true" />
                     </Button>
                   ) : null}
                   <Button
@@ -134,7 +152,7 @@ export function NotificationList({ initialItems }: { initialItems: Item[] }) {
                     disabled={busy !== null}
                     onClick={() => void mutate(item.id, "archive")}
                   >
-                    <Archive />
+                    <Archive aria-hidden="true" />
                   </Button>
                 </div>
               </article>

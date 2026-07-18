@@ -3,23 +3,23 @@ import { notFound, redirect } from "next/navigation";
 import { Filter, Search } from "lucide-react";
 import { AdminPage, AdminPageHeader, AdminPagination } from "@/components/admin/admin-page-layout";
 import { AdminAuditExport } from "@/components/admin/admin-audit-export.client";
-import { Badge } from "@/components/admin/ui/badge";
-import { Button } from "@/components/admin/ui/button";
+import { Badge } from "@/components/shadcn/ui/badge";
+import { Button } from "@/components/shadcn/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/admin/ui/card";
-import { Input } from "@/components/admin/ui/input";
+} from "@/components/shadcn/ui/card";
+import { Input } from "@/components/shadcn/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/admin/ui/select";
+} from "@/components/shadcn/ui/select";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { listAdminAuditEvents, type AuditSource } from "@/modules/admin/audit.server";
 import { AdminError } from "@/modules/admin/errors";

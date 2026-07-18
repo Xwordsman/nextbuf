@@ -3,10 +3,10 @@
 import { LoaderCircle, RotateCcw, Save, Send, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MarkdownEditor } from "@/components/community/markdown-editor.client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Panel } from "@/components/ui/panel";
+import { Button } from "@/components/shadcn/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/shadcn/ui/card";
+import { Input } from "@/components/shadcn/ui/input";
+import { Label } from "@/components/shadcn/ui/label";
 
 type TopicEditorProps = {
   nodes: Array<{ slug: string; name: string }>;
@@ -198,180 +198,216 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
 
   if (topic?.status === "deleted") {
     return (
-      <Panel className="topic-state-panel">
-        <h2>主题已删除</h2>
-        <p>主题编号、首帖、修订和审计记录仍然保留。</p>
-        <Button type="button" onClick={() => changeState("restore")} disabled={Boolean(pending)}>
-          {pending === "restore" ? <LoaderCircle className="animate-spin" /> : <RotateCcw />}
-          恢复主题
-        </Button>
-        {message ? <p className="field-error">{message}</p> : null}
-      </Panel>
+      <Card size="sm" className="mx-auto mt-8 max-w-2xl">
+        <CardHeader>
+          <CardTitle>
+            <h2>主题已删除</h2>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          <p className="text-sm text-muted-foreground">主题编号、首帖、修订和审计记录仍然保留。</p>
+          <Button type="button" onClick={() => changeState("restore")} disabled={Boolean(pending)}>
+            {pending === "restore" ? <LoaderCircle className="animate-spin" /> : <RotateCcw />}
+            恢复主题
+          </Button>
+          {message ? <p className="text-sm text-destructive">{message}</p> : null}
+        </CardContent>
+      </Card>
     );
   }
 
   return (
     <form
       ref={formRef}
-      className="topic-editor-layout"
+      className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]"
       onSubmit={(event) => event.preventDefault()}
     >
-      <Panel className="topic-editor-panel">
-        <div className="form-field">
-          <Label htmlFor="topic-title">标题</Label>
-          <Input
-            id="topic-title"
-            name="title"
-            value={title}
-            maxLength={limits.titleMax}
-            onChange={(event) => {
-              setTitle(event.target.value);
-              if (status === "draft") setAutosaveStatus("等待自动保存");
-            }}
-            placeholder="用一句话写清想讨论的问题"
-            required
-          />
-          <p className="field-hint">发布时需要 6-120 个字符。</p>
-        </div>
-        <div className="form-field">
-          <Label htmlFor="topic-node">节点</Label>
-          <select
-            id="topic-node"
-            name="nodeSlug"
-            value={nodeSlug}
-            onChange={(event) => {
-              setNodeSlug(event.target.value);
-              if (status === "draft") setAutosaveStatus("等待自动保存");
-            }}
-            className="select-control"
-            required
-          >
-            <option value="" disabled>
-              选择节点
-            </option>
-            {nodes.map((node) => (
-              <option key={node.slug} value={node.slug}>
-                {node.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-field">
-          <Label htmlFor="topic-body">正文</Label>
-          <MarkdownEditor
-            id="topic-body"
-            name="body"
-            value={body}
-            onChange={(value) => {
-              setBody(value);
-              if (status === "draft") setAutosaveStatus("等待自动保存");
-            }}
-            maxLength={limits.bodyMax}
-            placeholder="补充背景、尝试过的方法和期望得到的帮助"
-            disabled={Boolean(pending)}
-          />
-          <div className="editor-status-line">
-            <p className="field-hint">发布时至少 20 个字符，最多 5 个 HTTP(S) 链接。</p>
-            {autosaveStatus ? <span aria-live="polite">{autosaveStatus}</span> : null}
+      <Card size="sm">
+        <CardContent className="grid gap-5">
+          <div className="grid gap-2">
+            <Label htmlFor="topic-title">标题</Label>
+            <Input
+              id="topic-title"
+              name="title"
+              value={title}
+              maxLength={limits.titleMax}
+              onChange={(event) => {
+                setTitle(event.target.value);
+                if (status === "draft") setAutosaveStatus("等待自动保存");
+              }}
+              placeholder="用一句话写清想讨论的问题"
+              required
+            />
+            <p className="text-xs text-muted-foreground">发布时需要 6-120 个字符。</p>
           </div>
-        </div>
-        <div className="topic-editor-actions">
-          {!topic || status === "draft" ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => runExplicitSave("draft")}
-              disabled={Boolean(pending)}
+          <div className="grid gap-2">
+            <Label htmlFor="topic-node">节点</Label>
+            <select
+              id="topic-node"
+              name="nodeSlug"
+              value={nodeSlug}
+              onChange={(event) => {
+                setNodeSlug(event.target.value);
+                if (status === "draft") setAutosaveStatus("等待自动保存");
+              }}
+              className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              required
             >
-              {pending === "draft" || pending === "save" ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <Save />
-              )}
-              保存草稿
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => runExplicitSave("save")}
+              <option value="" disabled>
+                选择节点
+              </option>
+              {nodes.map((node) => (
+                <option key={node.slug} value={node.slug}>
+                  {node.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="topic-body">正文</Label>
+            <MarkdownEditor
+              id="topic-body"
+              name="body"
+              value={body}
+              onChange={(value) => {
+                setBody(value);
+                if (status === "draft") setAutosaveStatus("等待自动保存");
+              }}
+              maxLength={limits.bodyMax}
+              placeholder="补充背景、尝试过的方法和期望得到的帮助"
               disabled={Boolean(pending)}
-            >
-              {pending === "save" ? <LoaderCircle className="animate-spin" /> : <Save />}
-              保存修改
-            </Button>
-          )}
-          {!topic || status === "draft" ? (
-            <Button
-              type="button"
-              onClick={() => runExplicitSave("publish")}
-              disabled={Boolean(pending)}
-            >
-              {pending === "publish" ? <LoaderCircle className="animate-spin" /> : <Send />}
-              发布主题
-            </Button>
-          ) : null}
-        </div>
-        {message ? (
-          <p className="settings-message" role="status">
-            {message}
-          </p>
-        ) : null}
-      </Panel>
-
-      {topic ? (
-        <Panel className="topic-editor-secondary">
-          {topic.canModerate ? (
-            <section className="topic-moderation-controls">
-              <h2>管理状态</h2>
-              <label>
-                <input name="isPinned" type="checkbox" defaultChecked={topic.isPinned} /> 置顶
-              </label>
-              <label>
-                <input name="isEssence" type="checkbox" defaultChecked={topic.isEssence} /> 精华
-              </label>
-              <label>
-                <input name="isClosed" type="checkbox" defaultChecked={topic.isClosed} /> 关闭
-              </label>
-              <label>
-                <input name="isHidden" type="checkbox" defaultChecked={topic.isHidden} /> 隐藏
-              </label>
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <p>发布时至少 20 个字符，最多 5 个 HTTP(S) 链接。</p>
+              {autosaveStatus ? <span aria-live="polite">{autosaveStatus}</span> : null}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {!topic || status === "draft" ? (
               <Button
                 type="button"
                 variant="outline"
-                onClick={saveModeration}
+                onClick={() => runExplicitSave("draft")}
                 disabled={Boolean(pending)}
               >
-                <Save /> 保存管理状态
+                {pending === "draft" || pending === "save" ? (
+                  <LoaderCircle className="animate-spin" />
+                ) : (
+                  <Save />
+                )}
+                保存草稿
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => runExplicitSave("save")}
+                disabled={Boolean(pending)}
+              >
+                {pending === "save" ? <LoaderCircle className="animate-spin" /> : <Save />}
+                保存修改
+              </Button>
+            )}
+            {!topic || status === "draft" ? (
+              <Button
+                type="button"
+                onClick={() => runExplicitSave("publish")}
+                disabled={Boolean(pending)}
+              >
+                {pending === "publish" ? <LoaderCircle className="animate-spin" /> : <Send />}
+                发布主题
+              </Button>
+            ) : null}
+          </div>
+          {message ? (
+            <p className="text-sm text-destructive" role="status">
+              {message}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {topic ? (
+        <Card size="sm" className="h-fit">
+          <CardContent className="grid gap-5">
+            {topic.canModerate ? (
+              <section className="grid gap-3">
+                <h2 className="text-sm font-medium">管理状态</h2>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    className="size-4 rounded border-input accent-primary"
+                    name="isPinned"
+                    type="checkbox"
+                    defaultChecked={topic.isPinned}
+                  />{" "}
+                  置顶
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    className="size-4 rounded border-input accent-primary"
+                    name="isEssence"
+                    type="checkbox"
+                    defaultChecked={topic.isEssence}
+                  />{" "}
+                  精华
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    className="size-4 rounded border-input accent-primary"
+                    name="isClosed"
+                    type="checkbox"
+                    defaultChecked={topic.isClosed}
+                  />{" "}
+                  关闭
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    className="size-4 rounded border-input accent-primary"
+                    name="isHidden"
+                    type="checkbox"
+                    defaultChecked={topic.isHidden}
+                  />{" "}
+                  隐藏
+                </label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={saveModeration}
+                  disabled={Boolean(pending)}
+                >
+                  <Save /> 保存管理状态
+                </Button>
+              </section>
+            ) : null}
+            <section className="grid gap-3 border-t pt-5">
+              <h2 className="text-sm font-medium">删除主题</h2>
+              <p className="text-xs leading-5 text-muted-foreground">
+                删除不会移除主题编号、首帖、修订、回复或审计关系。
+              </p>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => changeState("delete")}
+                disabled={Boolean(pending)}
+              >
+                <Trash2 /> 删除主题
               </Button>
             </section>
-          ) : null}
-          <section className="topic-danger-zone">
-            <h2>删除主题</h2>
-            <p>删除不会移除主题编号、首帖、修订、回复或审计关系。</p>
-            <Button
-              type="button"
-              variant="danger"
-              onClick={() => changeState("delete")}
-              disabled={Boolean(pending)}
-            >
-              <Trash2 /> 删除主题
-            </Button>
-          </section>
-          <section className="topic-revision-history">
-            <h2>修订历史</h2>
-            <ol>
-              {topic.revisions.map((revision) => (
-                <li key={revision.version}>
-                  <strong>版本 {revision.version}</strong>
-                  <span>
-                    {revision.source} · {new Date(revision.createdAt).toLocaleString("zh-CN")}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </section>
-        </Panel>
+            <section className="grid gap-3 border-t pt-5">
+              <h2 className="text-sm font-medium">修订历史</h2>
+              <ol className="grid gap-2">
+                {topic.revisions.map((revision) => (
+                  <li className="grid gap-0.5 text-xs" key={revision.version}>
+                    <strong className="font-medium">版本 {revision.version}</strong>
+                    <span className="text-muted-foreground">
+                      {revision.source} · {new Date(revision.createdAt).toLocaleString("zh-CN")}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          </CardContent>
+        </Card>
       ) : null}
     </form>
   );

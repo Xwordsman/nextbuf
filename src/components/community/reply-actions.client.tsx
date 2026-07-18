@@ -3,7 +3,7 @@
 import { FilePenLine, LoaderCircle, Quote, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { MarkdownEditor } from "@/components/community/markdown-editor.client";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/shadcn/ui/button";
 import { PostLikeButton } from "@/components/interactions/post-like-button.client";
 import { ReportDialog } from "@/components/moderation/report-dialog.client";
 
@@ -72,7 +72,7 @@ export function ReplyActions({
 
   if (editing) {
     return (
-      <div className="reply-inline-editor">
+      <div className="grid gap-3">
         <MarkdownEditor
           id={`reply-edit-${position}`}
           name="body"
@@ -82,7 +82,7 @@ export function ReplyActions({
           disabled={Boolean(pending)}
           ariaLabel={`编辑第 ${position} 楼回复`}
         />
-        <div className="reply-inline-actions">
+        <div className="flex flex-wrap justify-end gap-2">
           <Button type="button" variant="ghost" onClick={() => setEditing(false)}>
             <X /> 取消
           </Button>
@@ -91,13 +91,17 @@ export function ReplyActions({
             保存修改
           </Button>
         </div>
-        {message ? <p className="field-error">{message}</p> : null}
+        {message ? (
+          <p className="text-sm text-destructive" role="status">
+            {message}
+          </p>
+        ) : null}
       </div>
     );
   }
 
   return (
-    <div className="reply-actions">
+    <div className="mt-4 flex flex-wrap items-center gap-1.5">
       <PostLikeButton
         postId={postId}
         initialLiked={liked}
@@ -132,7 +136,7 @@ export function ReplyActions({
       {canDelete ? (
         <Button
           type="button"
-          variant="danger"
+          variant="destructive"
           size="sm"
           onClick={() => action("delete")}
           disabled={Boolean(pending)}
@@ -153,7 +157,11 @@ export function ReplyActions({
           恢复
         </Button>
       ) : null}
-      {message ? <p className="field-error">{message}</p> : null}
+      {message ? (
+        <p className="basis-full text-sm text-destructive" role="status">
+          {message}
+        </p>
+      ) : null}
     </div>
   );
 }

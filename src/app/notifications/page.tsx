@@ -2,7 +2,8 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { NotificationList } from "@/components/notifications/notification-list.client";
-import { Panel } from "@/components/ui/panel";
+import { Button } from "@/components/shadcn/ui/button";
+import { Card } from "@/components/shadcn/ui/card";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { listNotifications } from "@/modules/notifications/notifications.server";
 
@@ -17,24 +18,37 @@ export default async function NotificationsPage({
   if (!session) redirect("/auth/sign-in?next=/notifications");
   const unreadOnly = (await searchParams).filter === "unread";
   const items = await listNotifications(session.user.id, unreadOnly);
+
   return (
-    <main className="notifications-page">
-      <div className="account-page-head notifications-page-head">
-        <div>
-          <h1>通知中心</h1>
-          <p>回复、提及、关注主题和管理动态。</p>
+    <main className="mx-auto w-full max-w-[980px] px-4 py-8 sm:px-6 lg:py-10">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div className="grid gap-1.5">
+          <h1 className="font-heading text-2xl font-semibold tracking-normal text-foreground">
+            通知中心
+          </h1>
+          <p className="text-sm leading-6 text-muted-foreground">
+            回复、提及、关注主题和管理动态。
+          </p>
         </div>
-        <Link href="/account/notifications">通知偏好</Link>
-      </div>
-      <nav className="notification-filter" aria-label="通知筛选">
-        <Link href="/notifications" aria-current={!unreadOnly ? "page" : undefined}>
-          全部
-        </Link>
-        <Link href="/notifications?filter=unread" aria-current={unreadOnly ? "page" : undefined}>
-          未读
-        </Link>
+        <Button asChild variant="outline">
+          <Link href="/account/notifications">通知偏好</Link>
+        </Button>
+      </header>
+
+      <nav className="mb-4 flex flex-wrap gap-1" aria-label="通知筛选">
+        <Button asChild size="sm" variant={!unreadOnly ? "secondary" : "ghost"}>
+          <Link href="/notifications" aria-current={!unreadOnly ? "page" : undefined}>
+            全部
+          </Link>
+        </Button>
+        <Button asChild size="sm" variant={unreadOnly ? "secondary" : "ghost"}>
+          <Link href="/notifications?filter=unread" aria-current={unreadOnly ? "page" : undefined}>
+            未读
+          </Link>
+        </Button>
       </nav>
-      <Panel className="notifications-panel">
+
+      <Card className="gap-0 py-0">
         <NotificationList
           initialItems={items.map((item) => ({
             id: item.id,
@@ -45,7 +59,7 @@ export default async function NotificationsPage({
             actor: item.actor,
           }))}
         />
-      </Panel>
+      </Card>
     </main>
   );
 }

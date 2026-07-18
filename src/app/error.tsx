@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FeedbackState } from "@/components/states/feedback-state";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/shadcn/ui/button";
 
 export default function ErrorPage({
   reset,

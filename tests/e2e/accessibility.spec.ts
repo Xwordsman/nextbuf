@@ -62,15 +62,20 @@ test("keyboard navigation and reduced motion remain usable", async ({ page }) =>
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
 
-  await page.keyboard.press("Tab");
   const skipLink = page.getByRole("link", { name: "跳到主要内容" });
+  const skipLinkBottom = await skipLink.evaluate(
+    (element) => element.getBoundingClientRect().bottom,
+  );
+  expect(skipLinkBottom).toBeLessThanOrEqual(0);
+
+  await page.keyboard.press("Tab");
   await expect(skipLink).toBeFocused();
   await expect(skipLink).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.locator("#main-content")).toBeFocused();
 
   await expect(page.locator("html")).toHaveCSS("scroll-behavior", "auto");
-  const motionDurations = await page.locator(".skip-link").evaluate((element) => {
+  const motionDurations = await skipLink.evaluate((element) => {
     const styles = getComputedStyle(element);
     return [parseFloat(styles.animationDuration), parseFloat(styles.transitionDuration)];
   });

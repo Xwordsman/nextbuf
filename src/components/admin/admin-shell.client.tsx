@@ -22,8 +22,8 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@/components/admin/ui/breadcrumb";
-import { Separator } from "@/components/admin/ui/separator";
+} from "@/components/shadcn/ui/breadcrumb";
+import { Separator } from "@/components/shadcn/ui/separator";
 import {
   Sidebar,
   SidebarContent,
@@ -38,8 +38,8 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
-} from "@/components/admin/ui/sidebar";
-import { TooltipProvider } from "@/components/admin/ui/tooltip";
+} from "@/components/shadcn/ui/sidebar";
+import { TooltipProvider } from "@/components/shadcn/ui/tooltip";
 
 type AdminNavigationItem = {
   href: string;

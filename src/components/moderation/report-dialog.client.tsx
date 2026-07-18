@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Flag, LoaderCircle } from "lucide-react";
 import { useId, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/shadcn/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -12,9 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+} from "@/components/shadcn/ui/dialog";
+import { Label } from "@/components/shadcn/ui/label";
+import { Textarea } from "@/components/shadcn/ui/textarea";
 
 type ReportTarget =
   | { type: "topic"; number: number }
@@ -86,11 +86,11 @@ export function ReportDialog({
           <DialogTitle>提交举报</DialogTitle>
           <DialogDescription>请选择最符合的原因，并只填写与案件判断有关的事实。</DialogDescription>
         </DialogHeader>
-        <div className="moderation-report-form">
+        <div className="grid gap-2">
           <Label htmlFor={`${formId}-reason`}>原因</Label>
           <select
             id={`${formId}-reason`}
-            className="moderation-select"
+            className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             value={reason}
             onChange={(event) => setReason(event.target.value)}
             disabled={pending}
@@ -112,7 +112,7 @@ export function ReportDialog({
             disabled={pending}
             placeholder="可选，最多 2000 字"
           />
-          {message ? <p className="moderation-form-message">{message}</p> : null}
+          {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
         </div>
         <DialogFooter>
           <Button

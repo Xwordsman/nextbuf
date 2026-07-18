@@ -1,8 +1,14 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { SessionManager } from "@/components/auth/session-manager.client";
-import { AccountNav } from "@/components/account/account-nav";
-import { Panel } from "@/components/ui/panel";
+import { AccountPageShell } from "@/components/account/account-page-shell";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/shadcn/ui/card";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { getPrismaClient } from "@/infrastructure/database/client";
 
@@ -20,24 +26,31 @@ export default async function AccountSecurityPage() {
   });
 
   return (
-    <main className="account-page">
-      <div className="account-page-head">
-        <h1>账号安全</h1>
-        <p>查看当前登录设备并撤销不再使用的会话。</p>
-      </div>
-      <AccountNav active="security" />
-      <Panel className="security-panel">
-        <SessionManager
-          initialSessions={sessions.map((session) => ({
-            token: session.token,
-            createdAt: session.createdAt.toISOString(),
-            expiresAt: session.expiresAt.toISOString(),
-            ipAddress: session.ipAddress,
-            userAgent: session.userAgent,
-            current: session.token === current.session.token,
-          }))}
-        />
-      </Panel>
-    </main>
+    <AccountPageShell
+      active="security"
+      description="查看当前登录设备并撤销不再使用的会话。"
+      title="账号安全"
+    >
+      <Card className="gap-0 py-0">
+        <CardHeader className="border-b py-4">
+          <CardTitle>
+            <h2>登录会话</h2>
+          </CardTitle>
+          <CardDescription>撤销会话后，该设备需要重新登录。</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <SessionManager
+            initialSessions={sessions.map((session) => ({
+              token: session.token,
+              createdAt: session.createdAt.toISOString(),
+              expiresAt: session.expiresAt.toISOString(),
+              ipAddress: session.ipAddress,
+              userAgent: session.userAgent,
+              current: session.token === current.session.token,
+            }))}
+          />
+        </CardContent>
+      </Card>
+    </AccountPageShell>
   );
 }

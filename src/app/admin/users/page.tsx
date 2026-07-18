@@ -3,22 +3,22 @@ import { notFound, redirect } from "next/navigation";
 import { Filter, Search } from "lucide-react";
 import { AdminPage, AdminPageHeader, AdminPagination } from "@/components/admin/admin-page-layout";
 import { AdminUsersTable } from "@/components/admin/admin-users-table.client";
-import { Button } from "@/components/admin/ui/button";
+import { Button } from "@/components/shadcn/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/admin/ui/card";
-import { Input } from "@/components/admin/ui/input";
+} from "@/components/shadcn/ui/card";
+import { Input } from "@/components/shadcn/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/admin/ui/select";
+} from "@/components/shadcn/ui/select";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { AdminError } from "@/modules/admin/errors";
 import { listAdminUsers } from "@/modules/admin/users.server";

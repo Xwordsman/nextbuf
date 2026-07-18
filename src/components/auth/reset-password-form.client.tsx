@@ -4,9 +4,10 @@ import Link from "next/link";
 import { KeyRound, LoaderCircle } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@/components/auth/auth-client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/shadcn/ui/alert";
+import { Button } from "@/components/shadcn/ui/button";
+import { Input } from "@/components/shadcn/ui/input";
+import { Label } from "@/components/shadcn/ui/label";
 
 export function ResetPasswordForm({ token }: { token: string }) {
   const [pending, setPending] = useState(false);
@@ -35,9 +36,13 @@ export function ResetPasswordForm({ token }: { token: string }) {
 
   if (complete) {
     return (
-      <div className="auth-result">
-        <p className="auth-message is-success">密码已更新，其他登录会话已经失效。</p>
-        <Button asChild className="auth-submit">
+      <div className="grid gap-4">
+        <Alert role="status" className="border-emerald-200 bg-emerald-50 text-emerald-950">
+          <AlertDescription className="text-emerald-800">
+            密码已更新，其他登录会话已经失效。
+          </AlertDescription>
+        </Alert>
+        <Button asChild className="w-full" size="lg">
           <Link href="/auth/sign-in?reset=1">使用新密码登录</Link>
         </Button>
       </div>
@@ -45,10 +50,11 @@ export function ResetPasswordForm({ token }: { token: string }) {
   }
 
   return (
-    <form className="auth-form" onSubmit={submit}>
-      <div className="form-field">
+    <form className="grid gap-4" onSubmit={submit}>
+      <div className="grid gap-2">
         <Label htmlFor="reset-password">新密码</Label>
         <Input
+          className="h-9"
           id="reset-password"
           name="password"
           type="password"
@@ -58,9 +64,10 @@ export function ResetPasswordForm({ token }: { token: string }) {
           required
         />
       </div>
-      <div className="form-field">
+      <div className="grid gap-2">
         <Label htmlFor="reset-confirm">确认新密码</Label>
         <Input
+          className="h-9"
           id="reset-confirm"
           name="confirmPassword"
           type="password"
@@ -70,8 +77,12 @@ export function ResetPasswordForm({ token }: { token: string }) {
           required
         />
       </div>
-      {message ? <p className="auth-message is-error">{message}</p> : null}
-      <Button className="auth-submit" type="submit" disabled={pending}>
+      {message ? (
+        <Alert variant="destructive">
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
+      ) : null}
+      <Button className="w-full" size="lg" type="submit" disabled={pending}>
         {pending ? <LoaderCircle className="animate-spin" /> : <KeyRound />}
         更新密码
       </Button>

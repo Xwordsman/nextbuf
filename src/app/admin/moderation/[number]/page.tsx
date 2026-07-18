@@ -4,15 +4,15 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { AdminPage, AdminPageHeader } from "@/components/admin/admin-page-layout";
 import { ModerationCaseActions } from "@/components/moderation/case-actions.client";
-import { Badge } from "@/components/admin/ui/badge";
-import { Button } from "@/components/admin/ui/button";
+import { Badge } from "@/components/shadcn/ui/badge";
+import { Button } from "@/components/shadcn/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/admin/ui/card";
+} from "@/components/shadcn/ui/card";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { ModerationError } from "@/modules/moderation/errors";
 import { getModerationCaseDetail } from "@/modules/moderation/queries.server";

@@ -2,9 +2,10 @@
 
 import { LoaderCircle, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/shadcn/ui/alert";
+import { Button } from "@/components/shadcn/ui/button";
+import { Input } from "@/components/shadcn/ui/input";
+import { Label } from "@/components/shadcn/ui/label";
 
 export function SetupForm() {
   const [pending, setPending] = useState(false);
@@ -53,18 +54,21 @@ export function SetupForm() {
 
   if (complete) {
     return (
-      <div className="auth-message is-success" role="status">
-        首位管理员已创建。请先完成邮箱验证，再登录后台；随后从部署配置中删除 SETUP_TOKEN 并重启
-        Web，然后创建当前社区的第一个节点。
-      </div>
+      <Alert role="status" className="border-emerald-200 bg-emerald-50 text-emerald-950">
+        <AlertDescription className="text-emerald-800">
+          首位管理员已创建。请先完成邮箱验证，再登录后台；随后从部署配置中删除 SETUP_TOKEN 并重启
+          Web，然后创建当前社区的第一个节点。
+        </AlertDescription>
+      </Alert>
     );
   }
 
   return (
-    <form className="auth-form" onSubmit={submit}>
-      <div className="form-field">
+    <form className="grid gap-4" onSubmit={submit}>
+      <div className="grid gap-2">
         <Label htmlFor="setup-token">一次性安装令牌</Label>
         <Input
+          className="h-9"
           id="setup-token"
           name="token"
           type="password"
@@ -73,9 +77,10 @@ export function SetupForm() {
           required
         />
       </div>
-      <div className="form-field">
+      <div className="grid gap-2">
         <Label htmlFor="setup-name">管理员昵称</Label>
         <Input
+          className="h-9"
           id="setup-name"
           name="name"
           autoComplete="name"
@@ -84,9 +89,10 @@ export function SetupForm() {
           required
         />
       </div>
-      <div className="form-field">
+      <div className="grid gap-2">
         <Label htmlFor="setup-username">管理员用户名</Label>
         <Input
+          className="h-9"
           id="setup-username"
           name="username"
           autoComplete="username"
@@ -96,13 +102,21 @@ export function SetupForm() {
           required
         />
       </div>
-      <div className="form-field">
+      <div className="grid gap-2">
         <Label htmlFor="setup-email">管理员邮箱</Label>
-        <Input id="setup-email" name="email" type="email" autoComplete="email" required />
+        <Input
+          className="h-9"
+          id="setup-email"
+          name="email"
+          type="email"
+          autoComplete="email"
+          required
+        />
       </div>
-      <div className="form-field">
+      <div className="grid gap-2">
         <Label htmlFor="setup-password">管理员密码</Label>
         <Input
+          className="h-9"
           id="setup-password"
           name="password"
           type="password"
@@ -112,9 +126,10 @@ export function SetupForm() {
           required
         />
       </div>
-      <div className="form-field">
+      <div className="grid gap-2">
         <Label htmlFor="setup-confirm">确认密码</Label>
         <Input
+          className="h-9"
           id="setup-confirm"
           name="confirmPassword"
           type="password"
@@ -124,8 +139,12 @@ export function SetupForm() {
           required
         />
       </div>
-      {message ? <p className="auth-message is-error">{message}</p> : null}
-      <Button className="auth-submit" type="submit" disabled={pending}>
+      {message ? (
+        <Alert variant="destructive">
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
+      ) : null}
+      <Button className="w-full" size="lg" type="submit" disabled={pending}>
         {pending ? <LoaderCircle className="animate-spin" /> : <ShieldCheck />}
         创建首位管理员
       </Button>

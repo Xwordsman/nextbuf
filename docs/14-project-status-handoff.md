@@ -5,6 +5,7 @@
 - 最后更新：2026-07-18
 - 当前完成版本：`v0.13.6` 公开 Beta 补丁
 - 下一动作：真实服务器与邀请用户验收；未经明确批准不开始 `v1.0.0`
+- 工作区未发布改动：正在验证全站公开页面的官方 shadcn/ui 视觉迁移。通用原语统一位于 `src/components/shadcn/ui`；该改动只替换展示层，不改变 PostgreSQL、Better Auth、授权、Worker、配置、部署或镜像拓扑合同，未获得视觉验收前不创建新标签。
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -166,6 +167,7 @@
 - UID 与后台修订（`v0.13.4`）：追加式迁移仅在空的历史 UID 序列上将首个 UID 改为 1，绝不重写已有公开 UID；后台将内容与节点管理拆分为各自的列表、新建和编辑工作流。
 - 后台界面修订（`v0.13.5`）：`components/admin/ui` 使用官方 shadcn/ui `radix-nova` 原语，管理后台采用响应式 Sidebar、Card、Table、Dialog、Select、Switch 和 Alert；社区前台既有 `components/ui` 不被替换。该补丁不修改 PostgreSQL、环境变量、Better Auth、授权、部署或镜像拓扑合同；站点设置成功后以 API 返回 revision 更新客户端状态，避免连续保存产生冲突。
 - 首页界面修订（`v0.13.6`）：仅公开首页 `/` 使用官方 shadcn/ui `radix-nova` Card、Tabs、Badge、Button、Avatar 和 Sheet，继续读取真实 PostgreSQL 节点、主题、概览与热议数据，在线成员保持明确空状态；1380px/230px/300px/16px 布局、搜索、筛选和 cursor 分页合同不变。`/nodes/[slug]` 继续使用既有呈现层，该补丁不修改数据库、Better Auth、授权、配置、部署或镜像拓扑合同。
+- 未发布的全站界面迁移：官方 shadcn/ui `radix-nova` 原语已从历史 `components/admin/ui` 收敛到 `components/shadcn/ui`；主页以外的公开节点、主题、账户、认证、安装、搜索、通知、状态与公共页头/页脚按相同组件体系迁移。保留真实数据、URL、表单字段、Better Auth 旅程、草稿、附件、互动、举报、分页和无障碍入口；不再维护平行的 `components/ui` 原语目录。
 - 交付：公开 Beta 已知限制、2 vCPU/4 GiB/40 GiB 最低档位、性能报告、人工安装/旅程/升级/恢复验收模板见 [Beta 就绪记录](./16-public-beta-readiness.md)。
 
 ## 2. 关键命令

@@ -17,10 +17,10 @@ import { PostLikeButton } from "@/components/interactions/post-like-button.clien
 import { TopicActions } from "@/components/interactions/topic-actions.client";
 import { TopicViewTracker } from "@/components/interactions/topic-view-tracker.client";
 import { ReportDialog } from "@/components/moderation/report-dialog.client";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Panel } from "@/components/ui/panel";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/shadcn/ui/avatar";
+import { Badge } from "@/components/shadcn/ui/badge";
+import { Button } from "@/components/shadcn/ui/button";
+import { Card, CardContent } from "@/components/shadcn/ui/card";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { POST_BODY_MAX_LENGTH } from "@/modules/community/content-policy";
 import { getPublicTopicTitle, getTopicPageView } from "@/modules/community/queries.server";
@@ -62,8 +62,8 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
   const isPublicTopic = ["published", "closed"].includes(topic.status);
 
   return (
-    <main className="topic-page">
-      <article className="topic-detail">
+    <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
+      <article className="grid gap-4">
         {isPublicTopic ? (
           <TopicViewTracker
             topicNumber={topic.number}
@@ -71,167 +71,224 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
             markRead={topic.canInteract}
           />
         ) : null}
-        <header className="topic-detail-head">
-          <div className="topic-detail-node-line">
-            <Link href={`/nodes/${topic.node.slug}`}>
-              <span className="node-dot" style={{ backgroundColor: topic.node.color }} />
-              {topic.node.name}
-            </Link>
-            <span>主题 #{topic.number}</span>
-          </div>
-          <div className="topic-detail-title-line">
-            <h1>{topic.title}</h1>
-            <div>
-              {topic.isPinned ? <Badge variant="pinned">置顶</Badge> : null}
-              {topic.isEssence ? <Badge variant="essence">精华</Badge> : null}
-              {statusLabel[topic.status] ? <Badge>{statusLabel[topic.status]}</Badge> : null}
-            </div>
-          </div>
-          <div className="topic-detail-meta">
-            <span>
-              <CalendarDays /> {topic.publishedAt?.toLocaleString("zh-CN") ?? "尚未发布"}
-            </span>
-            <span>
-              <Eye /> {topic.viewCount} 浏览
-            </span>
-            <span>
-              <MessageCircle /> {topic.replyCount} 回复
-            </span>
-            {topic.editedAt ? <span>首帖已编辑 {topic.revisionCount - 1} 次</span> : null}
-          </div>
-        </header>
-
-        <div className="topic-detail-actions">
-          {isPublicTopic ? (
-            <TopicActions
-              topicNumber={topic.number}
-              initialBookmarked={topic.bookmarked}
-              initialBookmarkCount={topic.bookmarkCount}
-              initialFollowed={topic.followed}
-              canInteract={topic.canInteract}
-            />
-          ) : null}
-          {topic.canEdit ? (
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/topics/${topic.number}/edit`}>
-                <FilePenLine /> 编辑主题
-              </Link>
-            </Button>
-          ) : null}
-          {isPublicTopic ? (
-            <ReportDialog
-              target={{ type: "topic", number: topic.number }}
-              signedIn={Boolean(session)}
-              signInHref={`/auth/sign-in?next=/topics/${topic.number}`}
-            />
-          ) : null}
-        </div>
-
-        <Panel className="topic-post" id="post-1">
-          <aside className="topic-post-author">
-            <Avatar className="size-12">
-              <AvatarImage src={topic.author.image ?? undefined} alt={topic.author.name} />
-              <AvatarFallback>{topic.author.initials}</AvatarFallback>
-            </Avatar>
-            <Link href={`/u/${topic.author.username}`}>{topic.author.name}</Link>
-            <span>@{topic.author.username}</span>
-            <small>UID {topic.author.uid}</small>
-          </aside>
-          <div className="topic-post-main">
-            <div className="post-floor-line">
-              <span>#1</span>
-              <time>{topic.createdAt.toLocaleString("zh-CN")}</time>
-            </div>
-            {topic.bodyHtml ? (
-              <MarkdownContent html={topic.bodyHtml} />
-            ) : (
-              <p className="post-empty">该草稿尚未填写正文。</p>
-            )}
-            {isPublicTopic ? (
-              <div className="reply-actions">
-                <PostLikeButton
-                  postId={topic.postId}
-                  initialLiked={topic.liked}
-                  initialCount={topic.likeCount}
+        <Card size="sm" className="gap-0 py-0">
+          <CardContent className="grid gap-3 py-4">
+            <header>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <Link
+                  className="inline-flex items-center gap-1.5 font-medium text-foreground hover:underline"
+                  href={`/nodes/${topic.node.slug}`}
+                >
+                  <span
+                    className="size-2 rounded-full"
+                    style={{ backgroundColor: topic.node.color }}
+                  />
+                  {topic.node.name}
+                </Link>
+                <span>主题 #{topic.number}</span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+                <h1 className="min-w-0 flex-1 text-xl font-semibold tracking-tight break-words">
+                  {topic.title}
+                </h1>
+                <div className="flex flex-wrap gap-1">
+                  {topic.isPinned ? (
+                    <Badge variant="secondary" className="rounded-md">
+                      置顶
+                    </Badge>
+                  ) : null}
+                  {topic.isEssence ? (
+                    <Badge variant="outline" className="rounded-md">
+                      精华
+                    </Badge>
+                  ) : null}
+                  {statusLabel[topic.status] ? (
+                    <Badge variant="outline" className="rounded-md">
+                      {statusLabel[topic.status]}
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1">
+                  <CalendarDays /> {topic.publishedAt?.toLocaleString("zh-CN") ?? "尚未发布"}
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <Eye /> {topic.viewCount} 浏览
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <MessageCircle /> {topic.replyCount} 回复
+                </span>
+                {topic.editedAt ? <span>首帖已编辑 {topic.revisionCount - 1} 次</span> : null}
+              </div>
+            </header>
+            <div className="flex flex-wrap items-center gap-2">
+              {isPublicTopic ? (
+                <TopicActions
+                  topicNumber={topic.number}
+                  initialBookmarked={topic.bookmarked}
+                  initialBookmarkCount={topic.bookmarkCount}
+                  initialFollowed={topic.followed}
                   canInteract={topic.canInteract}
+                />
+              ) : null}
+              {topic.canEdit ? (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/topics/${topic.number}/edit`}>
+                    <FilePenLine /> 编辑主题
+                  </Link>
+                </Button>
+              ) : null}
+              {isPublicTopic ? (
+                <ReportDialog
+                  target={{ type: "topic", number: topic.number }}
+                  signedIn={Boolean(session)}
                   signInHref={`/auth/sign-in?next=/topics/${topic.number}`}
                 />
-              </div>
-            ) : null}
-          </div>
-        </Panel>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
 
-        <section className="topic-replies-section" aria-labelledby="topic-replies-title">
-          <div className="topic-replies-head">
-            <h2 id="topic-replies-title">回复</h2>
-            <span>{topic.replyCount} 条有效回复</span>
+        <Card size="sm" className="py-0" id="post-1">
+          <CardContent className="grid gap-4 py-4 sm:grid-cols-[120px_minmax(0,1fr)]">
+            <aside className="flex items-center gap-2 sm:flex-col sm:items-start">
+              <Avatar className="size-12">
+                <AvatarImage src={topic.author.image ?? undefined} alt={topic.author.name} />
+                <AvatarFallback>{topic.author.initials}</AvatarFallback>
+              </Avatar>
+              <div className="grid gap-0.5">
+                <Link
+                  className="text-sm font-medium hover:underline"
+                  href={`/u/${topic.author.username}`}
+                >
+                  {topic.author.name}
+                </Link>
+                <span className="text-xs text-muted-foreground">@{topic.author.username}</span>
+                <small className="text-xs text-muted-foreground">UID {topic.author.uid}</small>
+              </div>
+            </aside>
+            <div className="min-w-0">
+              <div className="mb-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <span>#1</span>
+                <time>{topic.createdAt.toLocaleString("zh-CN")}</time>
+              </div>
+              {topic.bodyHtml ? (
+                <MarkdownContent html={topic.bodyHtml} />
+              ) : (
+                <p className="text-sm text-muted-foreground">该草稿尚未填写正文。</p>
+              )}
+              {isPublicTopic ? (
+                <div className="mt-5 flex items-center gap-2 border-t pt-3">
+                  <PostLikeButton
+                    postId={topic.postId}
+                    initialLiked={topic.liked}
+                    initialCount={topic.likeCount}
+                    canInteract={topic.canInteract}
+                    signInHref={`/auth/sign-in?next=/topics/${topic.number}`}
+                  />
+                </div>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+
+        <section className="grid gap-3" aria-labelledby="topic-replies-title">
+          <div className="flex items-center justify-between">
+            <h2 id="topic-replies-title" className="text-sm font-medium">
+              回复
+            </h2>
+            <span className="text-xs text-muted-foreground">{topic.replyCount} 条有效回复</span>
           </div>
           {topic.replies.length > 0 ? (
-            <div className="topic-reply-list">
+            <div className="grid gap-3">
               {topic.replies.map((reply) => (
-                <Panel
-                  className="topic-post reply-post"
-                  id={`post-${reply.position}`}
-                  key={reply.id}
-                >
-                  <aside className="topic-post-author">
-                    <Avatar className="size-10">
-                      <AvatarImage src={reply.author.image ?? undefined} alt={reply.author.name} />
-                      <AvatarFallback>{reply.author.initials}</AvatarFallback>
-                    </Avatar>
-                    <Link href={`/u/${reply.author.username}`}>{reply.author.name}</Link>
-                    <span>@{reply.author.username}</span>
-                    <small>UID {reply.author.uid}</small>
-                  </aside>
-                  <div className="topic-post-main">
-                    <div className="post-floor-line">
-                      <Link href={`#post-${reply.position}`}>#{reply.position}</Link>
-                      <time>{reply.createdAt.toLocaleString("zh-CN")}</time>
-                    </div>
-                    {reply.quote ? (
-                      <blockquote className="reply-quote">
-                        <Link href={`#post-${reply.quote.position}`}>
-                          #{reply.quote.position} · {reply.quote.authorName}
+                <Card size="sm" className="py-0" id={`post-${reply.position}`} key={reply.id}>
+                  <CardContent className="grid gap-4 py-4 sm:grid-cols-[120px_minmax(0,1fr)]">
+                    <aside className="flex items-center gap-2 sm:flex-col sm:items-start">
+                      <Avatar className="size-10">
+                        <AvatarImage
+                          src={reply.author.image ?? undefined}
+                          alt={reply.author.name}
+                        />
+                        <AvatarFallback>{reply.author.initials}</AvatarFallback>
+                      </Avatar>
+                      <div className="grid gap-0.5">
+                        <Link
+                          className="text-sm font-medium hover:underline"
+                          href={`/u/${reply.author.username}`}
+                        >
+                          {reply.author.name}
                         </Link>
-                        <p>{reply.quote.excerpt}</p>
-                      </blockquote>
-                    ) : null}
-                    {reply.status === "deleted" ? (
-                      <p className="reply-tombstone">该回复已删除，楼层号继续保留。</p>
-                    ) : reply.bodyHtml ? (
-                      <MarkdownContent html={reply.bodyHtml} />
-                    ) : (
-                      <p className="reply-tombstone">该回复暂不可见。</p>
-                    )}
-                    {reply.editedAt ? (
-                      <p className="post-edited-label">已编辑 {reply.revisionCount - 1} 次</p>
-                    ) : null}
-                    <ReplyActions
-                      topicNumber={topic.number}
-                      position={reply.position}
-                      authorName={reply.author.name}
-                      body={reply.body}
-                      quotedPosition={reply.quote?.position ?? null}
-                      canQuote={topic.canReply && reply.status === "published"}
-                      canEdit={reply.canEdit}
-                      canDelete={reply.canDelete}
-                      canRestore={reply.canRestore}
-                      bodyMax={POST_BODY_MAX_LENGTH}
-                      postId={reply.id}
-                      liked={reply.liked}
-                      likeCount={reply.likeCount}
-                      canLike={topic.canInteract && reply.status === "published"}
-                      signedIn={Boolean(session)}
-                    />
-                  </div>
-                </Panel>
+                        <span className="text-xs text-muted-foreground">
+                          @{reply.author.username}
+                        </span>
+                        <small className="text-xs text-muted-foreground">
+                          UID {reply.author.uid}
+                        </small>
+                      </div>
+                    </aside>
+                    <div className="min-w-0">
+                      <div className="mb-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                        <Link href={`#post-${reply.position}`}>#{reply.position}</Link>
+                        <time>{reply.createdAt.toLocaleString("zh-CN")}</time>
+                      </div>
+                      {reply.quote ? (
+                        <blockquote
+                          className="mb-4 rounded-md border-l-2 bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+                          data-testid="reply-quote"
+                        >
+                          <Link href={`#post-${reply.quote.position}`}>
+                            #{reply.quote.position} · {reply.quote.authorName}
+                          </Link>
+                          <p>{reply.quote.excerpt}</p>
+                        </blockquote>
+                      ) : null}
+                      {reply.status === "deleted" ? (
+                        <p className="text-sm text-muted-foreground">
+                          该回复已删除，楼层号继续保留。
+                        </p>
+                      ) : reply.bodyHtml ? (
+                        <MarkdownContent html={reply.bodyHtml} />
+                      ) : (
+                        <p className="text-sm text-muted-foreground">该回复暂不可见。</p>
+                      )}
+                      {reply.editedAt ? (
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          已编辑 {reply.revisionCount - 1} 次
+                        </p>
+                      ) : null}
+                      <ReplyActions
+                        topicNumber={topic.number}
+                        position={reply.position}
+                        authorName={reply.author.name}
+                        body={reply.body}
+                        quotedPosition={reply.quote?.position ?? null}
+                        canQuote={topic.canReply && reply.status === "published"}
+                        canEdit={reply.canEdit}
+                        canDelete={reply.canDelete}
+                        canRestore={reply.canRestore}
+                        bodyMax={POST_BODY_MAX_LENGTH}
+                        postId={reply.id}
+                        liked={reply.liked}
+                        likeCount={reply.likeCount}
+                        canLike={topic.canInteract && reply.status === "published"}
+                        signedIn={Boolean(session)}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           ) : (
-            <Panel className="topic-replies-empty">还没有回复。</Panel>
+            <Card size="sm">
+              <CardContent className="py-6 text-center text-sm text-muted-foreground">
+                还没有回复。
+              </CardContent>
+            </Card>
           )}
           {topic.replyPagination.previousFrom || topic.replyPagination.nextFrom ? (
-            <nav className="reply-pagination" aria-label="回复分页">
+            <nav className="flex items-center justify-between" aria-label="回复分页">
               {topic.replyPagination.previousFrom ? (
                 <Button asChild variant="outline">
                   <Link href={`/topics/${topic.number}?from=${topic.replyPagination.previousFrom}`}>
@@ -259,11 +316,17 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
             bodyMax={POST_BODY_MAX_LENGTH}
           />
         ) : topic.status === "closed" ? (
-          <Panel className="reply-locked">主题已经关闭，仅版主可以继续回复。</Panel>
+          <Card size="sm">
+            <CardContent className="py-4 text-sm text-muted-foreground">
+              主题已经关闭，仅版主可以继续回复。
+            </CardContent>
+          </Card>
         ) : !session ? (
-          <Panel className="reply-locked">
-            <Link href={`/auth/sign-in?next=/topics/${topic.number}`}>登录后参与讨论</Link>
-          </Panel>
+          <Card size="sm">
+            <CardContent className="py-4 text-sm">
+              <Link href={`/auth/sign-in?next=/topics/${topic.number}`}>登录后参与讨论</Link>
+            </CardContent>
+          </Card>
         ) : null}
       </article>
     </main>

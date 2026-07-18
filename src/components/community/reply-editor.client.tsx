@@ -3,8 +3,8 @@
 import { LoaderCircle, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { MarkdownEditor } from "@/components/community/markdown-editor.client";
-import { Button } from "@/components/ui/button";
-import { Panel } from "@/components/ui/panel";
+import { Button } from "@/components/shadcn/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/shadcn/ui/card";
 
 type ReplyEditorProps = {
   topicNumber: number;
@@ -156,22 +156,26 @@ export function ReplyEditor({ topicNumber, initialDraft, bodyMax }: ReplyEditorP
   };
 
   return (
-    <section ref={sectionRef} className="reply-compose" aria-labelledby="reply-compose-title">
-      <Panel>
-        <div className="reply-compose-head">
+    <section ref={sectionRef} className="mt-4" aria-labelledby="reply-compose-title">
+      <Card size="sm">
+        <CardHeader className="border-b">
           <div>
             <h2 id="reply-compose-title">发表回复</h2>
-            {saveStatus ? <span aria-live="polite">{saveStatus}</span> : null}
+            {saveStatus ? (
+              <span className="text-xs text-muted-foreground" aria-live="polite">
+                {saveStatus}
+              </span>
+            ) : null}
           </div>
           {quote ? (
-            <div className="reply-quote-target">
+            <div className="flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
               <span>
                 引用 #{quote.position} · {quote.authorName}
               </span>
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
+                size="icon-sm"
                 aria-label="取消引用"
                 onClick={() => {
                   dirty.current = true;
@@ -184,37 +188,39 @@ export function ReplyEditor({ topicNumber, initialDraft, bodyMax }: ReplyEditorP
               </Button>
             </div>
           ) : null}
-        </div>
-        <MarkdownEditor
-          id="reply-body"
-          name="body"
-          value={body}
-          onChange={(value) => {
-            dirty.current = true;
-            bodyRef.current = value;
-            setBody(value);
-            setSaveStatus("等待自动保存");
-          }}
-          maxLength={bodyMax}
-          placeholder="写下你的回复"
-          disabled={pending}
-          ariaLabel="回复正文"
-        />
-        <div className="reply-compose-actions">
-          <span>
-            {body.length.toLocaleString("zh-CN")} / {bodyMax.toLocaleString("zh-CN")}
-          </span>
-          <Button type="button" onClick={publish} disabled={pending || body.trim().length < 2}>
-            {pending ? <LoaderCircle className="animate-spin" /> : <Send />}
-            发布回复
-          </Button>
-        </div>
-        {message ? (
-          <p className="settings-message" role="status">
-            {message}
-          </p>
-        ) : null}
-      </Panel>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          <MarkdownEditor
+            id="reply-body"
+            name="body"
+            value={body}
+            onChange={(value) => {
+              dirty.current = true;
+              bodyRef.current = value;
+              setBody(value);
+              setSaveStatus("等待自动保存");
+            }}
+            maxLength={bodyMax}
+            placeholder="写下你的回复"
+            disabled={pending}
+            ariaLabel="回复正文"
+          />
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-muted-foreground">
+              {body.length.toLocaleString("zh-CN")} / {bodyMax.toLocaleString("zh-CN")}
+            </span>
+            <Button type="button" onClick={publish} disabled={pending || body.trim().length < 2}>
+              {pending ? <LoaderCircle className="animate-spin" /> : <Send />}
+              发布回复
+            </Button>
+          </div>
+          {message ? (
+            <p className="text-sm text-destructive" role="status">
+              {message}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
     </section>
   );
 }

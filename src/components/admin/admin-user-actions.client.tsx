@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AlertTriangle, ShieldCheck, UserRoundCog } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/admin/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/shadcn/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,18 +14,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/admin/ui/alert-dialog";
-import { Badge } from "@/components/admin/ui/badge";
-import { Button } from "@/components/admin/ui/button";
-import { Input } from "@/components/admin/ui/input";
-import { Label } from "@/components/admin/ui/label";
+} from "@/components/shadcn/ui/alert-dialog";
+import { Badge } from "@/components/shadcn/ui/badge";
+import { Button } from "@/components/shadcn/ui/button";
+import { Input } from "@/components/shadcn/ui/input";
+import { Label } from "@/components/shadcn/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/admin/ui/select";
+} from "@/components/shadcn/ui/select";
 import {
   BULK_SESSION_CONFIRMATION,
   ROLE_CHANGE_CONFIRMATION,

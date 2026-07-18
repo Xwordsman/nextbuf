@@ -2,11 +2,14 @@
 
 import { Camera, LoaderCircle, RotateCcw, Save, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/shadcn/ui/alert";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/shadcn/ui/avatar";
+import { Badge } from "@/components/shadcn/ui/badge";
+import { Button } from "@/components/shadcn/ui/button";
+import { Input } from "@/components/shadcn/ui/input";
+import { Label } from "@/components/shadcn/ui/label";
+import { Switch } from "@/components/shadcn/ui/switch";
+import { Textarea } from "@/components/shadcn/ui/textarea";
 
 type ProfileSettingsProps = {
   profile: {
@@ -164,70 +167,86 @@ export function ProfileSettings({ profile }: ProfileSettingsProps) {
   };
 
   return (
-    <div className="settings-sections">
-      <section className="settings-section" aria-labelledby="avatar-title">
-        <div className="settings-section-head">
-          <div>
-            <h2 id="avatar-title">头像</h2>
-            <p>图片会在浏览器中裁剪为正方形后上传。</p>
-          </div>
+    <div className="grid gap-0">
+      <section className="grid gap-5 border-b py-7 first:pt-6" aria-labelledby="avatar-title">
+        <div className="grid gap-1">
+          <h2 id="avatar-title" className="text-sm font-medium text-foreground">
+            头像
+          </h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            图片会在浏览器中裁剪为正方形后上传。
+          </p>
         </div>
-        <div className="avatar-editor">
-          <div className="avatar-crop-preview">
+        <div className="flex flex-col gap-5 rounded-lg border bg-muted/30 p-4 sm:flex-row sm:items-center">
+          <div className="relative size-28 shrink-0 overflow-hidden rounded-full border bg-background">
             {avatarSource ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 ref={imageRef}
                 src={avatarSource}
                 alt="头像裁剪预览"
+                className="size-full object-cover"
                 style={{ transform: `scale(${zoom})` }}
               />
             ) : (
-              <Avatar className="size-full border-0">
+              <Avatar className="size-full">
                 <AvatarImage src={profile.image ?? undefined} alt={profile.name} />
                 <AvatarFallback>{profile.initials}</AvatarFallback>
               </Avatar>
             )}
           </div>
-          <div className="avatar-editor-controls">
-            <Label htmlFor="avatar-file">选择图片</Label>
-            <Input
-              id="avatar-file"
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={chooseAvatar}
-            />
+          <div className="grid min-w-0 flex-1 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="avatar-file">选择图片</Label>
+              <Input
+                id="avatar-file"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={chooseAvatar}
+              />
+            </div>
             {avatarSource ? (
               <>
-                <Label htmlFor="avatar-zoom">缩放</Label>
-                <input
-                  id="avatar-zoom"
-                  type="range"
-                  min="1"
-                  max="3"
-                  step="0.05"
-                  value={zoom}
-                  onChange={(event) => setZoom(Number(event.target.value))}
-                />
-                <Button type="button" onClick={uploadAvatar} disabled={Boolean(pending)}>
-                  {pending === "avatar" ? <LoaderCircle className="animate-spin" /> : <Camera />}{" "}
-                  上传头像
-                </Button>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="avatar-zoom">缩放</Label>
+                  <input
+                    id="avatar-zoom"
+                    className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
+                    type="range"
+                    min="1"
+                    max="3"
+                    step="0.05"
+                    value={zoom}
+                    onChange={(event) => setZoom(Number(event.target.value))}
+                  />
+                </div>
+                <div>
+                  <Button type="button" onClick={uploadAvatar} disabled={Boolean(pending)}>
+                    {pending === "avatar" ? (
+                      <LoaderCircle className="animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Camera aria-hidden="true" />
+                    )}
+                    上传头像
+                  </Button>
+                </div>
               </>
             ) : null}
           </div>
         </div>
       </section>
 
-      <section className="settings-section" aria-labelledby="profile-title">
-        <div className="settings-section-head">
-          <div>
-            <h2 id="profile-title">公开资料</h2>
-            <p>昵称可以重复，用户名用于唯一识别。</p>
-          </div>
+      <section className="grid gap-5 border-b py-7" aria-labelledby="profile-title">
+        <div className="grid gap-1">
+          <h2 id="profile-title" className="text-sm font-medium text-foreground">
+            公开资料
+          </h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            昵称可以重复，用户名用于唯一识别。
+          </p>
         </div>
-        <form className="settings-form" onSubmit={saveProfile}>
-          <div className="form-field">
+        <form className="grid max-w-2xl gap-4" onSubmit={saveProfile}>
+          <div className="grid gap-1.5">
             <Label htmlFor="profile-name">昵称</Label>
             <Input
               id="profile-name"
@@ -238,11 +257,11 @@ export function ProfileSettings({ profile }: ProfileSettingsProps) {
               required
             />
           </div>
-          <div className="form-field">
+          <div className="grid gap-1.5">
             <Label htmlFor="profile-bio">简介</Label>
             <Textarea id="profile-bio" name="bio" defaultValue={profile.bio} maxLength={500} />
           </div>
-          <div className="form-field">
+          <div className="grid gap-1.5">
             <Label htmlFor="profile-website">个人主页</Label>
             <Input
               id="profile-website"
@@ -252,22 +271,38 @@ export function ProfileSettings({ profile }: ProfileSettingsProps) {
               placeholder="https://example.com"
             />
           </div>
-          <Button type="submit" disabled={Boolean(pending)}>
-            {pending === "profile" ? <LoaderCircle className="animate-spin" /> : <Save />} 保存资料
-          </Button>
+          <div>
+            <Button type="submit" disabled={Boolean(pending)}>
+              {pending === "profile" ? (
+                <LoaderCircle className="animate-spin" aria-hidden="true" />
+              ) : (
+                <Save aria-hidden="true" />
+              )}
+              保存资料
+            </Button>
+          </div>
         </form>
       </section>
 
-      <section className="settings-section" aria-labelledby="username-title">
-        <div className="settings-section-head">
-          <div>
-            <h2 id="username-title">用户名</h2>
-            <p>当前主页：/u/{profile.username}</p>
+      <section className="grid gap-5 border-b py-7" aria-labelledby="username-title">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="grid gap-1">
+            <h2 id="username-title" className="text-sm font-medium text-foreground">
+              用户名
+            </h2>
+            <p className="text-sm leading-6 text-muted-foreground">
+              当前主页：/u/{profile.username}
+            </p>
           </div>
-          <span className="identity-value">UID {profile.uid}</span>
+          <Badge variant="secondary" className="rounded-md tabular-nums">
+            UID {profile.uid}
+          </Badge>
         </div>
-        <form className="settings-form settings-form-inline" onSubmit={saveUsername}>
-          <div className="form-field">
+        <form
+          className="grid max-w-2xl gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
+          onSubmit={saveUsername}
+        >
+          <div className="grid gap-1.5">
             <Label htmlFor="profile-username">@username</Label>
             <Input
               id="profile-username"
@@ -281,97 +316,124 @@ export function ProfileSettings({ profile }: ProfileSettingsProps) {
             />
           </div>
           <Button type="submit" disabled={Boolean(pending) || Boolean(profile.usernameAvailableAt)}>
-            {pending === "username" ? <LoaderCircle className="animate-spin" /> : <Save />} 修改
+            {pending === "username" ? (
+              <LoaderCircle className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Save aria-hidden="true" />
+            )}
+            修改
           </Button>
         </form>
         {profile.usernameAvailableAt ? (
-          <p className="field-hint">
+          <p className="text-xs leading-5 text-muted-foreground">
             可再次修改时间：{new Date(profile.usernameAvailableAt).toLocaleString("zh-CN")}
           </p>
         ) : null}
       </section>
 
-      <section className="settings-section" aria-labelledby="privacy-title">
-        <div className="settings-section-head">
-          <div>
-            <h2 id="privacy-title">隐私</h2>
-            <p>邮箱始终不会显示在公开用户页。</p>
+      <section className="grid gap-5 border-b py-7" aria-labelledby="privacy-title">
+        <div className="grid gap-1">
+          <h2 id="privacy-title" className="text-sm font-medium text-foreground">
+            隐私
+          </h2>
+          <p className="text-sm leading-6 text-muted-foreground">邮箱始终不会显示在公开用户页。</p>
+        </div>
+        <div className="grid max-w-2xl gap-3">
+          <div className="flex items-start justify-between gap-4 rounded-lg border p-3.5">
+            <div className="grid gap-0.5">
+              <Label htmlFor="profile-public" className="text-sm font-medium">
+                公开个人资料
+              </Label>
+              <p className="text-xs leading-5 text-muted-foreground">关闭后只显示基本身份信息。</p>
+            </div>
+            <Switch
+              id="profile-public"
+              checked={isPublic}
+              onCheckedChange={setIsPublic}
+              aria-label="公开个人资料"
+            />
+          </div>
+          <div className="flex items-start justify-between gap-4 rounded-lg border p-3.5">
+            <div className="grid gap-0.5">
+              <Label htmlFor="profile-show-activity" className="text-sm font-medium">
+                显示活动统计
+              </Label>
+              <p className="text-xs leading-5 text-muted-foreground">
+                主题与回复上线后会遵循此设置。
+              </p>
+            </div>
+            <Switch
+              id="profile-show-activity"
+              checked={showActivity}
+              onCheckedChange={setShowActivity}
+              aria-label="显示活动统计"
+            />
           </div>
         </div>
-        <label className="setting-toggle">
-          <input
-            type="checkbox"
-            checked={isPublic}
-            onChange={(event) => setIsPublic(event.target.checked)}
-          />
-          <span>
-            <strong>公开个人资料</strong>
-            <small>关闭后只显示基本身份信息。</small>
-          </span>
-        </label>
-        <label className="setting-toggle">
-          <input
-            type="checkbox"
-            checked={showActivity}
-            onChange={(event) => setShowActivity(event.target.checked)}
-          />
-          <span>
-            <strong>显示活动统计</strong>
-            <small>主题与回复上线后会遵循此设置。</small>
-          </span>
-        </label>
-        <Button type="button" variant="outline" onClick={savePrivacy} disabled={Boolean(pending)}>
-          {pending === "privacy" ? <LoaderCircle className="animate-spin" /> : <Save />}{" "}
-          保存隐私设置
-        </Button>
-      </section>
-
-      <section className="settings-section" aria-labelledby="notifications-title">
-        <div className="settings-section-head">
-          <div>
-            <h2 id="notifications-title">通知偏好</h2>
-            <p>暂无可配置的通知渠道。</p>
-          </div>
-        </div>
-        <label className="setting-toggle is-disabled">
-          <input type="checkbox" disabled />
-          <span>
-            <strong>站内通知</strong>
-            <small>通知系统启用后可在此管理。</small>
-          </span>
-        </label>
-      </section>
-
-      <section className="settings-section danger-zone" aria-labelledby="deletion-title">
         <div>
-          <h2 id="deletion-title">注销账号</h2>
-          <p>
-            {profile.deletionScheduledAt
-              ? `计划处理时间：${new Date(profile.deletionScheduledAt).toLocaleString("zh-CN")}`
-              : "提交后有 14 天撤销期，当前阶段不会立即清除内容。"}
-          </p>
+          <Button type="button" variant="outline" onClick={savePrivacy} disabled={Boolean(pending)}>
+            {pending === "privacy" ? (
+              <LoaderCircle className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Save aria-hidden="true" />
+            )}
+            保存隐私设置
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="danger"
-          onClick={() => updateDeletion(profile.deletionScheduledAt ? "cancel" : "request")}
-          disabled={Boolean(pending)}
-        >
-          {pending === "deletion" ? (
-            <LoaderCircle className="animate-spin" />
-          ) : profile.deletionScheduledAt ? (
-            <RotateCcw />
-          ) : (
-            <Trash2 />
-          )}
-          {profile.deletionScheduledAt ? "撤销申请" : "申请注销"}
-        </Button>
+      </section>
+
+      <section className="grid gap-5 border-b py-7" aria-labelledby="notifications-title">
+        <div className="grid gap-1">
+          <h2 id="notifications-title" className="text-sm font-medium text-foreground">
+            通知偏好
+          </h2>
+          <p className="text-sm leading-6 text-muted-foreground">暂无可配置的通知渠道。</p>
+        </div>
+        <div className="flex max-w-2xl items-start justify-between gap-4 rounded-lg border border-dashed p-3.5 opacity-70">
+          <div className="grid gap-0.5">
+            <Label htmlFor="profile-notifications" className="text-sm font-medium">
+              站内通知
+            </Label>
+            <p className="text-xs leading-5 text-muted-foreground">通知系统启用后可在此管理。</p>
+          </div>
+          <Switch id="profile-notifications" checked={false} disabled aria-label="站内通知" />
+        </div>
+      </section>
+
+      <section className="grid gap-4 py-7" aria-labelledby="deletion-title">
+        <div className="flex flex-col justify-between gap-4 rounded-lg border border-destructive/20 bg-destructive/5 p-4 sm:flex-row sm:items-center">
+          <div className="grid gap-1">
+            <h2 id="deletion-title" className="text-sm font-medium text-foreground">
+              注销账号
+            </h2>
+            <p className="text-sm leading-6 text-muted-foreground">
+              {profile.deletionScheduledAt
+                ? `计划处理时间：${new Date(profile.deletionScheduledAt).toLocaleString("zh-CN")}`
+                : "提交后有 14 天撤销期，当前阶段不会立即清除内容。"}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => updateDeletion(profile.deletionScheduledAt ? "cancel" : "request")}
+            disabled={Boolean(pending)}
+          >
+            {pending === "deletion" ? (
+              <LoaderCircle className="animate-spin" aria-hidden="true" />
+            ) : profile.deletionScheduledAt ? (
+              <RotateCcw aria-hidden="true" />
+            ) : (
+              <Trash2 aria-hidden="true" />
+            )}
+            {profile.deletionScheduledAt ? "撤销申请" : "申请注销"}
+          </Button>
+        </div>
       </section>
 
       {message ? (
-        <p className="settings-message" role="status">
-          {message}
-        </p>
+        <Alert role="status" className="mb-6">
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
       ) : null}
     </div>
   );

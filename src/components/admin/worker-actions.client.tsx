@@ -3,7 +3,7 @@
 import { RefreshCw, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button } from "@/components/admin/ui/button";
+import { Button } from "@/components/shadcn/ui/button";
 
 export function WorkerActions() {
   const router = useRouter();

@@ -3,27 +3,27 @@
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { CheckCircle2, PlugZap, Save, ShieldCheck, SlidersHorizontal } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/admin/ui/alert";
-import { Badge } from "@/components/admin/ui/badge";
-import { Button } from "@/components/admin/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/shadcn/ui/alert";
+import { Badge } from "@/components/shadcn/ui/badge";
+import { Button } from "@/components/shadcn/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/admin/ui/card";
-import { Input } from "@/components/admin/ui/input";
-import { Label } from "@/components/admin/ui/label";
+} from "@/components/shadcn/ui/card";
+import { Input } from "@/components/shadcn/ui/input";
+import { Label } from "@/components/shadcn/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/admin/ui/select";
-import { Switch } from "@/components/admin/ui/switch";
-import { Textarea } from "@/components/admin/ui/textarea";
+} from "@/components/shadcn/ui/select";
+import { Switch } from "@/components/shadcn/ui/switch";
+import { Textarea } from "@/components/shadcn/ui/textarea";
 import type { SiteSettingsInput } from "@/modules/settings/contracts";
 import { SITE_SETTINGS_CONFIRMATION, TRUST_CHANGE_CONFIRMATION } from "@/shared/admin-contracts";
 

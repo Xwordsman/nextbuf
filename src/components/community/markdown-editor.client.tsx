@@ -2,10 +2,10 @@
 
 import { Bold, Code2, Italic, Link2, LoaderCircle, Paperclip, Quote } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
+import { Button } from "@/components/shadcn/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/shadcn/ui/tabs";
+import { Textarea } from "@/components/shadcn/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/shadcn/ui/tooltip";
 
 type MarkdownEditorProps = {
   id: string;
@@ -136,16 +136,16 @@ export function MarkdownEditor({
   };
 
   return (
-    <Tabs value={tab} onValueChange={setTab} className="markdown-editor">
-      <div className="markdown-editor-head">
-        <TabsList aria-label="编辑模式">
+    <Tabs value={tab} onValueChange={setTab} className="grid gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <TabsList variant="line" aria-label="编辑模式">
           <TabsTrigger value="write">编写</TabsTrigger>
           <TabsTrigger value="preview">预览</TabsTrigger>
         </TabsList>
-        <TooltipProvider>
-          <div className="markdown-toolbar" aria-label="Markdown 工具栏">
-            {tools.map(({ label, icon: Icon, rule }) => (
-              <Tooltip key={label} content={label}>
+        <div className="flex items-center gap-0.5" aria-label="Markdown 工具栏">
+          {tools.map(({ label, icon: Icon, rule }) => (
+            <Tooltip key={label}>
+              <TooltipTrigger asChild>
                 <Button
                   type="button"
                   variant="ghost"
@@ -156,9 +156,12 @@ export function MarkdownEditor({
                 >
                   <Icon />
                 </Button>
-              </Tooltip>
-            ))}
-            <Tooltip content="上传附件">
+              </TooltipTrigger>
+              <TooltipContent>{label}</TooltipContent>
+            </Tooltip>
+          ))}
+          <Tooltip>
+            <TooltipTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
@@ -169,11 +172,12 @@ export function MarkdownEditor({
               >
                 {uploadPending ? <LoaderCircle className="animate-spin" /> : <Paperclip />}
               </Button>
-            </Tooltip>
-          </div>
-        </TooltipProvider>
+            </TooltipTrigger>
+            <TooltipContent>上传附件</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
-      <TabsContent value="write">
+      <TabsContent value="write" className="m-0">
         <Textarea
           ref={textareaRef}
           id={id}
@@ -184,17 +188,20 @@ export function MarkdownEditor({
           placeholder={placeholder}
           disabled={disabled}
           aria-label={ariaLabel}
-          className="markdown-source"
+          className="min-h-64 resize-y font-mono text-sm leading-6"
         />
       </TabsContent>
-      <TabsContent value="preview">
-        <div className="markdown-preview" aria-live="polite">
+      <TabsContent value="preview" className="m-0">
+        <div className="min-h-64 rounded-lg border bg-muted/20 p-3" aria-live="polite">
           {previewPending ? (
-            <span className="markdown-preview-loading">
+            <span className="flex items-center gap-2 text-sm text-muted-foreground">
               <LoaderCircle className="animate-spin" /> 正在生成预览
             </span>
           ) : previewHtml ? (
-            <div className="markdown-body" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            <div
+              className="markdown-body break-words"
+              dangerouslySetInnerHTML={{ __html: previewHtml }}
+            />
           ) : (
             <p>尚未填写内容。</p>
           )}
@@ -212,7 +219,7 @@ export function MarkdownEditor({
         }}
       />
       {message ? (
-        <p className="field-error" role="status">
+        <p className="text-sm text-destructive" role="status">
           {message}
         </p>
       ) : null}

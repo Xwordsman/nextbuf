@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { Download, KeyRound } from "lucide-react";
-import { Button } from "@/components/admin/ui/button";
-import { Input } from "@/components/admin/ui/input";
+import { Button } from "@/components/shadcn/ui/button";
+import { Input } from "@/components/shadcn/ui/input";
 import { AUDIT_EXPORT_CONFIRMATION } from "@/shared/admin-contracts";
 
 type Filters = { source?: string; action?: string; actorUid?: number; from?: string; to?: string };

@@ -4,10 +4,11 @@ import Link from "next/link";
 import { GitBranch, LoaderCircle, UserPlus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@/components/auth/auth-client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/shadcn/ui/alert";
+import { Button } from "@/components/shadcn/ui/button";
+import { Input } from "@/components/shadcn/ui/input";
+import { Label } from "@/components/shadcn/ui/label";
+import { Separator } from "@/components/shadcn/ui/separator";
 
 export function SignUpForm({
   inviteRequired,
@@ -68,10 +69,11 @@ export function SignUpForm({
 
   return (
     <>
-      <form className="auth-form" onSubmit={submit}>
-        <div className="form-field">
+      <form className="grid gap-4" onSubmit={submit}>
+        <div className="grid gap-2">
           <Label htmlFor="sign-up-name">昵称</Label>
           <Input
+            className="h-9"
             id="sign-up-name"
             name="name"
             autoComplete="name"
@@ -80,9 +82,10 @@ export function SignUpForm({
             required
           />
         </div>
-        <div className="form-field">
+        <div className="grid gap-2">
           <Label htmlFor="sign-up-username">用户名</Label>
           <Input
+            className="h-9"
             id="sign-up-username"
             name="username"
             autoComplete="username"
@@ -91,21 +94,37 @@ export function SignUpForm({
             pattern="[a-z](?:[a-z0-9]|_(?!_)){1,22}[a-z0-9]"
             required
           />
-          <p className="field-hint">用于 @username 和个人主页链接，注册后 30 天内不可再次修改。</p>
+          <p className="text-xs leading-5 text-muted-foreground">
+            用于 @username 和个人主页链接，注册后 30 天内不可再次修改。
+          </p>
         </div>
-        <div className="form-field">
+        <div className="grid gap-2">
           <Label htmlFor="sign-up-email">邮箱</Label>
-          <Input id="sign-up-email" name="email" type="email" autoComplete="email" required />
+          <Input
+            className="h-9"
+            id="sign-up-email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+          />
         </div>
         {inviteRequired ? (
-          <div className="form-field">
+          <div className="grid gap-2">
             <Label htmlFor="sign-up-invite">邀请码</Label>
-            <Input id="sign-up-invite" name="inviteCode" autoComplete="off" required />
+            <Input
+              className="h-9"
+              id="sign-up-invite"
+              name="inviteCode"
+              autoComplete="off"
+              required
+            />
           </div>
         ) : null}
-        <div className="form-field">
+        <div className="grid gap-2">
           <Label htmlFor="sign-up-password">密码</Label>
           <Input
+            className="h-9"
             id="sign-up-password"
             name="password"
             type="password"
@@ -114,11 +133,14 @@ export function SignUpForm({
             maxLength={128}
             required
           />
-          <p className="field-hint">至少 12 个字符，建议使用密码管理器生成。</p>
+          <p className="text-xs leading-5 text-muted-foreground">
+            至少 12 个字符，建议使用密码管理器生成。
+          </p>
         </div>
-        <div className="form-field">
+        <div className="grid gap-2">
           <Label htmlFor="sign-up-confirm">确认密码</Label>
           <Input
+            className="h-9"
             id="sign-up-confirm"
             name="confirmPassword"
             type="password"
@@ -128,24 +150,29 @@ export function SignUpForm({
             required
           />
         </div>
-        {message ? <p className="auth-message is-error">{message}</p> : null}
-        <Button className="auth-submit" type="submit" disabled={pending}>
+        {message ? (
+          <Alert variant="destructive">
+            <AlertDescription>{message}</AlertDescription>
+          </Alert>
+        ) : null}
+        <Button className="w-full" size="lg" type="submit" disabled={pending}>
           {pending ? <LoaderCircle className="animate-spin" /> : <UserPlus />}
           创建账号
         </Button>
       </form>
 
       {githubEnabled ? (
-        <div className="auth-provider-block">
-          <div className="auth-divider">
-            <Separator />
+        <div className="grid gap-3 pt-5">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground" aria-hidden="true">
+            <Separator className="flex-1" />
             <span>或</span>
-            <Separator />
+            <Separator className="flex-1" />
           </div>
           <Button
             type="button"
             variant="outline"
-            className="auth-submit"
+            className="w-full"
+            size="lg"
             onClick={signInWithGithub}
           >
             <GitBranch /> 使用 GitHub 注册
@@ -153,8 +180,11 @@ export function SignUpForm({
         </div>
       ) : null}
 
-      <p className="auth-switch">
-        已有账号？ <Link href="/auth/sign-in">登录</Link>
+      <p className="mt-5 text-center text-sm text-muted-foreground">
+        已有账号？{" "}
+        <Link className="underline underline-offset-4 hover:text-foreground" href="/auth/sign-in">
+          登录
+        </Link>
       </p>
     </>
   );

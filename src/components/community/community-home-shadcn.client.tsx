@@ -23,18 +23,18 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useCommunityUi } from "@/components/community/community-ui-provider.client";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/admin/ui/avatar";
-import { Badge } from "@/components/admin/ui/badge";
-import { Button } from "@/components/admin/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/shadcn/ui/avatar";
+import { Badge } from "@/components/shadcn/ui/badge";
+import { Button } from "@/components/shadcn/ui/button";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/shadcn/ui/card";
 import {
   Sheet,
   SheetClose,
   SheetContent,
   SheetHeader,
   SheetTitle,
-} from "@/components/admin/ui/sheet";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/admin/ui/tabs";
+} from "@/components/shadcn/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/shadcn/ui/tabs";
 import type {
   CommunityFeedFilter,
   CommunityHomeView,

@@ -1,8 +1,15 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { AccountNav } from "@/components/account/account-nav";
-import { Badge } from "@/components/ui/badge";
-import { Panel } from "@/components/ui/panel";
+import { AccountPageShell } from "@/components/account/account-page-shell";
+import { Badge } from "@/components/shadcn/ui/badge";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/shadcn/ui/card";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { getUserModerationHistory } from "@/modules/moderation/queries.server";
 import { parseTrustRuleConfig, type TrustMetrics } from "@/modules/trust/policy";
@@ -46,118 +53,175 @@ export default async function AccountTrustPage() {
   const rule = parseTrustRuleConfig(overview.ruleVersion.config);
 
   return (
-    <main className="account-page">
-      <div className="account-page-head">
-        <h1>信任等级</h1>
-        <p>查看当前等级、自动计算指标、降级宽限期和历史变更。</p>
-      </div>
-      <AccountNav active="trust" />
-
-      <div className="trust-overview-grid">
-        <Panel className="trust-level-panel">
-          <span>当前等级</span>
-          <strong>TL{overview.currentLevel}</strong>
-          <p>
-            自动计算为 TL{overview.automatedLevel}
-            {overview.manualLevel === 4 ? "，TL4 由管理员人工确认" : ""}
-          </p>
-          <small>
-            规则 v{overview.ruleVersion.version} · {overview.calculatedAt.toLocaleString("zh-CN")}
-          </small>
-        </Panel>
-        <Panel className="trust-level-panel">
-          <span>等级状态</span>
-          <strong>{overview.graceUntil ? "宽限期" : "正常"}</strong>
-          <p>
-            {overview.graceUntil
-              ? `若指标未恢复，将在 ${overview.graceUntil.toLocaleString("zh-CN")} 后降级。`
-              : "升级达到规则后立即生效；降级会先进入宽限期。"}
-          </p>
-          <small>管理角色、专业声誉和交易信用不由 TL 授予。</small>
-        </Panel>
-      </div>
-
-      <Panel className="trust-section">
-        <div className="trust-section-head">
-          <h2>计算指标</h2>
-          <Badge variant="trust">TL{overview.automatedLevel}</Badge>
+    <AccountPageShell
+      active="trust"
+      description="查看当前等级、自动计算指标、降级宽限期和历史变更。"
+      title="信任等级"
+    >
+      <div className="grid gap-5">
+        <div className="grid gap-5 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardDescription>当前等级</CardDescription>
+              <CardTitle>
+                <strong className="text-3xl font-semibold tracking-normal">
+                  TL{overview.currentLevel}
+                </strong>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-1.5">
+              <p className="text-sm text-muted-foreground">
+                自动计算为 TL{overview.automatedLevel}
+                {overview.manualLevel === 4 ? "，TL4 由管理员人工确认" : ""}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                规则 v{overview.ruleVersion.version} ·{" "}
+                {overview.calculatedAt.toLocaleString("zh-CN")}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardDescription>等级状态</CardDescription>
+              <CardTitle>
+                <strong className="text-3xl font-semibold tracking-normal">
+                  {overview.graceUntil ? "宽限期" : "正常"}
+                </strong>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-1.5">
+              <p className="text-sm leading-6 text-muted-foreground">
+                {overview.graceUntil
+                  ? `若指标未恢复，将在 ${overview.graceUntil.toLocaleString("zh-CN")} 后降级。`
+                  : "升级达到规则后立即生效；降级会先进入宽限期。"}
+              </p>
+              <p className="text-xs leading-5 text-muted-foreground">
+                管理角色、专业声誉和交易信用不由 TL 授予。
+              </p>
+            </CardContent>
+          </Card>
         </div>
-        <div className="trust-metric-grid">
-          {metricLabels.map(([key, label]) => (
-            <div key={key}>
-              <span>{label}</span>
-              <strong>{values[key]}</strong>
-            </div>
-          ))}
-        </div>
-        <div className="trust-rule-levels">
-          {([1, 2, 3] as const).map((level) => {
-            const required = rule.levels[String(level) as "1" | "2" | "3"];
-            const met =
-              values.accountAgeDays >= required.accountAgeDays &&
-              values.readTopics >= required.readTopics &&
-              values.posts >= required.posts &&
-              values.likesReceived >= required.likesReceived &&
-              values.recentViolations <= required.recentViolationsMax;
-            return (
-              <div key={level}>
-                <Badge variant={met ? "trust" : "neutral"}>TL{level}</Badge>
-                <span>
-                  {required.accountAgeDays} 天 · 阅读 {required.readTopics} · 发帖 {required.posts}{" "}
-                  · 获赞 {required.likesReceived} · 违规不超过 {required.recentViolationsMax}
-                </span>
+
+        <Card className="gap-0 py-0">
+          <CardHeader className="border-b py-4">
+            <CardTitle>
+              <h2>计算指标</h2>
+            </CardTitle>
+            <CardAction className="self-center">
+              <Badge variant="secondary" className="rounded-md">
+                TL{overview.automatedLevel}
+              </Badge>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="p-0">
+            <dl className="grid divide-y sm:grid-cols-5 sm:divide-x sm:divide-y-0">
+              {metricLabels.map(([key, label]) => (
+                <div className="grid gap-1 px-5 py-4 sm:px-4" key={key}>
+                  <dt className="order-2 text-xs text-muted-foreground">{label}</dt>
+                  <dd className="order-1 text-xl font-semibold tabular-nums text-foreground">
+                    {values[key]}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <div className="border-t px-5 py-4 sm:px-6">
+              <h3 className="mb-3 text-sm font-medium">升级条件</h3>
+              <div className="grid divide-y rounded-lg border">
+                {([1, 2, 3] as const).map((level) => {
+                  const required = rule.levels[String(level) as "1" | "2" | "3"];
+                  const met =
+                    values.accountAgeDays >= required.accountAgeDays &&
+                    values.readTopics >= required.readTopics &&
+                    values.posts >= required.posts &&
+                    values.likesReceived >= required.likesReceived &&
+                    values.recentViolations <= required.recentViolationsMax;
+                  return (
+                    <div
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-3"
+                      key={level}
+                    >
+                      <Badge variant={met ? "secondary" : "outline"} className="rounded-md">
+                        TL{level}
+                      </Badge>
+                      <span className="text-xs leading-5 text-muted-foreground">
+                        {required.accountAgeDays} 天 · 阅读 {required.readTopics} · 发帖{" "}
+                        {required.posts} · 获赞 {required.likesReceived} · 违规不超过{" "}
+                        {required.recentViolationsMax}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
-      </Panel>
-
-      <Panel className="trust-section">
-        <div className="trust-section-head">
-          <h2>等级历史</h2>
-          <span>{history.length} 条</span>
-        </div>
-        <div className="trust-history-list">
-          {history.map((item) => (
-            <div key={item.id}>
-              <span>
-                TL{item.fromLevel} → TL{item.toLevel}
-              </span>
-              <small>
-                {item.source} · 规则 v{item.ruleVersion.version} ·{" "}
-                {item.createdAt.toLocaleString("zh-CN")}
-              </small>
             </div>
-          ))}
-          {history.length === 0 ? <p>尚无等级变更记录。</p> : null}
-        </div>
-      </Panel>
+          </CardContent>
+        </Card>
 
-      <Panel className="trust-section">
-        <div className="trust-section-head">
-          <h2>治理记录</h2>
-          <span>{sanctions.length} 条</span>
-        </div>
-        <div className="trust-history-list">
-          {sanctions.map((sanction) => (
-            <div key={sanction.id}>
-              <span>
-                {sanction.type}
-                {sanction.node ? ` · ${sanction.node.name}` : ""}
-              </span>
-              <small>
-                {sanction.reason} · {sanction.startsAt.toLocaleString("zh-CN")}
-                {sanction.revokedAt
-                  ? ` · 已撤销`
-                  : sanction.endsAt
-                    ? ` · 至 ${sanction.endsAt.toLocaleString("zh-CN")}`
-                    : ""}
-              </small>
-            </div>
-          ))}
-          {sanctions.length === 0 ? <p>没有警告、禁言、暂停或封禁记录。</p> : null}
-        </div>
-      </Panel>
-    </main>
+        <Card className="gap-0 py-0">
+          <CardHeader className="border-b py-4">
+            <CardTitle>
+              <h2>等级历史</h2>
+            </CardTitle>
+            <CardAction className="self-center text-xs tabular-nums text-muted-foreground">
+              {history.length} 条
+            </CardAction>
+          </CardHeader>
+          <CardContent className="p-0">
+            {history.map((item) => (
+              <div className="grid gap-1 border-b px-5 py-4 last:border-b-0 sm:px-6" key={item.id}>
+                <span className="text-sm font-medium">
+                  TL{item.fromLevel} → TL{item.toLevel}
+                </span>
+                <small className="text-xs leading-5 text-muted-foreground">
+                  {item.source} · 规则 v{item.ruleVersion.version} ·{" "}
+                  {item.createdAt.toLocaleString("zh-CN")}
+                </small>
+              </div>
+            ))}
+            {history.length === 0 ? (
+              <p className="px-5 py-10 text-center text-sm text-muted-foreground sm:px-6">
+                尚无等级变更记录。
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card className="gap-0 py-0">
+          <CardHeader className="border-b py-4">
+            <CardTitle>
+              <h2>治理记录</h2>
+            </CardTitle>
+            <CardAction className="self-center text-xs tabular-nums text-muted-foreground">
+              {sanctions.length} 条
+            </CardAction>
+          </CardHeader>
+          <CardContent className="p-0">
+            {sanctions.map((sanction) => (
+              <div
+                className="grid gap-1 border-b px-5 py-4 last:border-b-0 sm:px-6"
+                key={sanction.id}
+              >
+                <span className="text-sm font-medium">
+                  {sanction.type}
+                  {sanction.node ? ` · ${sanction.node.name}` : ""}
+                </span>
+                <small className="text-xs leading-5 text-muted-foreground">
+                  {sanction.reason} · {sanction.startsAt.toLocaleString("zh-CN")}
+                  {sanction.revokedAt
+                    ? " · 已撤销"
+                    : sanction.endsAt
+                      ? ` · 至 ${sanction.endsAt.toLocaleString("zh-CN")}`
+                      : ""}
+                </small>
+              </div>
+            ))}
+            {sanctions.length === 0 ? (
+              <p className="px-5 py-10 text-center text-sm text-muted-foreground sm:px-6">
+                没有警告、禁言、暂停或封禁记录。
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+      </div>
+    </AccountPageShell>
   );
 }

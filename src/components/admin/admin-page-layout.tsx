@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Button } from "@/components/admin/ui/button";
+import { Button } from "@/components/shadcn/ui/button";
 import { cn } from "@/lib/utils";
 
 export function AdminPage({ children, className }: { children: ReactNode; className?: string }) {

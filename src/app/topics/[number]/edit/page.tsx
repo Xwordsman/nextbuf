@@ -34,10 +34,10 @@ export default async function EditTopicPage({ params }: EditTopicPageProps) {
     ? writableNodes
     : [{ slug: topic.node.slug, name: topic.node.name }, ...writableNodes];
   return (
-    <main className="topic-compose-page">
-      <header className="content-page-head">
-        <h1>编辑主题 #{topic.number}</h1>
-        <p>修改标题、节点或正文，并管理当前主题状态。</p>
+    <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
+      <header className="mb-6 grid gap-1.5">
+        <h1 className="text-2xl font-semibold tracking-tight">编辑主题 #{topic.number}</h1>
+        <p className="text-sm text-muted-foreground">修改标题、节点或正文，并管理当前主题状态。</p>
       </header>
       <TopicEditor
         nodes={nodes}

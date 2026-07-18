@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { KeyRound, LogOut } from "lucide-react";
-import { Badge } from "@/components/admin/ui/badge";
-import { Button } from "@/components/admin/ui/button";
-import { Checkbox } from "@/components/admin/ui/checkbox";
-import { Input } from "@/components/admin/ui/input";
+import { Badge } from "@/components/shadcn/ui/badge";
+import { Button } from "@/components/shadcn/ui/button";
+import { Checkbox } from "@/components/shadcn/ui/checkbox";
+import { Input } from "@/components/shadcn/ui/input";
 import {
   Table,
   TableBody,
@@ -15,7 +15,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/admin/ui/table";
+} from "@/components/shadcn/ui/table";
 import { BULK_SESSION_CONFIRMATION } from "@/shared/admin-contracts";
 
 type UserRow = {

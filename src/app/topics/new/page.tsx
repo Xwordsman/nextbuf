@@ -17,10 +17,12 @@ export default async function NewTopicPage() {
   if (!session) redirect("/auth/sign-in?next=/topics/new");
   const nodes = await listWritableNodes();
   return (
-    <main className="topic-compose-page">
-      <header className="content-page-head">
-        <h1>发布新主题</h1>
-        <p>选择最准确的节点，标题写清问题，正文补充必要背景。</p>
+    <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
+      <header className="mb-6 grid gap-1.5">
+        <h1 className="text-2xl font-semibold tracking-tight">发布新主题</h1>
+        <p className="text-sm text-muted-foreground">
+          选择最准确的节点，标题写清问题，正文补充必要背景。
+        </p>
       </header>
       <TopicEditor
         nodes={nodes}

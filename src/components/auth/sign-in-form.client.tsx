@@ -4,10 +4,12 @@ import Link from "next/link";
 import { GitBranch, LoaderCircle, LogIn } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@/components/auth/auth-client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/shadcn/ui/alert";
+import { Button } from "@/components/shadcn/ui/button";
+import { Checkbox } from "@/components/shadcn/ui/checkbox";
+import { Input } from "@/components/shadcn/ui/input";
+import { Label } from "@/components/shadcn/ui/label";
+import { Separator } from "@/components/shadcn/ui/separator";
 
 function safeNextPath(value: string): string {
   return value.startsWith("/") && !value.startsWith("//") ? value : "/";
@@ -50,17 +52,30 @@ export function SignInForm({
 
   return (
     <>
-      <form className="auth-form" onSubmit={submit}>
-        <div className="form-field">
+      <form className="grid gap-4" onSubmit={submit}>
+        <div className="grid gap-2">
           <Label htmlFor="sign-in-email">邮箱</Label>
-          <Input id="sign-in-email" name="email" type="email" autoComplete="email" required />
+          <Input
+            className="h-9"
+            id="sign-in-email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+          />
         </div>
-        <div className="form-field">
-          <div className="field-label-row">
+        <div className="grid gap-2">
+          <div className="flex items-center justify-between gap-3">
             <Label htmlFor="sign-in-password">密码</Label>
-            <Link href="/auth/forgot-password">忘记密码</Link>
+            <Link
+              className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+              href="/auth/forgot-password"
+            >
+              忘记密码
+            </Link>
           </div>
           <Input
+            className="h-9"
             id="sign-in-password"
             name="password"
             type="password"
@@ -70,28 +85,38 @@ export function SignInForm({
             required
           />
         </div>
-        <label className="checkbox-field">
-          <input name="rememberMe" type="checkbox" defaultChecked />
-          <span>保持登录</span>
-        </label>
-        {message ? <p className="auth-message is-error">{message}</p> : null}
-        <Button className="auth-submit" type="submit" disabled={pending}>
+        <div className="flex items-center gap-2">
+          <Checkbox id="remember-me" name="rememberMe" defaultChecked />
+          <Label
+            className="cursor-pointer text-sm font-normal text-muted-foreground"
+            htmlFor="remember-me"
+          >
+            保持登录
+          </Label>
+        </div>
+        {message ? (
+          <Alert variant="destructive">
+            <AlertDescription>{message}</AlertDescription>
+          </Alert>
+        ) : null}
+        <Button className="w-full" size="lg" type="submit" disabled={pending}>
           {pending ? <LoaderCircle className="animate-spin" /> : <LogIn />}
           登录
         </Button>
       </form>
 
       {githubEnabled ? (
-        <div className="auth-provider-block">
-          <div className="auth-divider">
-            <Separator />
+        <div className="grid gap-3 pt-5">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground" aria-hidden="true">
+            <Separator className="flex-1" />
             <span>或</span>
-            <Separator />
+            <Separator className="flex-1" />
           </div>
           <Button
             type="button"
             variant="outline"
-            className="auth-submit"
+            className="w-full"
+            size="lg"
             onClick={signInWithGithub}
           >
             <GitBranch /> 使用 GitHub 登录
@@ -99,12 +124,23 @@ export function SignInForm({
         </div>
       ) : null}
 
-      <p className="auth-switch">
+      <p className="mt-5 text-center text-sm text-muted-foreground">
         没有账号？{" "}
-        {registrationOpen ? <Link href="/auth/sign-up">创建账号</Link> : "当前未开放注册"}
+        {registrationOpen ? (
+          <Link className="underline underline-offset-4 hover:text-foreground" href="/auth/sign-up">
+            创建账号
+          </Link>
+        ) : (
+          "当前未开放注册"
+        )}
       </p>
-      <p className="auth-secondary-link">
-        <Link href="/auth/check-email">重新发送验证邮件</Link>
+      <p className="mt-2 text-center text-sm text-muted-foreground">
+        <Link
+          className="underline underline-offset-4 hover:text-foreground"
+          href="/auth/check-email"
+        >
+          重新发送验证邮件
+        </Link>
       </p>
     </>
   );

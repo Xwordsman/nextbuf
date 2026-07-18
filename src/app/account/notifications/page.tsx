@@ -1,8 +1,14 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { AccountNav } from "@/components/account/account-nav";
+import { AccountPageShell } from "@/components/account/account-page-shell";
 import { NotificationPreferences } from "@/components/account/notification-preferences.client";
-import { Panel } from "@/components/ui/panel";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/shadcn/ui/card";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { getNotificationPreferences } from "@/modules/notifications/notifications.server";
 
@@ -13,15 +19,22 @@ export default async function NotificationPreferencesPage() {
   if (!session) redirect("/auth/sign-in?next=/account/notifications");
   const preferences = await getNotificationPreferences(session.user.id);
   return (
-    <main className="account-page">
-      <div className="account-page-head">
-        <h1>通知偏好</h1>
-        <p>选择各类社区动态的站内和邮件投递方式。</p>
-      </div>
-      <AccountNav active="notifications" />
-      <Panel className="settings-panel">
-        <NotificationPreferences initial={preferences} />
-      </Panel>
-    </main>
+    <AccountPageShell
+      active="notifications"
+      description="选择各类社区动态的站内和邮件投递方式。"
+      title="通知偏好"
+    >
+      <Card className="gap-0 py-0">
+        <CardHeader className="border-b py-4">
+          <CardTitle>
+            <h2>投递设置</h2>
+          </CardTitle>
+          <CardDescription>安全邮件不受这些常规通知偏好的影响。</CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <NotificationPreferences initial={preferences} />
+        </CardContent>
+      </Card>
+    </AccountPageShell>
   );
 }

@@ -3,15 +3,15 @@ import { notFound, redirect } from "next/navigation";
 import { AlertTriangle, Mail, Send, ServerCog } from "lucide-react";
 import { AdminPage, AdminPageHeader } from "@/components/admin/admin-page-layout";
 import { WorkerActions, WorkerReplayButton } from "@/components/admin/worker-actions.client";
-import { Alert, AlertDescription, AlertTitle } from "@/components/admin/ui/alert";
-import { Badge } from "@/components/admin/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/shadcn/ui/alert";
+import { Badge } from "@/components/shadcn/ui/badge";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/admin/ui/card";
+} from "@/components/shadcn/ui/card";
 import {
   Table,
   TableBody,
@@ -19,7 +19,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/admin/ui/table";
+} from "@/components/shadcn/ui/table";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import {
   getWorkerOperationsSummary,
