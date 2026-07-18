@@ -1,19 +1,17 @@
 import { headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
-import { Plus } from "lucide-react";
 import Link from "next/link";
-import { AdminNodesList } from "@/components/admin/admin-nodes-list";
-import { Button } from "@/components/ui/button";
+import { notFound, redirect } from "next/navigation";
+import { AdminNodeForm } from "@/components/admin/admin-nodes.client";
 import { Panel } from "@/components/ui/panel";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { getAdminNodes } from "@/modules/admin/content.server";
 import { AdminError } from "@/modules/admin/errors";
 
-export const metadata = { title: "节点管理" };
+export const metadata = { title: "新建节点" };
 
-export default async function AdminNodesPage() {
+export default async function AdminNewNodePage() {
   const session = await getAuth().api.getSession({ headers: await headers() });
-  if (!session) redirect("/auth/sign-in?next=/admin/nodes");
+  if (!session) redirect("/auth/sign-in?next=/admin/nodes/new");
   let nodes: Awaited<ReturnType<typeof getAdminNodes>>;
   try {
     nodes = await getAdminNodes(session.user.id);
@@ -21,21 +19,19 @@ export default async function AdminNodesPage() {
     if (error instanceof AdminError && error.status === 403) notFound();
     throw error;
   }
+  const nextSortOrder = nodes.reduce((maximum, node) => Math.max(maximum, node.sortOrder), 0) + 10;
+
   return (
     <main className="admin-page">
       <div className="admin-page-head">
         <div>
-          <h1>节点管理</h1>
-          <p>查看节点状态、主题数量与版主配置；新建和编辑在独立工作区完成。</p>
+          <Link href="/admin/nodes">← 节点列表</Link>
+          <h1>新建节点</h1>
+          <p>节点标识创建后保持稳定；请在公开前确认名称、说明和排序。</p>
         </div>
-        <Button asChild>
-          <Link href="/admin/nodes/new">
-            <Plus /> 新建节点
-          </Link>
-        </Button>
       </div>
-      <Panel className="admin-section-panel admin-table-panel">
-        <AdminNodesList nodes={nodes} />
+      <Panel className="admin-section-panel admin-node-workspace">
+        <AdminNodeForm nextSortOrder={nextSortOrder} />
       </Panel>
     </main>
   );

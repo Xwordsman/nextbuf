@@ -251,7 +251,7 @@ describe("identity authentication integration", () => {
     await redis.flushdb();
     const email = testEmail("profile-api");
     const { user, delivery, username } = await registerPendingUser(email);
-    expect(user.uid).toBeGreaterThanOrEqual(1000);
+    expect(user.uid).toBeGreaterThanOrEqual(1);
     expect(user.username).toBe(username);
     await expect(resolvePublicProfile(username)).resolves.toBeNull();
     await expect(

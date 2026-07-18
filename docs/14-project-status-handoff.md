@@ -53,7 +53,7 @@
 
 ### `v0.5.0` 用户资料与账号中心
 
-- `users` 增加从独立 PostgreSQL 序列 1000 起分配的不可变 UID、唯一用户名、用户名修改时间和注销申请时间；既有用户迁移为 `user_<UID>`。
+- `users` 增加从独立 PostgreSQL 序列 1 起分配的不可变 UID、唯一用户名、用户名修改时间和注销申请时间；早期 Beta 已分配 UID 保持不变，既有用户迁移为 `user_<UID>`。
 - 新增一对一 `profiles` 和 `username_aliases`；迁移回填既有 Profile，数据库触发器覆盖 Better Auth 邮箱注册、OAuth 和未来受控用户创建入口。
 - 用户名固定为 3-24 位小写 ASCII，以字母开头，只允许字母、数字和非连续内部下划线；包含服务端保留词、30 天修改冷却和永久历史别名。
 - 邮箱注册必须提交用户名；OAuth 新用户由服务端生成合规且可用的随机后缀用户名。
@@ -132,12 +132,12 @@
 
 ### `v0.11.0` 管理后台与站点配置
 
-- 新增统一 `/admin` 后台壳与按角色裁剪的导航；站点管理员可访问仪表盘、用户、内容、节点、设置、审计和 Worker，全局/节点版主只进入既有范围内的治理案件工作台。
+- 新增统一 `/admin` 后台壳与按角色裁剪的两级导航：概览、社区、治理、运维、系统。站点管理员可访问仪表盘、用户、内容、节点、设置、审计和 Worker；全局/节点版主只进入既有范围内的治理案件工作台。导航隐藏不替代服务端授权。
 - 仪表盘读取真实 PostgreSQL 注册、30 日活跃、主题/回复、举报/案件、Outbox、邮件、失败任务、Worker 和信任批次，并读取 BullMQ 队列状态；Redis 不可用时显示明确降级而不伪造数据。
 - 用户后台支持 UID/用户名/昵称/邮箱和状态筛选、稳定 UID 分页、详情、角色、脱敏会话/Provider、制裁、内容计数和信任历史；批量会话撤销最多 50 人，并在同一授权/审计工作流执行。
-- 内容工作台检索主题和回复并链接到既有编辑/治理流程；节点页复用受审计更新用例；聚焦案件与 Worker 页面纳入同一后台布局。
+- 仪表盘只承载指标、告警和待办。主题、回复分别在 `/admin/content/topics`、`/admin/content/replies` 列表检索并链接到既有编辑/治理流程，旧 `/admin/content` 自动跳转主题列表；节点使用列表、新建和编辑独立路径（`/admin/nodes`、`/admin/nodes/new`、`/admin/nodes/[slug]`），关联内容节点只允许归档；聚焦案件与 Worker 页面纳入同一后台布局。
 - 新增 PostgreSQL 单例 `site_settings`：站点名称、注册模式、主题/回复/上传开关和每小时上限，带数据库 CHECK、Zod、修订号、行锁、最后修改者和治理审计。注册、OAuth 新用户、主题、回复和附件事务读取该事实。
-- Provider 配置仍由环境变量提供；后台只显示 SMTP、本地/S3、GitHub OAuth 的脱敏状态并执行服务端真实连接测试，完整 Password/Secret/Token 不进入浏览器或站点设置表。
+- 站点运营设置、Provider 诊断与信任规则分别位于 `/admin/settings`、`/admin/settings/providers`、`/admin/settings/trust`。Provider 配置仍由环境变量提供；后台只显示 SMTP、本地/S3、GitHub OAuth 的脱敏状态并执行服务端真实连接测试，完整 Password/Secret/Token 不进入浏览器或站点设置表。
 - 审计页合并 identity/community/governance 不可变事件，支持来源、操作、操作者 UID、日期、分页与最多 500 条受控 CSV；敏感键递归脱敏并防止公式注入。
 - Better Auth `verifyPassword` 为当前 Session 建立十分钟 `admin_reauthentications`。角色变更、人工 TL4、信任规则激活、站点设置、批量会话撤销和审计导出同时要求 step-up 与固定确认文本；Session 撤销级联清除提升状态。
 - 决策、在线/引导配置分层、OAuth-only 限制、审计和回退见 [ADR-0014](./adr/0014-administration-settings-and-reauthentication.md)。

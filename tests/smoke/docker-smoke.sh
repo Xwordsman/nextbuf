@@ -233,6 +233,9 @@ response=$(curl --fail-with-body --silent \
   -d '{"token":"nextbuf-smoke-setup-token-at-least-32-characters","name":"Smoke Admin","username":"smoke_admin","email":"smoke-admin@nextbuf.test","password":"smoke-admin-password-12345"}' \
   http://127.0.0.1:3100/api/setup)
 printf '%s' "$response" | grep -q '"ok":true'
+first_admin_uid=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT uid FROM users WHERE email = '\''smoke-admin@nextbuf.test'\''"' | tr -d '\r')
+[ "$first_admin_uid" = 1 ]
 
 repeat_status=$(curl --silent -o /tmp/nextbuf-setup-repeat.json -w '%{http_code}' \
   -H 'origin: http://127.0.0.1:3100' \

@@ -12,7 +12,7 @@
 ### UID
 
 - `users.id` 继续使用 UUID 作为内部主键。
-- `users.uid` 使用独立 PostgreSQL 序列，从 `1000` 起分配，唯一、不可变且永不复用。
+- `users.uid` 使用独立 PostgreSQL 序列，从 `1` 起分配，唯一、不可变且永不复用。已在早期 Beta 分配的 UID 保持不变，迁移策略见 ADR-0018。
 - 既有用户在迁移时分配 UID；UID 只用于展示、客服和审核，不作为授权凭据。
 
 ### Username
@@ -77,3 +77,4 @@ UUID 不适合日常展示和客服沟通；昵称可重复且可修改，不能
 - [身份、信任与安全](../04-identity-trust-security.md)
 - [配置参考](../12-configuration-reference.md)
 - [项目现状与交接](../14-project-status-handoff.md)
+- [ADR-0018：UID 序列从 1 开始](./0018-uid-sequence-starts-at-one.md)

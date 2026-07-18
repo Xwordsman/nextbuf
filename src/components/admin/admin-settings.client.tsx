@@ -54,6 +54,8 @@ type TrustBatch = {
   ruleVersionId: string;
 };
 
+export type AdminSettingsSection = "general" | "providers" | "trust";
+
 async function reauthenticate(password: string) {
   return fetch("/api/admin/reauthenticate", {
     method: "POST",
@@ -63,11 +65,13 @@ async function reauthenticate(password: string) {
 }
 
 export function AdminSettings({
+  section,
   settings: initial,
   providers,
   rules,
   batches,
 }: {
+  section: AdminSettingsSection;
   settings: SiteSettings;
   providers: ProviderStatus;
   rules: TrustRule[];
@@ -199,267 +203,275 @@ export function AdminSettings({
 
   return (
     <div className="admin-settings-stack">
-      <section className="panel admin-section-panel">
-        <div className="admin-section-head">
-          <h2>站点运营设置</h2>
-          <span>修订 {settings.revision}</span>
-        </div>
-        <div className="admin-settings-grid">
-          <label>
-            站点名称
+      {section === "general" ? (
+        <section className="panel admin-section-panel">
+          <div className="admin-section-head">
+            <h2>站点运营设置</h2>
+            <span>修订 {settings.revision}</span>
+          </div>
+          <div className="admin-settings-grid">
+            <label>
+              站点名称
+              <Input
+                value={settings.siteName}
+                onChange={(event) => setSettings({ ...settings, siteName: event.target.value })}
+              />
+            </label>
+            <label>
+              注册策略
+              <select
+                value={settings.registrationMode}
+                onChange={(event) =>
+                  setSettings({
+                    ...settings,
+                    registrationMode: event.target.value as SiteSettings["registrationMode"],
+                  })
+                }
+              >
+                <option value="open">开放</option>
+                <option value="invite">邀请</option>
+                <option value="closed">关闭</option>
+              </select>
+            </label>
+            <label>
+              每小时主题上限
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                value={settings.maxTopicsPerHour}
+                onChange={(event) =>
+                  setSettings({ ...settings, maxTopicsPerHour: Number(event.target.value) })
+                }
+              />
+            </label>
+            <label>
+              每小时回复上限
+              <Input
+                type="number"
+                min={1}
+                max={500}
+                value={settings.maxRepliesPerHour}
+                onChange={(event) =>
+                  setSettings({ ...settings, maxRepliesPerHour: Number(event.target.value) })
+                }
+              />
+            </label>
+            <label>
+              每小时上传上限
+              <Input
+                type="number"
+                min={1}
+                max={200}
+                value={settings.maxUploadsPerHour}
+                onChange={(event) =>
+                  setSettings({ ...settings, maxUploadsPerHour: Number(event.target.value) })
+                }
+              />
+            </label>
+          </div>
+          <div className="admin-toggle-row">
+            <label>
+              <input
+                type="checkbox"
+                checked={settings.topicsEnabled}
+                onChange={(event) =>
+                  setSettings({ ...settings, topicsEnabled: event.target.checked })
+                }
+              />{" "}
+              允许发布主题
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={settings.repliesEnabled}
+                onChange={(event) =>
+                  setSettings({ ...settings, repliesEnabled: event.target.checked })
+                }
+              />{" "}
+              允许发布回复
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={settings.uploadsEnabled}
+                onChange={(event) =>
+                  setSettings({ ...settings, uploadsEnabled: event.target.checked })
+                }
+              />{" "}
+              允许上传附件
+            </label>
+          </div>
+          <div className="admin-action-credentials">
             <Input
-              value={settings.siteName}
-              onChange={(event) => setSettings({ ...settings, siteName: event.target.value })}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="变更原因"
             />
-          </label>
-          <label>
-            注册策略
-            <select
-              value={settings.registrationMode}
-              onChange={(event) =>
-                setSettings({
-                  ...settings,
-                  registrationMode: event.target.value as SiteSettings["registrationMode"],
-                })
-              }
+            <Input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="管理员密码"
+              autoComplete="current-password"
+            />
+            <Button
+              type="button"
+              onClick={saveSettings}
+              disabled={Boolean(busy) || reason.trim().length < 3 || !password}
             >
-              <option value="open">开放</option>
-              <option value="invite">邀请</option>
-              <option value="closed">关闭</option>
-            </select>
-          </label>
-          <label>
-            每小时主题上限
-            <Input
-              type="number"
-              min={1}
-              max={100}
-              value={settings.maxTopicsPerHour}
-              onChange={(event) =>
-                setSettings({ ...settings, maxTopicsPerHour: Number(event.target.value) })
-              }
-            />
-          </label>
-          <label>
-            每小时回复上限
-            <Input
-              type="number"
-              min={1}
-              max={500}
-              value={settings.maxRepliesPerHour}
-              onChange={(event) =>
-                setSettings({ ...settings, maxRepliesPerHour: Number(event.target.value) })
-              }
-            />
-          </label>
-          <label>
-            每小时上传上限
-            <Input
-              type="number"
-              min={1}
-              max={200}
-              value={settings.maxUploadsPerHour}
-              onChange={(event) =>
-                setSettings({ ...settings, maxUploadsPerHour: Number(event.target.value) })
-              }
-            />
-          </label>
-        </div>
-        <div className="admin-toggle-row">
-          <label>
-            <input
-              type="checkbox"
-              checked={settings.topicsEnabled}
-              onChange={(event) =>
-                setSettings({ ...settings, topicsEnabled: event.target.checked })
-              }
-            />{" "}
-            允许发布主题
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={settings.repliesEnabled}
-              onChange={(event) =>
-                setSettings({ ...settings, repliesEnabled: event.target.checked })
-              }
-            />{" "}
-            允许发布回复
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={settings.uploadsEnabled}
-              onChange={(event) =>
-                setSettings({ ...settings, uploadsEnabled: event.target.checked })
-              }
-            />{" "}
-            允许上传附件
-          </label>
-        </div>
-        <div className="admin-action-credentials">
-          <Input
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            placeholder="变更原因"
-          />
-          <Input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="管理员密码"
-            autoComplete="current-password"
-          />
-          <Button
-            type="button"
-            onClick={saveSettings}
-            disabled={Boolean(busy) || reason.trim().length < 3 || !password}
-          >
-            {busy === "settings" ? "保存中" : "保存设置"}
-          </Button>
-        </div>
-      </section>
+              {busy === "settings" ? "保存中" : "保存设置"}
+            </Button>
+          </div>
+        </section>
+      ) : null}
 
-      <section className="panel admin-section-panel">
-        <div className="admin-section-head">
-          <h2>Provider 配置状态</h2>
-          <span>密钥不返回浏览器</span>
-        </div>
-        <div className="admin-provider-list">
-          <article>
-            <div>
-              <strong>SMTP 邮件</strong>
-              <span>
-                {providers.mail.host ?? "未配置"}:{providers.mail.port} · {providers.mail.from}
-              </span>
-              <small>
-                用户 {providers.mail.user ?? "无"} · 密码{" "}
-                {providers.mail.passwordConfigured ? "已设置" : "未设置"}
-              </small>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={Boolean(busy) || !providers.mail.configured}
-              onClick={() => testProvider("mail")}
-            >
-              {busy === "mail" ? "测试中" : "连接测试"}
-            </Button>
-          </article>
-          <article>
-            <div>
-              <strong>对象存储</strong>
-              <span>
-                {providers.storage.driver} ·{" "}
-                {providers.storage.bucket ?? providers.storage.localPath ?? "未配置"}
-              </span>
-              <small>
-                {providers.storage.endpoint ?? "本地文件系统"} · 凭据{" "}
-                {providers.storage.secretConfigured || providers.storage.driver === "local"
-                  ? "已就绪"
-                  : "未设置"}
-              </small>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={Boolean(busy) || !providers.storage.configured}
-              onClick={() => testProvider("storage")}
-            >
-              {busy === "storage" ? "测试中" : "连接测试"}
-            </Button>
-          </article>
-          <article>
-            <div>
-              <strong>GitHub OAuth</strong>
-              <span>Client ID {providers.github.clientId ?? "未配置"}</span>
-              <small>
-                {providers.github.callbackUrl} · Secret{" "}
-                {providers.github.secretConfigured ? "已设置" : "未设置"}
-              </small>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={Boolean(busy) || !providers.github.configured}
-              onClick={() => testProvider("github")}
-            >
-              {busy === "github" ? "测试中" : "连接测试"}
-            </Button>
-          </article>
-        </div>
-      </section>
+      {section === "providers" ? (
+        <section className="panel admin-section-panel">
+          <div className="admin-section-head">
+            <h2>Provider 配置状态</h2>
+            <span>密钥不返回浏览器</span>
+          </div>
+          <div className="admin-provider-list">
+            <article>
+              <div>
+                <strong>SMTP 邮件</strong>
+                <span>
+                  {providers.mail.host ?? "未配置"}:{providers.mail.port} · {providers.mail.from}
+                </span>
+                <small>
+                  用户 {providers.mail.user ?? "无"} · 密码{" "}
+                  {providers.mail.passwordConfigured ? "已设置" : "未设置"}
+                </small>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={Boolean(busy) || !providers.mail.configured}
+                onClick={() => testProvider("mail")}
+              >
+                {busy === "mail" ? "测试中" : "连接测试"}
+              </Button>
+            </article>
+            <article>
+              <div>
+                <strong>对象存储</strong>
+                <span>
+                  {providers.storage.driver} ·{" "}
+                  {providers.storage.bucket ?? providers.storage.localPath ?? "未配置"}
+                </span>
+                <small>
+                  {providers.storage.endpoint ?? "本地文件系统"} · 凭据{" "}
+                  {providers.storage.secretConfigured || providers.storage.driver === "local"
+                    ? "已就绪"
+                    : "未设置"}
+                </small>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={Boolean(busy) || !providers.storage.configured}
+                onClick={() => testProvider("storage")}
+              >
+                {busy === "storage" ? "测试中" : "连接测试"}
+              </Button>
+            </article>
+            <article>
+              <div>
+                <strong>GitHub OAuth</strong>
+                <span>Client ID {providers.github.clientId ?? "未配置"}</span>
+                <small>
+                  {providers.github.callbackUrl} · Secret{" "}
+                  {providers.github.secretConfigured ? "已设置" : "未设置"}
+                </small>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={Boolean(busy) || !providers.github.configured}
+                onClick={() => testProvider("github")}
+              >
+                {busy === "github" ? "测试中" : "连接测试"}
+              </Button>
+            </article>
+          </div>
+        </section>
+      ) : null}
 
-      <section className="panel admin-section-panel">
-        <div className="admin-section-head">
-          <h2>信任规则</h2>
-          <span>{rules.length} 个版本</span>
-        </div>
-        <Textarea
-          className="admin-rule-editor"
-          value={config}
-          onChange={(event) => setConfig(event.target.value)}
-          aria-label="信任规则 JSON"
-        />
-        <div className="admin-panel-actions">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={Boolean(busy) || reason.trim().length < 3}
-            onClick={createRule}
-          >
-            {busy === "rule-create" ? "创建中" : "创建规则草稿"}
-          </Button>
-        </div>
-        <div className="admin-rule-list">
-          {rules.map((rule) => {
-            const preview = batches.find(
-              (batch) => batch.ruleVersionId === rule.id && batch.mode === "preview",
-            );
-            return (
-              <article key={rule.id}>
-                <div>
-                  <strong>
-                    v{rule.version} · {rule.status}
-                  </strong>
-                  <small>
-                    {rule.createdAt.toLocaleString("zh-CN")}
-                    {preview
-                      ? ` · 预览 ${preview.status} ${preview.processedUsers}/${preview.totalUsers}`
-                      : ""}
-                  </small>
-                </div>
-                <div>
-                  {["draft", "previewed"].includes(rule.status) ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={Boolean(busy) || reason.trim().length < 3}
-                      onClick={() => previewRule(rule.id)}
-                    >
-                      预览
-                    </Button>
-                  ) : null}
-                  {rule.status === "previewed" && preview?.status === "completed" ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={Boolean(busy) || !password || reason.trim().length < 3}
-                      onClick={() => activateRule(rule.id)}
-                    >
-                      激活
-                    </Button>
-                  ) : null}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-      <p className="admin-action-message" role="status">
-        {message}
-      </p>
+      {section === "trust" ? (
+        <section className="panel admin-section-panel">
+          <div className="admin-section-head">
+            <h2>信任规则</h2>
+            <span>{rules.length} 个版本</span>
+          </div>
+          <Textarea
+            className="admin-rule-editor"
+            value={config}
+            onChange={(event) => setConfig(event.target.value)}
+            aria-label="信任规则 JSON"
+          />
+          <div className="admin-panel-actions">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={Boolean(busy) || reason.trim().length < 3}
+              onClick={createRule}
+            >
+              {busy === "rule-create" ? "创建中" : "创建规则草稿"}
+            </Button>
+          </div>
+          <div className="admin-rule-list">
+            {rules.map((rule) => {
+              const preview = batches.find(
+                (batch) => batch.ruleVersionId === rule.id && batch.mode === "preview",
+              );
+              return (
+                <article key={rule.id}>
+                  <div>
+                    <strong>
+                      v{rule.version} · {rule.status}
+                    </strong>
+                    <small>
+                      {rule.createdAt.toLocaleString("zh-CN")}
+                      {preview
+                        ? ` · 预览 ${preview.status} ${preview.processedUsers}/${preview.totalUsers}`
+                        : ""}
+                    </small>
+                  </div>
+                  <div>
+                    {["draft", "previewed"].includes(rule.status) ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={Boolean(busy) || reason.trim().length < 3}
+                        onClick={() => previewRule(rule.id)}
+                      >
+                        预览
+                      </Button>
+                    ) : null}
+                    {rule.status === "previewed" && preview?.status === "completed" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={Boolean(busy) || !password || reason.trim().length < 3}
+                        onClick={() => activateRule(rule.id)}
+                      >
+                        激活
+                      </Button>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+      {message ? (
+        <p className="admin-action-message" role="status">
+          {message}
+        </p>
+      ) : null}
     </div>
   );
 }

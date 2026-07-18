@@ -48,6 +48,17 @@ PostgreSQL 的单例 `SiteSetting` 保存可在线生效的运营设置：
 
 后台以只读查询统一呈现 identity、community 和 governance 三类不可变审计事件。筛选、游标分页和导出上限由服务端控制；导出需要二次验证和确认文本。任何疑似密钥、密码、Cookie、Token 或连接串字段在返回浏览器或导出前递归脱敏。
 
+### 5. 后台信息架构与工作区
+
+后台采用两级左侧导航，不把所有功能平铺为一列：一级为概览、社区、治理、运维和系统；二级只显示当前一级模块的可用工作区。站点管理员可见全部已实现模块；全局/节点版主只保留授权范围内的治理案件入口。导航隐藏不是授权边界，所有页面和 Route Handler 仍执行服务端权限检查。
+
+仪表盘只显示指标、告警和待办，不能承载创建或编辑表单。运营对象遵循“列表进入、独立工作区修改”的路径：
+
+- 用户：`/admin/users` 列表进入 `/admin/users/[uid]` 详情和受控操作；用户由身份注册流程创建，不提供后台造号入口。
+- 内容：主题和回复分别位于 `/admin/content/topics`、`/admin/content/replies`，旧 `/admin/content` 重定向到主题列表；处置继续复用已有主题/治理授权流程。
+- 节点：`/admin/nodes` 为列表，`/admin/nodes/new` 为创建，`/admin/nodes/[slug]` 为编辑。已有关联主题或审计的节点不提供硬删除，使用归档保留历史可解释性。
+- 系统：站点运营设置、Provider 诊断与信任规则分别位于 `/admin/settings`、`/admin/settings/providers`、`/admin/settings/trust`；Provider 页面只显示脱敏状态并允许固定目标的服务端连接测试。
+
 ## 后果
 
 - 运营设置在所有 Web 实例上从 PostgreSQL 读取，Redis 清空不影响正确性。
@@ -55,6 +66,7 @@ PostgreSQL 的单例 `SiteSetting` 保存可在线生效的运营设置：
 - 高风险动作和当前登录会话绑定，撤销会话会级联清除二次验证状态。
 - 动态 OAuth 注册策略由 Better Auth 用户创建钩子与 NextBuf 注册入口共同约束；Better Auth 继续拥有账号、密码、OAuth、Session 和 Cookie 语义。
 - 新增设置必须先判断它属于在线运营设置还是启动引导配置，并同步 Schema、迁移、校验、审计和文档。
+- 新后台页面应先归入现有一级模块，并优先补全列表、详情和受控操作路径；不得为了视觉完整性提前显示未实现的产品模块。
 
 ## 回退
 

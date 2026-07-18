@@ -17,7 +17,7 @@
 
 账号主体，包含：
 
-- UUID 是内部主键；`uid` 是从独立 PostgreSQL 序列分配的公开数字标识，从 1000 起、不可修改、不可复用。
+- UUID 是内部主键；`uid` 是从独立 PostgreSQL 序列分配的公开数字标识，从 1 起、不可修改、不可复用。早期 Beta 已分配 UID 保持不变。
 - `username` 是唯一规范化用户名；`name` 是可重复昵称；邮箱、邮箱验证和账号状态沿用 Better Auth 语义。
 - `usernameChangedAt` 记录 30 天修改冷却起点；`deletionRequestedAt` 与 `deletionScheduledAt` 记录 14 天可撤销注销申请。
 - 账号状态：`pending`、`active`、`restricted`、`suspended`、`deleted`。
