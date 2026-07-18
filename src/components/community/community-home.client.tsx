@@ -9,7 +9,7 @@ import { RightRail } from "@/components/community/right-rail";
 import { SideNavigation } from "@/components/community/side-navigation.client";
 import { TopicList } from "@/components/community/topic-list";
 import { Button } from "@/components/shadcn/ui/button";
-import { Card, CardAction, CardHeader } from "@/components/shadcn/ui/card";
+import { Card, CardHeader } from "@/components/shadcn/ui/card";
 import {
   Sheet,
   SheetClose,
@@ -70,31 +70,56 @@ export function CommunityHome({
     />
   );
   return (
-    <main className="community-shell" data-testid="community-shell">
-      <aside className="left-column">
+    <main
+      className="mx-auto grid w-full max-w-[var(--layout-max)] grid-cols-[var(--left-column)_minmax(0,1fr)_var(--right-column)] items-start gap-[var(--layout-gap)] p-[18px] max-[1100px]:grid-cols-[var(--left-column)_minmax(0,1fr)] max-[860px]:grid-cols-1 max-[860px]:p-3"
+      data-testid="community-shell"
+    >
+      <aside className="min-w-0" data-testid="community-left-rail">
         <SideNavigation nodes={view.nodes} activeNode={activeNode?.id ?? "all"} />
       </aside>
-      <section className="main-column" aria-labelledby="topic-feed-title">
+      <section className="min-w-0" aria-labelledby="topic-feed-title" data-testid="community-main">
         <Tabs
           value={filter}
           onValueChange={(value) => router.push(feedHref(value as CommunityFeedFilter))}
           className="gap-3"
         >
           <Card size="sm" className="gap-0 py-0">
-            <CardHeader className="min-h-12 items-center gap-3 rounded-t-xl border-b py-2.5 has-data-[slot=card-action]:grid-cols-[minmax(0,1fr)_auto]">
-              <h1 id="topic-feed-title" className="sr-only">
-                {activeNode?.name ?? "社区"}话题
-              </h1>
-              <TabsList variant="line" aria-label="话题筛选">
-                <TabsTrigger value="latest">最新</TabsTrigger>
-                <TabsTrigger value="hot">热门</TabsTrigger>
-                <TabsTrigger value="essence">精华</TabsTrigger>
-              </TabsList>
-              <CardAction className="self-center">
-                <span className="text-xs text-muted-foreground" aria-live="polite">
+            <CardHeader className="gap-3 border-b py-3">
+              {activeNode ? (
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <span
+                    className="mt-1.5 size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: activeNode.color }}
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0">
+                    <h1 id="topic-feed-title" className="text-base font-medium">
+                      {activeNode.name}
+                    </h1>
+                    <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                      {activeNode.description}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <h1 id="topic-feed-title" className="sr-only">
+                  社区话题
+                </h1>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <TabsList variant="line" aria-label="话题筛选">
+                  <TabsTrigger value="latest">最新</TabsTrigger>
+                  <TabsTrigger value="hot">热门</TabsTrigger>
+                  <TabsTrigger value="essence">精华</TabsTrigger>
+                </TabsList>
+                <span
+                  className="text-xs text-muted-foreground"
+                  data-testid="topic-count"
+                  aria-live="polite"
+                >
                   共 {query.trim() ? visibleTopics.length : view.topicTotal} 个话题
                 </span>
-              </CardAction>
+              </div>
             </CardHeader>
             <TabsContent value={filter} className="m-0">
               <TopicList topics={visibleTopics} />
@@ -139,7 +164,11 @@ export function CommunityHome({
           </Button>
         </nav>
       </section>
-      <aside className="right-column" aria-label="社区侧栏">
+      <aside
+        className="min-w-0 max-[1100px]:hidden"
+        aria-label="社区侧栏"
+        data-testid="community-right-rail"
+      >
         {rail}
       </aside>
       <Sheet open={railOpen} onOpenChange={setRailOpen}>

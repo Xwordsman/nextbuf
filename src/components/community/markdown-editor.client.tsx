@@ -2,6 +2,7 @@
 
 import { Bold, Code2, Italic, Link2, LoaderCircle, Paperclip, Quote } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { MarkdownContent } from "@/components/community/markdown-content";
 import { Button } from "@/components/shadcn/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/shadcn/ui/tabs";
 import { Textarea } from "@/components/shadcn/ui/textarea";
@@ -198,10 +199,7 @@ export function MarkdownEditor({
               <LoaderCircle className="animate-spin" /> 正在生成预览
             </span>
           ) : previewHtml ? (
-            <div
-              className="markdown-body break-words"
-              dangerouslySetInnerHTML={{ __html: previewHtml }}
-            />
+            <MarkdownContent html={previewHtml} />
           ) : (
             <p>尚未填写内容。</p>
           )}

@@ -26,7 +26,7 @@ async function openHome(page: Page) {
     );
   }
   await expect(shell).toBeVisible();
-  await expect(page.locator(".topic-count")).toContainText(/共 \d+ 个话题/);
+  await expect(page.getByTestId("topic-count")).toContainText(/共 \d+ 个话题/);
 }
 
 test.describe("community shell", () => {
@@ -35,9 +35,9 @@ test.describe("community shell", () => {
     await openHome(page);
 
     const shell = page.getByTestId("community-shell");
-    const left = shell.locator(".left-column");
-    const main = shell.locator(".main-column");
-    const right = shell.locator(".right-column");
+    const left = page.getByTestId("community-left-rail");
+    const main = page.getByTestId("community-main");
+    const right = page.getByTestId("community-right-rail");
     const [shellBox, leftBox, mainBox, rightBox] = await Promise.all([
       shell.evaluate((element) => element.getBoundingClientRect().toJSON()),
       left.evaluate((element) => element.getBoundingClientRect().toJSON()),
@@ -70,7 +70,7 @@ test.describe("community shell", () => {
     await openHome(page);
 
     await page.getByLabel("搜索话题、节点或作者").fill("E2E DNS");
-    await expect(page.getByText("共 1 个话题", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("topic-count")).toHaveText("共 1 个话题");
     await expect(page.getByRole("heading", { name: /E2E DNS 解析排查主题/ })).toBeVisible();
 
     await page.getByLabel("搜索话题、节点或作者").fill("");
@@ -79,15 +79,15 @@ test.describe("community shell", () => {
       .getByRole("link", { name: /人工智能/ })
       .click();
     await expect(page).toHaveURL(/\/nodes\/ai$/);
-    await expect(page.getByText("共 1 个话题", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("topic-count")).toHaveText("共 1 个话题");
   });
 
   test("uses a two-column layout and account panel on tablet", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1024, height: 900 });
     await openHome(page);
 
-    await expect(page.locator(".left-column")).toBeVisible();
-    await expect(page.locator(".right-column")).toBeHidden();
+    await expect(page.getByTestId("community-left-rail")).toBeVisible();
+    await expect(page.getByTestId("community-right-rail")).toBeHidden();
     await page.getByRole("button", { name: "我的面板" }).click();
     const dialog = page.getByRole("dialog", { name: "我的面板" });
     await expect(dialog).toBeVisible();
@@ -105,7 +105,7 @@ test.describe("community shell", () => {
     await page.setViewportSize({ width: 1099, height: 900 });
     await openHome(page);
 
-    await expect(page.locator(".right-column")).toBeHidden();
+    await expect(page.getByTestId("community-right-rail")).toBeHidden();
     await expect(page.getByRole("button", { name: "我的面板" })).toBeVisible();
   });
 
@@ -115,7 +115,7 @@ test.describe("community shell", () => {
 
     await page.getByRole("button", { name: "搜索" }).click();
     await page.locator("#mobile-search").fill("E2E DNS");
-    await expect(page.getByText("共 1 个话题", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("topic-count")).toHaveText("共 1 个话题");
     await expect(page.getByRole("link", { name: "登录" }).first()).toBeVisible();
 
     await expectNoHorizontalOverflow(page);

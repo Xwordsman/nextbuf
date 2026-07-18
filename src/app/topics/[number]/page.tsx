@@ -19,6 +19,14 @@ import { TopicViewTracker } from "@/components/interactions/topic-view-tracker.c
 import { ReportDialog } from "@/components/moderation/report-dialog.client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/shadcn/ui/avatar";
 import { Badge } from "@/components/shadcn/ui/badge";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/shadcn/ui/breadcrumb";
 import { Button } from "@/components/shadcn/ui/button";
 import { Card, CardContent } from "@/components/shadcn/ui/card";
 import { getAuth } from "@/infrastructure/auth/better-auth";
@@ -73,25 +81,35 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
         ) : null}
         <Card size="sm" className="gap-0 py-0">
           <CardContent className="grid gap-3 py-4">
-            <header>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <Link
-                  className="inline-flex items-center gap-1.5 font-medium text-foreground hover:underline"
-                  href={`/nodes/${topic.node.slug}`}
-                >
-                  <span
-                    className="size-2 rounded-full"
-                    style={{ backgroundColor: topic.node.color }}
-                  />
-                  {topic.node.name}
-                </Link>
-                <span>主题 #{topic.number}</span>
-              </div>
-              <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
-                <h1 className="min-w-0 flex-1 text-xl font-semibold tracking-tight break-words">
+            <header className="grid gap-3">
+              <Breadcrumb>
+                <BreadcrumbList className="text-xs">
+                  <BreadcrumbItem>
+                    <BreadcrumbLink asChild>
+                      <Link
+                        className="inline-flex items-center gap-1.5"
+                        href={`/nodes/${topic.node.slug}`}
+                      >
+                        <span
+                          className="size-2 rounded-full"
+                          style={{ backgroundColor: topic.node.color }}
+                          aria-hidden="true"
+                        />
+                        {topic.node.name}
+                      </Link>
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage>主题 #{topic.number}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <h1 className="min-w-0 flex-1 text-xl font-semibold tracking-tight break-words sm:text-2xl">
                   {topic.title}
                 </h1>
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1" aria-label="主题状态">
                   {topic.isPinned ? (
                     <Badge variant="secondary" className="rounded-md">
                       置顶
@@ -109,7 +127,7 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
                   ) : null}
                 </div>
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
                   <CalendarDays /> {topic.publishedAt?.toLocaleString("zh-CN") ?? "尚未发布"}
                 </span>
@@ -122,7 +140,7 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
                 {topic.editedAt ? <span>首帖已编辑 {topic.revisionCount - 1} 次</span> : null}
               </div>
             </header>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 border-t pt-3">
               {isPublicTopic ? (
                 <TopicActions
                   topicNumber={topic.number}
@@ -151,8 +169,8 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
         </Card>
 
         <Card size="sm" className="py-0" id="post-1">
-          <CardContent className="grid gap-4 py-4 sm:grid-cols-[120px_minmax(0,1fr)]">
-            <aside className="flex items-center gap-2 sm:flex-col sm:items-start">
+          <CardContent className="grid gap-4 py-4 sm:grid-cols-[132px_minmax(0,1fr)]">
+            <aside className="flex items-center gap-2 border-b pb-4 sm:flex-col sm:items-start sm:border-r sm:border-b-0 sm:pr-4 sm:pb-0">
               <Avatar className="size-12">
                 <AvatarImage src={topic.author.image ?? undefined} alt={topic.author.name} />
                 <AvatarFallback>{topic.author.initials}</AvatarFallback>
@@ -204,8 +222,8 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
             <div className="grid gap-3">
               {topic.replies.map((reply) => (
                 <Card size="sm" className="py-0" id={`post-${reply.position}`} key={reply.id}>
-                  <CardContent className="grid gap-4 py-4 sm:grid-cols-[120px_minmax(0,1fr)]">
-                    <aside className="flex items-center gap-2 sm:flex-col sm:items-start">
+                  <CardContent className="grid gap-4 py-4 sm:grid-cols-[132px_minmax(0,1fr)]">
+                    <aside className="flex items-center gap-2 border-b pb-4 sm:flex-col sm:items-start sm:border-r sm:border-b-0 sm:pr-4 sm:pb-0">
                       <Avatar className="size-10">
                         <AvatarImage
                           src={reply.author.image ?? undefined}

@@ -11,6 +11,7 @@ import {
 import { notFound, redirect } from "next/navigation";
 import { UserFollowButton } from "@/components/interactions/user-follow-button.client";
 import { ReportDialog } from "@/components/moderation/report-dialog.client";
+import { Alert, AlertDescription, AlertTitle } from "@/components/shadcn/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/shadcn/ui/avatar";
 import { Badge } from "@/components/shadcn/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/shadcn/ui/card";
@@ -79,18 +80,11 @@ export default async function UserPage({ params }: UserPageProps) {
       </Card>
 
       {profile?.isPublic === false ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <h2>该用户未公开个人资料</h2>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm leading-6 text-muted-foreground">
-              基本身份信息仍用于社区内容归属。
-            </p>
-          </CardContent>
-        </Card>
+        <Alert>
+          <UserRoundCheck aria-hidden="true" />
+          <AlertTitle>该用户未公开个人资料</AlertTitle>
+          <AlertDescription>基本身份信息仍用于社区内容归属。</AlertDescription>
+        </Alert>
       ) : (
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
           <section className="grid gap-5" aria-labelledby="profile-about-title">
@@ -119,36 +113,47 @@ export default async function UserPage({ params }: UserPageProps) {
             </Card>
 
             {profile?.showActivity !== false ? (
-              <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="grid gap-1 rounded-lg border bg-card p-4">
-                  <MessageSquareText className="size-4 text-muted-foreground" aria-hidden="true" />
-                  <dd className="text-xl font-semibold tabular-nums text-foreground">
-                    {user._count.communityTopics}
-                  </dd>
-                  <dt className="text-xs text-muted-foreground">主题</dt>
-                </div>
-                <div className="grid gap-1 rounded-lg border bg-card p-4">
-                  <MessagesSquare className="size-4 text-muted-foreground" aria-hidden="true" />
-                  <dd className="text-xl font-semibold tabular-nums text-foreground">
-                    {user._count.communityPosts}
-                  </dd>
-                  <dt className="text-xs text-muted-foreground">回复</dt>
-                </div>
-                <div className="grid gap-1 rounded-lg border bg-card p-4">
-                  <UsersRound className="size-4 text-muted-foreground" aria-hidden="true" />
-                  <dd className="text-xl font-semibold tabular-nums text-foreground">
-                    {follow.followers}
-                  </dd>
-                  <dt className="text-xs text-muted-foreground">关注者</dt>
-                </div>
-                <div className="grid gap-1 rounded-lg border bg-card p-4">
-                  <UserRoundCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-                  <dd className="text-xl font-semibold tabular-nums text-foreground">
-                    {follow.following}
-                  </dd>
-                  <dt className="text-xs text-muted-foreground">正在关注</dt>
-                </div>
-              </dl>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="活动统计">
+                <Card size="sm" className="gap-0 py-0" role="group" aria-label="主题">
+                  <CardContent className="grid gap-1 p-4">
+                    <MessageSquareText
+                      className="size-4 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <p className="text-xl font-semibold tabular-nums text-foreground">
+                      {user._count.communityTopics}
+                    </p>
+                    <span className="text-xs text-muted-foreground">主题</span>
+                  </CardContent>
+                </Card>
+                <Card size="sm" className="gap-0 py-0" role="group" aria-label="回复">
+                  <CardContent className="grid gap-1 p-4">
+                    <MessagesSquare className="size-4 text-muted-foreground" aria-hidden="true" />
+                    <p className="text-xl font-semibold tabular-nums text-foreground">
+                      {user._count.communityPosts}
+                    </p>
+                    <span className="text-xs text-muted-foreground">回复</span>
+                  </CardContent>
+                </Card>
+                <Card size="sm" className="gap-0 py-0" role="group" aria-label="关注者">
+                  <CardContent className="grid gap-1 p-4">
+                    <UsersRound className="size-4 text-muted-foreground" aria-hidden="true" />
+                    <p className="text-xl font-semibold tabular-nums text-foreground">
+                      {follow.followers}
+                    </p>
+                    <span className="text-xs text-muted-foreground">关注者</span>
+                  </CardContent>
+                </Card>
+                <Card size="sm" className="gap-0 py-0" role="group" aria-label="正在关注">
+                  <CardContent className="grid gap-1 p-4">
+                    <UserRoundCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+                    <p className="text-xl font-semibold tabular-nums text-foreground">
+                      {follow.following}
+                    </p>
+                    <span className="text-xs text-muted-foreground">正在关注</span>
+                  </CardContent>
+                </Card>
+              </div>
             ) : null}
           </section>
 

@@ -5,8 +5,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MarkdownEditor } from "@/components/community/markdown-editor.client";
 import { Button } from "@/components/shadcn/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/shadcn/ui/card";
+import { Checkbox } from "@/components/shadcn/ui/checkbox";
 import { Input } from "@/components/shadcn/ui/input";
 import { Label } from "@/components/shadcn/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/shadcn/ui/select";
+import { Separator } from "@/components/shadcn/ui/separator";
 
 type TopicEditorProps = {
   nodes: Array<{ slug: string; name: string }>;
@@ -222,8 +231,13 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
       className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]"
       onSubmit={(event) => event.preventDefault()}
     >
-      <Card size="sm">
-        <CardContent className="grid gap-5">
+      <Card size="sm" className="gap-0 py-0">
+        <CardHeader className="border-b py-3">
+          <CardTitle>
+            <h2>{topic ? "编辑主题" : "主题内容"}</h2>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-5 py-4">
           <div className="grid gap-2">
             <Label htmlFor="topic-title">标题</Label>
             <Input
@@ -242,26 +256,24 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
           </div>
           <div className="grid gap-2">
             <Label htmlFor="topic-node">节点</Label>
-            <select
-              id="topic-node"
-              name="nodeSlug"
+            <Select
               value={nodeSlug}
-              onChange={(event) => {
-                setNodeSlug(event.target.value);
+              onValueChange={(value) => {
+                setNodeSlug(value);
                 if (status === "draft") setAutosaveStatus("等待自动保存");
               }}
-              className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-              required
             >
-              <option value="" disabled>
-                选择节点
-              </option>
-              {nodes.map((node) => (
-                <option key={node.slug} value={node.slug}>
-                  {node.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="topic-node" className="w-full">
+                <SelectValue placeholder="选择节点" />
+              </SelectTrigger>
+              <SelectContent>
+                {nodes.map((node) => (
+                  <SelectItem key={node.slug} value={node.slug}>
+                    {node.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="topic-body">正文</Label>
@@ -328,47 +340,36 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
       </Card>
 
       {topic ? (
-        <Card size="sm" className="h-fit">
-          <CardContent className="grid gap-5">
+        <Card size="sm" className="h-fit gap-0 py-0">
+          <CardHeader className="border-b py-3">
+            <CardTitle>
+              <h2>主题设置</h2>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-5 py-4">
             {topic.canModerate ? (
               <section className="grid gap-3">
                 <h2 className="text-sm font-medium">管理状态</h2>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    className="size-4 rounded border-input accent-primary"
-                    name="isPinned"
-                    type="checkbox"
-                    defaultChecked={topic.isPinned}
-                  />{" "}
+                <Label className="flex items-center gap-2 font-normal">
+                  <Checkbox id="topic-is-pinned" name="isPinned" defaultChecked={topic.isPinned} />
                   置顶
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    className="size-4 rounded border-input accent-primary"
+                </Label>
+                <Label className="flex items-center gap-2 font-normal">
+                  <Checkbox
+                    id="topic-is-essence"
                     name="isEssence"
-                    type="checkbox"
                     defaultChecked={topic.isEssence}
-                  />{" "}
+                  />
                   精华
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    className="size-4 rounded border-input accent-primary"
-                    name="isClosed"
-                    type="checkbox"
-                    defaultChecked={topic.isClosed}
-                  />{" "}
+                </Label>
+                <Label className="flex items-center gap-2 font-normal">
+                  <Checkbox id="topic-is-closed" name="isClosed" defaultChecked={topic.isClosed} />
                   关闭
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    className="size-4 rounded border-input accent-primary"
-                    name="isHidden"
-                    type="checkbox"
-                    defaultChecked={topic.isHidden}
-                  />{" "}
+                </Label>
+                <Label className="flex items-center gap-2 font-normal">
+                  <Checkbox id="topic-is-hidden" name="isHidden" defaultChecked={topic.isHidden} />
                   隐藏
-                </label>
+                </Label>
                 <Button
                   type="button"
                   variant="outline"
@@ -379,7 +380,8 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
                 </Button>
               </section>
             ) : null}
-            <section className="grid gap-3 border-t pt-5">
+            {topic.canModerate ? <Separator /> : null}
+            <section className="grid gap-3">
               <h2 className="text-sm font-medium">删除主题</h2>
               <p className="text-xs leading-5 text-muted-foreground">
                 删除不会移除主题编号、首帖、修订、回复或审计关系。
@@ -393,7 +395,8 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
                 <Trash2 /> 删除主题
               </Button>
             </section>
-            <section className="grid gap-3 border-t pt-5">
+            <Separator />
+            <section className="grid gap-3">
               <h2 className="text-sm font-medium">修订历史</h2>
               <ol className="grid gap-2">
                 {topic.revisions.map((revision) => (

@@ -8,6 +8,7 @@ import { Badge } from "@/components/shadcn/ui/badge";
 import { Button } from "@/components/shadcn/ui/button";
 import { Input } from "@/components/shadcn/ui/input";
 import { Label } from "@/components/shadcn/ui/label";
+import { Slider } from "@/components/shadcn/ui/slider";
 import { Switch } from "@/components/shadcn/ui/switch";
 import { Textarea } from "@/components/shadcn/ui/textarea";
 
@@ -209,15 +210,14 @@ export function ProfileSettings({ profile }: ProfileSettingsProps) {
               <>
                 <div className="grid gap-1.5">
                   <Label htmlFor="avatar-zoom">缩放</Label>
-                  <input
+                  <Slider
                     id="avatar-zoom"
-                    className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
-                    type="range"
-                    min="1"
-                    max="3"
-                    step="0.05"
-                    value={zoom}
-                    onChange={(event) => setZoom(Number(event.target.value))}
+                    min={1}
+                    max={3}
+                    step={0.05}
+                    value={[zoom]}
+                    onValueChange={([value]) => setZoom(value ?? 1)}
+                    aria-label="头像缩放"
                   />
                 </div>
                 <div>

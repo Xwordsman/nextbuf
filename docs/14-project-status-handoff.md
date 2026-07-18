@@ -5,7 +5,7 @@
 - 最后更新：2026-07-18
 - 当前完成版本：`v0.13.6` 公开 Beta 补丁
 - 下一动作：真实服务器与邀请用户验收；未经明确批准不开始 `v1.0.0`
-- 工作区未发布改动：正在验证全站公开页面的官方 shadcn/ui 视觉迁移。通用原语统一位于 `src/components/shadcn/ui`；该改动只替换展示层，不改变 PostgreSQL、Better Auth、授权、Worker、配置、部署或镜像拓扑合同，未获得视觉验收前不创建新标签。
+- 工作区未发布改动：已完成全站公开页面的官方 shadcn/ui `radix-nova` 视觉迁移，正在等待真实服务与 CI 浏览器验收。通用原语统一位于 `src/components/shadcn/ui`；首页、节点、主题、编辑器、账户、通知、搜索、成员主页、身份、安装及状态页面均不再依赖旧前台组件或页面样式类。该改动只替换展示层，不改变 PostgreSQL、Better Auth、授权、Worker、配置、部署或镜像拓扑合同；在视觉验收和明确的发布标签批准前不创建新镜像标签。
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 

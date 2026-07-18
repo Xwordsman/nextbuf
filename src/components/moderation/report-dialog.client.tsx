@@ -14,6 +14,13 @@ import {
   DialogTrigger,
 } from "@/components/shadcn/ui/dialog";
 import { Label } from "@/components/shadcn/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/shadcn/ui/select";
 import { Textarea } from "@/components/shadcn/ui/textarea";
 
 type ReportTarget =
@@ -88,20 +95,19 @@ export function ReportDialog({
         </DialogHeader>
         <div className="grid gap-2">
           <Label htmlFor={`${formId}-reason`}>原因</Label>
-          <select
-            id={`${formId}-reason`}
-            className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            disabled={pending}
-          >
-            <option value="spam">垃圾信息或广告</option>
-            <option value="abuse">辱骂或恶意行为</option>
-            <option value="harassment">骚扰</option>
-            <option value="illegal">违法或危险内容</option>
-            <option value="privacy">隐私泄露</option>
-            <option value="other">其他</option>
-          </select>
+          <Select value={reason} disabled={pending} onValueChange={setReason}>
+            <SelectTrigger id={`${formId}-reason`} className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="spam">垃圾信息或广告</SelectItem>
+              <SelectItem value="abuse">辱骂或恶意行为</SelectItem>
+              <SelectItem value="harassment">骚扰</SelectItem>
+              <SelectItem value="illegal">违法或危险内容</SelectItem>
+              <SelectItem value="privacy">隐私泄露</SelectItem>
+              <SelectItem value="other">其他</SelectItem>
+            </SelectContent>
+          </Select>
           <Label htmlFor={`${formId}-details`}>补充说明</Label>
           <Textarea
             id={`${formId}-details`}

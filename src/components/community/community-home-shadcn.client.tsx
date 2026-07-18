@@ -425,12 +425,15 @@ export function CommunityHomeShadcn({
   };
 
   return (
-    <main className="community-shell" data-testid="community-shell">
-      <aside className="left-column">
+    <main
+      className="mx-auto grid w-full max-w-[var(--layout-max)] grid-cols-[var(--left-column)_minmax(0,1fr)_var(--right-column)] items-start gap-[var(--layout-gap)] p-[18px] max-[1100px]:grid-cols-[var(--left-column)_minmax(0,1fr)] max-[860px]:grid-cols-1 max-[860px]:p-3"
+      data-testid="community-shell"
+    >
+      <aside className="min-w-0" data-testid="community-left-rail">
         <HomeNodeNavigation nodes={view.nodes} />
       </aside>
 
-      <section className="main-column" aria-labelledby="topic-feed-title">
+      <section className="min-w-0" aria-labelledby="topic-feed-title" data-testid="community-main">
         <Tabs
           value={filter}
           onValueChange={(value) => router.push(feedHref(value as CommunityFeedFilter))}
@@ -447,7 +450,11 @@ export function CommunityHomeShadcn({
                 <TabsTrigger value="essence">精华</TabsTrigger>
               </TabsList>
               <CardAction className="self-center">
-                <span className="topic-count text-xs text-muted-foreground" aria-live="polite">
+                <span
+                  className="text-xs text-muted-foreground"
+                  data-testid="topic-count"
+                  aria-live="polite"
+                >
                   共 {query.trim() ? visibleTopics.length : view.topicTotal} 个话题
                 </span>
               </CardAction>
@@ -491,7 +498,11 @@ export function CommunityHomeShadcn({
         </nav>
       </section>
 
-      <aside className="right-column" aria-label="社区侧栏">
+      <aside
+        className="min-w-0 max-[1100px]:hidden"
+        aria-label="社区侧栏"
+        data-testid="community-right-rail"
+      >
         <HomeRightRail {...rightRailProps} />
       </aside>
 
