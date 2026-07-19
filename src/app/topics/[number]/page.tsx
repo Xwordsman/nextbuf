@@ -13,6 +13,11 @@ import { notFound } from "next/navigation";
 import { MarkdownContent } from "@/components/community/markdown-content";
 import { ReplyActions } from "@/components/community/reply-actions.client";
 import { ReplyEditor } from "@/components/community/reply-editor.client";
+import {
+  CommunityNodeNavigation,
+  CommunityRightRail,
+} from "@/components/community/community-home-shadcn.client";
+import { CommunityThreeColumnShell } from "@/components/community/community-three-column-shell.client";
 import { PostLikeButton } from "@/components/interactions/post-like-button.client";
 import { TopicActions } from "@/components/interactions/topic-actions.client";
 import { TopicViewTracker } from "@/components/interactions/topic-view-tracker.client";
@@ -31,7 +36,12 @@ import { Button } from "@/components/shadcn/ui/button";
 import { Card, CardContent } from "@/components/shadcn/ui/card";
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { POST_BODY_MAX_LENGTH } from "@/modules/community/content-policy";
-import { getPublicTopicTitle, getTopicPageView } from "@/modules/community/queries.server";
+import {
+  getCommunityHomeView,
+  getPublicTopicTitle,
+  getTopicPageView,
+} from "@/modules/community/queries.server";
+import { getCurrentAccount } from "@/modules/identity/session.server";
 
 type TopicPageProps = {
   params: Promise<{ number: string }>;
@@ -59,7 +69,11 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
   if (!number) notFound();
   const session = await getAuth().api.getSession({ headers: await headers() });
   const from = replyFrom((await searchParams).from);
-  const topic = await getTopicPageView(number, session?.user.id, from);
+  const [topic, community, account] = await Promise.all([
+    getTopicPageView(number, session?.user.id, from),
+    getCommunityHomeView({}),
+    getCurrentAccount(),
+  ]);
   if (!topic) notFound();
   const statusLabel: Record<string, string> = {
     draft: "草稿",
@@ -68,9 +82,22 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
     deleted: "已删除",
   };
   const isPublicTopic = ["published", "closed"].includes(topic.status);
+  const rightRailProps = {
+    account,
+    overview: community.view.overview,
+    hotTopics: community.view.hotTopics,
+    onlineMembers: community.view.onlineMembers,
+  };
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
+    <CommunityThreeColumnShell
+      leftRail={
+        <CommunityNodeNavigation nodes={community.view.nodes} activeNodeId={topic.node.slug} />
+      }
+      rightRail={<CommunityRightRail {...rightRailProps} />}
+      mobileRightRail={<CommunityRightRail {...rightRailProps} sticky={false} />}
+      mainLabelledBy="topic-title"
+    >
       <article className="grid gap-4">
         {isPublicTopic ? (
           <TopicViewTracker
@@ -106,7 +133,10 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
                 </BreadcrumbList>
               </Breadcrumb>
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <h1 className="min-w-0 flex-1 text-xl font-semibold tracking-tight break-words sm:text-2xl">
+                <h1
+                  id="topic-title"
+                  className="min-w-0 flex-1 text-xl font-semibold tracking-tight break-words sm:text-2xl"
+                >
                   {topic.title}
                 </h1>
                 <div className="flex flex-wrap gap-1" role="group" aria-label="主题状态">
@@ -347,6 +377,6 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
           </Card>
         ) : null}
       </article>
-    </main>
+    </CommunityThreeColumnShell>
   );
 }

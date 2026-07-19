@@ -65,6 +65,74 @@ test.describe("community shell", () => {
     await captureFullPage(page, testInfo, "desktop-1440");
   });
 
+  test("keeps last-reply metadata beside view counts", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await openHome(page);
+
+    const row = page
+      .getByRole("heading", { name: "E2E 人工智能社区主题", exact: true })
+      .locator("xpath=ancestor::article");
+    const views = row.getByTestId("topic-views");
+    const lastReply = row.getByTestId("topic-last-reply");
+    const [viewsBox, lastReplyBox] = await Promise.all([
+      views.evaluate((element) => element.getBoundingClientRect().toJSON()),
+      lastReply.evaluate((element) => element.getBoundingClientRect().toJSON()),
+    ]);
+
+    expect(lastReplyBox.x).toBeGreaterThan(viewsBox.x);
+    expect(lastReplyBox.x - (viewsBox.x + viewsBox.width)).toBeLessThanOrEqual(24);
+    expect(lastReplyBox.y).toBeCloseTo(viewsBox.y, 0);
+  });
+
+  test("keeps topic details inside the community three-column shell", async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await openHome(page);
+    const topicHref = await page
+      .getByRole("link", { name: "E2E 人工智能社区主题", exact: true })
+      .getAttribute("href");
+    expect(topicHref).toMatch(/^\/topics\/\d+$/);
+
+    await page.goto(topicHref!);
+    const shell = page.getByTestId("community-shell");
+    const left = page.getByTestId("community-left-rail");
+    const main = page.getByTestId("community-main");
+    const right = page.getByTestId("community-right-rail");
+    const [shellBox, leftBox, mainBox, rightBox] = await Promise.all([
+      shell.evaluate((element) => element.getBoundingClientRect().toJSON()),
+      left.evaluate((element) => element.getBoundingClientRect().toJSON()),
+      main.evaluate((element) => element.getBoundingClientRect().toJSON()),
+      right.evaluate((element) => element.getBoundingClientRect().toJSON()),
+    ]);
+
+    expect(shellBox.width).toBeGreaterThanOrEqual(1379);
+    expect(shellBox.width).toBeLessThanOrEqual(1380);
+    expect(leftBox.width).toBeCloseTo(230, 0);
+    expect(rightBox.width).toBeCloseTo(300, 0);
+    expect(mainBox.x - (leftBox.x + leftBox.width)).toBeCloseTo(16, 0);
+    expect(rightBox.x - (mainBox.x + mainBox.width)).toBeCloseTo(16, 0);
+    await expect(page.getByRole("heading", { name: "E2E 人工智能社区主题" })).toBeVisible();
+    await expect(left.getByRole("link", { name: /人工智能/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await expect(right).toBeVisible();
+    await captureFullPage(page, testInfo, "topic-desktop-1440");
+
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await expect(right).toBeHidden();
+    await page.getByRole("button", { name: "我的面板" }).click();
+    const dialog = page.getByRole("dialog", { name: "我的面板" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: "加入社区" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectNoHorizontalOverflow(page);
+  });
+
   test("filters topics through search and node navigation", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await openHome(page);

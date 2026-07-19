@@ -19,21 +19,14 @@ import {
   Sparkles,
   UserPlus,
   UsersRound,
-  X,
   type LucideIcon,
 } from "lucide-react";
+import { CommunityThreeColumnShell } from "@/components/community/community-three-column-shell.client";
 import { useCommunityUi } from "@/components/community/community-ui-provider.client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/shadcn/ui/avatar";
 import { Badge } from "@/components/shadcn/ui/badge";
 import { Button } from "@/components/shadcn/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/shadcn/ui/card";
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/shadcn/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/shadcn/ui/tabs";
 import type {
   CommunityFeedFilter,
@@ -63,7 +56,7 @@ const topicStatusLabels: Record<CommunityTopicStatus, string> = {
   essence: "精华",
 };
 
-type HomeRightRailProps = {
+type CommunityRightRailProps = {
   account: CurrentAccountView | null;
   overview: Array<{ label: string; value: string }>;
   hotTopics: CommunityTopicView[];
@@ -71,7 +64,13 @@ type HomeRightRailProps = {
   sticky?: boolean;
 };
 
-function HomeNodeNavigation({ nodes }: { nodes: CommunityNodeView[] }) {
+export function CommunityNodeNavigation({
+  nodes,
+  activeNodeId = "all",
+}: {
+  nodes: CommunityNodeView[];
+  activeNodeId?: string;
+}) {
   return (
     <Card
       size="sm"
@@ -87,21 +86,22 @@ function HomeNodeNavigation({ nodes }: { nodes: CommunityNodeView[] }) {
           <div className="grid gap-0.5 max-[860px]:flex max-[860px]:w-max max-[860px]:min-w-full max-[860px]:gap-1">
             {nodes.map((node) => {
               const Icon = nodeIcons[node.icon];
-              const active = node.id === "all";
+              const isAll = node.id === "all";
+              const isActive = node.id === activeNodeId;
 
               return (
                 <Button
                   asChild
-                  variant={active ? "secondary" : "ghost"}
+                  variant={isActive ? "secondary" : "ghost"}
                   size="sm"
                   className="h-8 w-full justify-start px-2.5 text-[13px] max-[860px]:w-auto max-[860px]:shrink-0"
                   key={node.id}
                 >
                   <Link
-                    href={active ? "/" : `/nodes/${node.id}`}
-                    aria-current={active ? "page" : undefined}
+                    href={isAll ? "/" : `/nodes/${node.id}`}
+                    aria-current={isActive ? "page" : undefined}
                   >
-                    {active ? (
+                    {isAll ? (
                       <Icon data-icon="inline-start" aria-hidden="true" />
                     ) : (
                       <span
@@ -212,8 +212,9 @@ function HomeTopicList({ topics }: { topics: CommunityTopicView[] }) {
               <span aria-hidden="true">·</span>
               <span>{topic.createdLabel}</span>
               <span aria-hidden="true">·</span>
-              <span>{topic.views.toLocaleString("zh-CN")} 浏览</span>
-              <span className="sm:ml-auto">
+              <span data-testid="topic-views">{topic.views.toLocaleString("zh-CN")} 浏览</span>
+              <span aria-hidden="true">·</span>
+              <span data-testid="topic-last-reply">
                 最后回复 {topic.lastReplyBy} · {topic.lastReplyLabel}
               </span>
             </div>
@@ -233,13 +234,13 @@ function HomeTopicList({ topics }: { topics: CommunityTopicView[] }) {
   );
 }
 
-function HomeRightRail({
+export function CommunityRightRail({
   account,
   overview,
   hotTopics,
   onlineMembers,
   sticky = true,
-}: HomeRightRailProps) {
+}: CommunityRightRailProps) {
   return (
     <div className={cn("grid gap-3", sticky && "sticky top-[calc(var(--header-height)+18px)]")}>
       <Card size="sm">
@@ -389,7 +390,7 @@ export function CommunityHomeShadcn({
   account: CurrentAccountView | null;
   filter: CommunityFeedFilter;
 }) {
-  const { query, railOpen, setRailOpen } = useCommunityUi();
+  const { query } = useCommunityUi();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -425,114 +426,74 @@ export function CommunityHomeShadcn({
   };
 
   return (
-    <main
-      className="mx-auto grid w-full max-w-[var(--layout-max)] grid-cols-[var(--left-column)_minmax(0,1fr)_var(--right-column)] items-start gap-[var(--layout-gap)] p-[18px] max-[1100px]:grid-cols-[var(--left-column)_minmax(0,1fr)] max-[860px]:grid-cols-1 max-[860px]:p-3"
-      data-testid="community-shell"
+    <CommunityThreeColumnShell
+      leftRail={<CommunityNodeNavigation nodes={view.nodes} />}
+      rightRail={<CommunityRightRail {...rightRailProps} />}
+      mobileRightRail={<CommunityRightRail {...rightRailProps} sticky={false} />}
+      mainLabelledBy="topic-feed-title"
     >
-      <aside className="min-w-0" data-testid="community-left-rail">
-        <HomeNodeNavigation nodes={view.nodes} />
-      </aside>
-
-      <section className="min-w-0" aria-labelledby="topic-feed-title" data-testid="community-main">
-        <Tabs
-          value={filter}
-          onValueChange={(value) => router.push(feedHref(value as CommunityFeedFilter))}
-          className="gap-3"
-        >
-          <Card size="sm" className="gap-0 py-0">
-            <CardHeader className="min-h-12 items-center gap-3 rounded-t-xl border-b py-2.5 has-data-[slot=card-action]:grid-cols-[minmax(0,1fr)_auto]">
-              <h1 id="topic-feed-title" className="sr-only">
-                社区话题
-              </h1>
-              <TabsList variant="line" aria-label="话题筛选">
-                <TabsTrigger value="latest">最新</TabsTrigger>
-                <TabsTrigger value="hot">热门</TabsTrigger>
-                <TabsTrigger value="essence">精华</TabsTrigger>
-              </TabsList>
-              <CardAction className="self-center">
-                <span
-                  className="text-xs text-muted-foreground"
-                  data-testid="topic-count"
-                  aria-live="polite"
-                >
-                  共 {query.trim() ? visibleTopics.length : view.topicTotal} 个话题
-                </span>
-              </CardAction>
-            </CardHeader>
-
-            <TabsContent value={filter} className="m-0">
-              <HomeTopicList topics={visibleTopics} />
-            </TabsContent>
-          </Card>
-        </Tabs>
-
-        <nav className="mt-3.5 flex items-center justify-center gap-1.5" aria-label="话题分页">
-          {view.pagination.previousCursor ? (
-            <Button asChild variant="outline" size="icon">
-              <Link
-                href={feedHref(filter, view.pagination.previousCursor, "previous")}
-                aria-label="上一页"
-              >
-                <ChevronLeft />
-              </Link>
-            </Button>
-          ) : (
-            <Button type="button" variant="outline" size="icon" disabled aria-label="上一页">
-              <ChevronLeft />
-            </Button>
-          )}
-          <Button type="button" size="sm" aria-current="page">
-            1
-          </Button>
-          {view.pagination.nextCursor ? (
-            <Button asChild variant="outline" size="icon">
-              <Link href={feedHref(filter, view.pagination.nextCursor, "next")} aria-label="下一页">
-                <ChevronRight />
-              </Link>
-            </Button>
-          ) : (
-            <Button type="button" variant="outline" size="icon" disabled aria-label="下一页">
-              <ChevronRight />
-            </Button>
-          )}
-        </nav>
-      </section>
-
-      <aside
-        className="min-w-0 max-[1100px]:hidden"
-        aria-label="社区侧栏"
-        data-testid="community-right-rail"
+      <Tabs
+        value={filter}
+        onValueChange={(value) => router.push(feedHref(value as CommunityFeedFilter))}
+        className="gap-3"
       >
-        <HomeRightRail {...rightRailProps} />
-      </aside>
+        <Card size="sm" className="gap-0 py-0">
+          <CardHeader className="min-h-12 items-center gap-3 rounded-t-xl border-b py-2.5 has-data-[slot=card-action]:grid-cols-[minmax(0,1fr)_auto]">
+            <h1 id="topic-feed-title" className="sr-only">
+              社区话题
+            </h1>
+            <TabsList variant="line" aria-label="话题筛选">
+              <TabsTrigger value="latest">最新</TabsTrigger>
+              <TabsTrigger value="hot">热门</TabsTrigger>
+              <TabsTrigger value="essence">精华</TabsTrigger>
+            </TabsList>
+            <CardAction className="self-center">
+              <span
+                className="text-xs text-muted-foreground"
+                data-testid="topic-count"
+                aria-live="polite"
+              >
+                共 {query.trim() ? visibleTopics.length : view.topicTotal} 个话题
+              </span>
+            </CardAction>
+          </CardHeader>
 
-      <Sheet open={railOpen} onOpenChange={setRailOpen}>
-        <SheetContent
-          side="right"
-          className="z-[71] w-[min(360px,calc(100vw-24px))] gap-0 overflow-y-auto p-0"
-          overlayClassName="z-[70]"
-          showCloseButton={false}
-          aria-describedby={undefined}
-        >
-          <SheetClose asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="absolute top-3 right-3 z-10"
-              aria-label="关闭"
+          <TabsContent value={filter} className="m-0">
+            <HomeTopicList topics={visibleTopics} />
+          </TabsContent>
+        </Card>
+      </Tabs>
+
+      <nav className="mt-3.5 flex items-center justify-center gap-1.5" aria-label="话题分页">
+        {view.pagination.previousCursor ? (
+          <Button asChild variant="outline" size="icon">
+            <Link
+              href={feedHref(filter, view.pagination.previousCursor, "previous")}
+              aria-label="上一页"
             >
-              <X aria-hidden="true" />
-            </Button>
-          </SheetClose>
-          <SheetHeader className="border-b pr-12">
-            <SheetTitle>我的面板</SheetTitle>
-          </SheetHeader>
-          <div className="p-4">
-            <HomeRightRail {...rightRailProps} sticky={false} />
-          </div>
-        </SheetContent>
-      </Sheet>
-    </main>
+              <ChevronLeft />
+            </Link>
+          </Button>
+        ) : (
+          <Button type="button" variant="outline" size="icon" disabled aria-label="上一页">
+            <ChevronLeft />
+          </Button>
+        )}
+        <Button type="button" size="sm" aria-current="page">
+          1
+        </Button>
+        {view.pagination.nextCursor ? (
+          <Button asChild variant="outline" size="icon">
+            <Link href={feedHref(filter, view.pagination.nextCursor, "next")} aria-label="下一页">
+              <ChevronRight />
+            </Link>
+          </Button>
+        ) : (
+          <Button type="button" variant="outline" size="icon" disabled aria-label="下一页">
+            <ChevronRight />
+          </Button>
+        )}
+      </nav>
+    </CommunityThreeColumnShell>
   );
 }

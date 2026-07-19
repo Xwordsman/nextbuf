@@ -58,6 +58,8 @@ export function SiteHeader({ account, siteName, registrationOpen }: SiteHeaderPr
   const searchParams = useSearchParams();
   const { query, setQuery, mobileSearchOpen, setMobileSearchOpen, setRailOpen } = useCommunityUi();
   const routedQuery = pathname === "/search" ? (searchParams.get("q") ?? "") : "";
+  const hasCommunityPanel =
+    pathname === "/" || pathname.startsWith("/nodes/") || /^\/topics\/\d+$/.test(pathname);
   useEffect(() => {
     if (pathname === "/search") setQuery(routedQuery);
   }, [pathname, routedQuery, setQuery]);
@@ -129,7 +131,7 @@ export function SiteHeader({ account, siteName, registrationOpen }: SiteHeaderPr
             <TooltipContent sideOffset={6}>搜索</TooltipContent>
           </Tooltip>
 
-          {pathname === "/" || pathname.startsWith("/nodes/") ? (
+          {hasCommunityPanel ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
