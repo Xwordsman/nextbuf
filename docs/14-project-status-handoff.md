@@ -149,7 +149,7 @@
 - `nextbufctl` 实现 init/start/stop/status/logs/doctor/backup/restore/upgrade，并保留等价 Compose 命令；升级只接受更高精确版本，迁移成功后不承诺盲目切回旧代码。
 - `/setup` 使用环境中的至少 32 位 `SETUP_TOKEN` 创建首位管理员；账号、密码哈希和邮箱验证仍由 Better Auth 管理，NextBuf 在受锁流程中授予首个站点管理员并写治理审计/安装完成状态。完成前普通邮箱和 OAuth 新用户创建均被拒绝。
 - `nextbuf-backup-v1` 原子归档包含 PostgreSQL custom dump、本地附件、配置、Compose、版本/迁移清单和 SHA-256；恢复可显式覆盖配置或删除空安装卷，Redis 明确不是备份事实。S3 对象仍需 Provider 级版本/快照。
-- GitHub Actions 的日常主分支只追加原生 amd64 镜像冒烟；定时、手动和标签运行通过原生 amd64/arm64 Runner 验证 setup/首次管理员/Web/Worker，amd64 执行空卷恢复。标签中每个架构只构建一次，通过后合并 GHCR manifest，并发布非 Docker x64 归档、SBOM、provenance 和 Release 资产。
+- GitHub Actions 的日常主分支在完整检查后通过原生 amd64/arm64 Runner 验证 setup/首次管理员/Web/Worker 基础镜像冒烟；两个架构都通过后发布不可变 `sha-<提交>` 与滚动 `latest` GHCR manifest。定时、手动和标签运行的 amd64 执行空卷恢复、故障注入和跨版本升级。标签中每个架构只构建一次，通过后只合并精确 SemVer manifest，并发布非 Docker x64 归档、SBOM、provenance 和 Release 资产。
 - 发布资产包含 Nginx、宝塔、systemd 和 PM2 两进程示例；部署、初始化、升级、回滚和恢复边界见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)。
 
 ### `v0.13.0` 公开 Beta 加固
@@ -161,12 +161,13 @@
 - 跨版本：`nextbufctl upgrade` 使用目标镜像幂等 setup；`v0.12.0 -> v0.13.0` 验证升级前备份、首位管理员、附件、迁移和运行时版本。
 - 面板部署修订：默认 Compose 只创建 Web、Worker、PostgreSQL、Redis；Web 启动前幂等执行 setup/preflight，Worker 等待 Web 健康，setup 工具 profile 不再留下导致宝塔误报项目停止的容器。决策见 [ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)。
 - 通用发行版修订（`v0.13.1`）：空数据库追加迁移后没有预置业务节点，管理员可在 `/admin/nodes` 创建稳定 slug 节点；已有站点升级保留节点。未完成首次管理员安装时，访问首页服务端 307 跳转 `/setup`。
-- 面板体验修订（`v0.13.2`）：新增无需 `.env` 的 `compose.baota.yml`，直接使用正式 `latest` 通道并内联首次配置；后续升级只需在面板拉取和重建。镜像内部仍保留精确版本，受控 `compose.yml + nextbufctl` 入口继续承担原子备份、恢复和精确升级。决策见 [ADR-0017](./adr/0017-single-file-panel-compose.md)。
+- 面板体验修订（`v0.13.2`）：新增无需 `.env` 的 `compose.baota.yml`，直接使用 `latest` 通道并内联首次配置；后续升级只需在面板拉取和重建。镜像内部仍保留源码 SemVer，滚动构建通过 commit 与 Digest 精确识别；受控 `compose.yml + nextbufctl` 入口继续承担原子备份、恢复和精确升级。决策见 [ADR-0017](./adr/0017-single-file-panel-compose.md) 与 [ADR-0018](./adr/0018-validated-main-image-channel.md)。
 - 面板命名修订（`v0.13.3`）：宝塔单实例模板的主服务改为 `nextbuf`，并固定显示 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis`；标准 Compose 保留默认命名和扩容能力。
 - UID 与后台修订（`v0.13.4`）：追加式迁移仅在空的历史 UID 序列上将首个 UID 改为 1，绝不重写已有公开 UID；后台将内容与节点管理拆分为各自的列表、新建和编辑工作流。
 - 后台界面修订（`v0.13.5`）：`components/admin/ui` 使用官方 shadcn/ui `radix-nova` 原语，管理后台采用响应式 Sidebar、Card、Table、Dialog、Select、Switch 和 Alert；社区前台既有 `components/ui` 不被替换。该补丁不修改 PostgreSQL、环境变量、Better Auth、授权、部署或镜像拓扑合同；站点设置成功后以 API 返回 revision 更新客户端状态，避免连续保存产生冲突。
 - 首页界面修订（`v0.13.6`）：仅公开首页 `/` 使用官方 shadcn/ui `radix-nova` Card、Tabs、Badge、Button、Avatar 和 Sheet，继续读取真实 PostgreSQL 节点、主题、概览与热议数据，在线成员保持明确空状态；1380px/230px/300px/16px 布局、搜索、筛选和 cursor 分页合同不变。`/nodes/[slug]` 继续使用既有呈现层，该补丁不修改数据库、Better Auth、授权、配置、部署或镜像拓扑合同。
 - 全站公开界面修订（`v0.13.7`）：官方 shadcn/ui `radix-nova` 原语已从历史 `components/admin/ui` 收敛到 `components/shadcn/ui`；节点、主题、账户、认证、安装、搜索、通知、状态与公共页头/页脚均按相同组件体系迁移。保留真实数据、URL、表单字段、Better Auth 旅程、草稿、附件、互动、举报、分页和无障碍入口；不再维护平行的 `components/ui` 原语目录。本补丁只替换展示层，不改变 PostgreSQL、Better Auth、授权、Worker、配置、部署或镜像拓扑合同。
+- 滚动镜像通道修订（`main`）：完整检查及原生 amd64/arm64 基础镜像冒烟通过后自动更新宝塔使用的 `latest`，并保留 `sha-<提交>` 多架构 manifest；正式标签只发布不可变 SemVer、Release 和供应链资产，不再回写 `latest`。决策见 [ADR-0018](./adr/0018-validated-main-image-channel.md)。
 - 交付：公开 Beta 已知限制、2 vCPU/4 GiB/40 GiB 最低档位、性能报告、人工安装/旅程/升级/恢复验收模板见 [Beta 就绪记录](./16-public-beta-readiness.md)。
 
 ## 2. 关键命令
@@ -201,11 +202,11 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - 主分支 `0.13.0` 候选已由 CI #56/#57 完成 amd64 setup、首次管理员、故障注入、空卷恢复和 `v0.12.0` 升级；正式标签 CI #58 已重跑 amd64 并完成原生 arm64、manifest、SBOM/provenance、非 Docker x64 归档和 Release。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
 - `v0.13.1` 主分支 CI #63 已通过完整检查与原生 amd64 镜像冒烟；标签 CI #64 已通过 amd64/arm64 空安装、无预置节点、首次访问 307 跳转 `/setup`、首次管理员、升级保留既有节点、恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release 发布。
-- `v0.13.2` 主分支 CI #65 已通过完整检查与原生 amd64 镜像冒烟；标签 CI #66 已通过 amd64/arm64、宝塔单文件 Compose、空安装、首次管理员、升级/恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release。GHCR `latest` 与 `0.13.2` 均为包含 amd64/arm64 的 OCI image index。
-- `v0.13.3` 主分支 CI #68 已通过完整检查、宝塔固定容器名断言与原生 amd64 镜像冒烟；标签 CI #69 已通过 amd64/arm64、空安装、首次管理员、升级/恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release。GHCR `latest` 与 `0.13.3` 均指向 OCI index `sha256:f1923bfa9418d4ca00a51251ce96a9e5ccef3790ff20b66a104a2a5194313e09`。
-- `v0.13.5` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29639852944) 已通过格式、Lint、类型、60 项单元测试、32 项 PostgreSQL/Redis/Mailpit 集成测试、10 项 Playwright、迁移历史、生产依赖审计、amd64/arm64 空安装与首次管理员、恢复和 `v0.12.0` 升级，并发布非 Docker x64 资产与 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.5)。GHCR `0.13.5` 与 `latest` 均指向包含 linux/amd64、linux/arm64 和证明清单的 OCI index `sha256:0163cdcf3242b1183d1c8efa6e780aff6b70a182df2416d864703eb20dfac3a6`。
-- `v0.13.6` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29643059227) 已通过完整检查、生产依赖审计、非 Docker x64 归档以及 amd64/arm64 空安装、首次管理员、恢复和 `v0.12.0` 升级，并发布 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.6)、SHA-256 与 SBOM 资产。GHCR `0.13.6` 与 `latest` 均指向包含 linux/amd64、linux/arm64 和证明清单的 OCI index `sha256:42daf6fe42ec027db7fb0844f22421b303da3e498d637d61bc0e2c6e1057652e`；两个平台镜像均固化版本 `0.13.6` 与提交 `e9e2eaa165ca3a43e917647cc38c65300cfd1d8d`。
-- `v0.13.7` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29673793861) 已通过完整检查、生产依赖审计、63 项单元测试、32 项 PostgreSQL/Redis/Mailpit 集成测试、12 项 Playwright、非 Docker x64 归档以及 amd64/arm64 空安装、首次管理员、恢复和 `v0.12.0` 升级，并发布 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.7)、SHA-256 与 SBOM 资产。GHCR `0.13.7` 与 `latest` 均指向包含 linux/amd64、linux/arm64 和证明清单的 OCI index `sha256:fad3486005f3f5787eeaefa6df7ee5aa7df42f6aa0f5d98a9b0d5218c330a9eb`；两个平台镜像均固化版本 `0.13.7` 与提交 `51c86568073fa3777e32ca0d74074a5f736287e5`。
+- `v0.13.2` 主分支 CI #65 已通过完整检查与原生 amd64 镜像冒烟；标签 CI #66 已通过 amd64/arm64、宝塔单文件 Compose、空安装、首次管理员、升级/恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release。标签发布时 GHCR `0.13.2` 是包含 amd64/arm64 的 OCI image index。
+- `v0.13.3` 主分支 CI #68 已通过完整检查、宝塔固定容器名断言与原生 amd64 镜像冒烟；标签 CI #69 已通过 amd64/arm64、空安装、首次管理员、升级/恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release。不可变 `0.13.3` OCI index 为 `sha256:f1923bfa9418d4ca00a51251ce96a9e5ccef3790ff20b66a104a2a5194313e09`。
+- `v0.13.5` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29639852944) 已通过格式、Lint、类型、60 项单元测试、32 项 PostgreSQL/Redis/Mailpit 集成测试、10 项 Playwright、迁移历史、生产依赖审计、amd64/arm64 空安装与首次管理员、恢复和 `v0.12.0` 升级，并发布非 Docker x64 资产与 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.5)。不可变 GHCR `0.13.5` OCI index 为 `sha256:0163cdcf3242b1183d1c8efa6e780aff6b70a182df2416d864703eb20dfac3a6`。
+- `v0.13.6` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29643059227) 已通过完整检查、生产依赖审计、非 Docker x64 归档以及 amd64/arm64 空安装、首次管理员、恢复和 `v0.12.0` 升级，并发布 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.6)、SHA-256 与 SBOM 资产。不可变 GHCR `0.13.6` OCI index 为 `sha256:42daf6fe42ec027db7fb0844f22421b303da3e498d637d61bc0e2c6e1057652e`；两个平台镜像均固化版本 `0.13.6` 与提交 `e9e2eaa165ca3a43e917647cc38c65300cfd1d8d`。
+- `v0.13.7` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29673793861) 已通过完整检查、生产依赖审计、63 项单元测试、32 项 PostgreSQL/Redis/Mailpit 集成测试、12 项 Playwright、非 Docker x64 归档以及 amd64/arm64 空安装、首次管理员、恢复和 `v0.12.0` 升级，并发布 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.7)、SHA-256 与 SBOM 资产。不可变 GHCR `0.13.7` OCI index 为 `sha256:fad3486005f3f5787eeaefa6df7ee5aa7df42f6aa0f5d98a9b0d5218c330a9eb`，两个平台镜像均固化版本 `0.13.7` 与提交 `51c86568073fa3777e32ca0d74074a5f736287e5`。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
 ## 4. 当前真实数据边界
@@ -248,7 +249,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 8. 管理角色、信任等级、专业声誉和交易信用分离。
 9. V1 使用 Topic + Post；只做单一点赞，不做用户标签和私信。
 10. AGPL-3.0-only + Section 7(b) 页脚链接；贡献采用 DCO。
-11. 每个完成阶段必须完整测试、更新文档、`git commit -s`、推送 `main`、等待 CI 成功并创建注释标签。
+11. 每个完成阶段必须完整测试、更新文档、`git commit -s`、推送 `main` 并等待 CI 成功；通过门槛的主分支会更新滚动 `latest`。只有有意的正式 SemVer Release 才创建不可变注释标签。
 12. UID/用户名/别名/头像/注销语义遵循 ADR-0009；不得释放历史用户名。
 13. 主题遵循 ADR-0005：统一 Post、position=1 首帖、数字公开编号和不可变修订。
 14. 回复、Markdown 与附件遵循 ADR-0010：楼层不复用，服务端安全渲染，当前/修订/草稿引用共同保护附件，Worker 保留原件并生成派生文件。
@@ -258,7 +259,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 18. 后台、站点设置和管理员二次验证遵循 ADR-0014：在线运营设置与启动密钥分层，高风险操作绑定当前 Better Auth Session，Provider Secret 不进入浏览器。
 19. 生产打包、首次管理员、备份恢复与升级遵循 ADR-0015：一个镜像多入口、setup 门禁、Better Auth 首账号、可验证备份和迁移后保守回滚。
 20. 默认面板 Compose 启动遵循 ADR-0016：单机 Web 协调幂等 setup/preflight，Worker 等待 Web 健康，显式 setup 只作为临时工具运行。
-21. 宝塔单文件入口遵循 ADR-0017：`latest` 只负责拉取通道，镜像内部版本仍精确；高级运维继续使用 `.env + nextbufctl`。
+21. 宝塔单文件入口遵循 ADR-0017 与 ADR-0018：`latest` 只负责通过验证的滚动拉取通道，源码 SemVer、commit 与 Digest 共同标识镜像；高级运维继续使用 `.env + nextbufctl`。
 
 ## 6. 下一步只做 Beta 验收
 

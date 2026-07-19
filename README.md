@@ -54,7 +54,7 @@ cp .env.example .env
 
 ## Docker 部署
 
-宝塔面板用户可以直接粘贴 [`compose.baota.yml`](./compose.baota.yml)，首次替换其中的域名、密码、应用密钥和 SMTP 配置后启动。该模板使用正式 `latest` 通道和 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis` 四个固定容器名；后续升级只需在面板拉取新镜像并重建，不再编辑版本号。
+宝塔面板用户可以直接粘贴 [`compose.baota.yml`](./compose.baota.yml)，首次替换其中的域名、密码、应用密钥和 SMTP 配置后启动。该模板使用通过验证的 `main` `latest` 通道和 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis` 四个固定容器名；后续升级只需在面板拉取新镜像并重建，不再编辑版本号。
 
 需要 `nextbufctl` 精确升级、备份和恢复的用户使用正式 Release：
 

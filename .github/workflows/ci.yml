@@ -172,7 +172,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON((startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[{"architecture":"amd64","platform":"linux/amd64","runner":"ubuntu-latest"},{"architecture":"arm64","platform":"linux/arm64","runner":"ubuntu-24.04-arm"}]' || '[{"architecture":"amd64","platform":"linux/amd64","runner":"ubuntu-latest"}]') }}
+        include:
+          - architecture: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - architecture: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -188,11 +194,18 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve candidate image tag
+        id: image
+        shell: bash
+        run: |
+          candidate="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+          echo "candidate=$candidate" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -205,9 +218,9 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          load: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
-          tags: ${{ startsWith(github.ref, 'refs/tags/v') && format('ghcr.io/xwordsman/nextbuf:{0}-{1}', steps.version.outputs.version, matrix.architecture) || format('nextbuf-smoke:{0}', steps.version.outputs.version) }}
+          load: ${{ github.event_name != 'push' }}
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ github.event_name == 'push' && format('ghcr.io/xwordsman/nextbuf:{0}-{1}', steps.image.outputs.candidate, matrix.architecture) || format('nextbuf-smoke:{0}', steps.version.outputs.version) }}
           build-args: |
             NEXTBUF_VERSION=${{ steps.version.outputs.version }}
             NEXTBUF_COMMIT=${{ github.sha }}
@@ -218,24 +231,24 @@ jobs:
           sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Load published architecture image for smoke tests
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push'
         shell: bash
         run: |
-          image="ghcr.io/xwordsman/nextbuf:${{ steps.version.outputs.version }}-${{ matrix.architecture }}"
+          image="ghcr.io/xwordsman/nextbuf:${{ steps.image.outputs.candidate }}-${{ matrix.architecture }}"
           docker pull "$image"
           docker tag "$image" "nextbuf-smoke:${{ steps.version.outputs.version }}"
 
       - name: Run Compose, first-admin and recovery smoke tests
         env:
           NEXTBUF_SMOKE_VERSION: ${{ steps.version.outputs.version }}
-          RUN_RESTORE: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(steps.version.outputs.version, '0.13.')) && '1' || '0' }}
-          RUN_FAULTS: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(steps.version.outputs.version, '0.13.')) && '1' || '0' }}
+          RUN_RESTORE: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
+          RUN_FAULTS: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
         run: |
           chmod +x nextbufctl tests/smoke/docker-smoke.sh
           timeout --signal=TERM --kill-after=30s 20m tests/smoke/docker-smoke.sh "${{ matrix.architecture }}"
 
       - name: Upgrade v0.12.0 to the release candidate
-        if: matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || startsWith(steps.version.outputs.version, '0.13.'))
+        if: matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           NEXTBUF_SMOKE_VERSION: ${{ steps.version.outputs.version }}
           NEXTBUF_UPGRADE_BASELINE: 0.12.0
@@ -293,8 +306,61 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  publish-image:
-    if: startsWith(github.ref, 'refs/tags/v')
+  publish-main-image:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: image-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Confirm this build is still the main branch head
+        id: main-head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
+            echo "Skipping stale main build $GITHUB_SHA; current head is $head_sha"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        if: steps.main-head.outputs.publish == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: steps.main-head.outputs.publish == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish tested main manifest
+        if: steps.main-head.outputs.publish == 'true'
+        shell: bash
+        run: |
+          image=ghcr.io/xwordsman/nextbuf
+          candidate="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+          immutable_tag="sha-${GITHUB_SHA}"
+          if docker buildx imagetools inspect "$image:$immutable_tag" >/dev/null 2>&1; then
+            echo "Immutable main manifest $image:$immutable_tag already exists; refusing to overwrite it."
+            exit 0
+          fi
+          docker buildx imagetools create \
+            -t "$image:$immutable_tag" \
+            -t "$image:latest" \
+            "$image:$candidate-amd64" \
+            "$image:$candidate-arm64"
+          docker buildx imagetools inspect "$image:$immutable_tag"
+
+  publish-release-image:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: image-smoke
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -312,21 +378,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish tested multi-architecture manifest
+      - name: Publish tested immutable release manifest
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
           image=ghcr.io/xwordsman/nextbuf
+          candidate="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+          if docker buildx imagetools inspect "$image:$version" >/dev/null 2>&1; then
+            echo "::error::Immutable release manifest $image:$version already exists"
+            exit 1
+          fi
           docker buildx imagetools create \
             -t "$image:$version" \
-            -t "$image:latest" \
-            "$image:$version-amd64" \
-            "$image:$version-arm64"
+            "$image:$candidate-amd64" \
+            "$image:$candidate-arm64"
           docker buildx imagetools inspect "$image:$version"
 
   release-assets:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [archive-build, publish-image]
+    needs: [archive-build, publish-release-image]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

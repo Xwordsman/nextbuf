@@ -395,7 +395,7 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 - `compose.yml` 默认运行 Web、Worker、PostgreSQL 18、Redis 8 四个常驻服务；面板兼容修订由单机 Web 在启动前幂等执行 setup/preflight，Worker 等待 Web 健康，默认不保留停止的 setup 容器。PostgreSQL、Redis、附件使用独立命名卷，只有 Web 绑定宿主机 loopback。
 - `nextbufctl` 实现 init/start/stop/status/logs/doctor/backup/restore/upgrade，保留等价 Compose 命令。备份格式 `nextbuf-backup-v1` 包含 PostgreSQL custom dump、本地附件、配置、版本清单与 SHA-256；Redis 明确可重建。
 - `/setup` 使用环境中的一次性 `SETUP_TOKEN`，通过 Better Auth 创建首位邮箱密码账号，在受锁事务内授予唯一首个站点管理员并写治理审计/安装完成状态；普通邮箱/OAuth 注册在安装完成前被拒绝。
-- GitHub Actions 的日常主分支只追加原生 amd64 冒烟；定时、手动和标签运行使用原生 amd64/arm64 Runner 分别执行 setup、首次管理员与 Web/Worker 冒烟，amd64 额外执行删除卷后的空安装恢复。标签中每个架构只构建一次，通过后合并 GHCR manifest，并发布 SBOM/provenance、非 Docker x64 tar.gz、SHA-256 和 GitHub Release 资产。
+- GitHub Actions 的主分支在完整检查后使用原生 amd64/arm64 Runner 分别执行 setup、首次管理员与 Web/Worker 基础冒烟；两个架构都通过后发布滚动 `latest` 及不可变 `sha-<提交>` GHCR manifest。定时、手动和标签运行的 amd64 额外执行删除卷后的空安装恢复、故障注入和跨版本升级。标签中每个架构只构建一次，通过后只合并精确 SemVer manifest，并发布 SBOM/provenance、非 Docker x64 tar.gz、SHA-256 和 GitHub Release 资产，不回写 `latest`。
 - Release 包提供 Nginx、systemd、PM2、宝塔、HTTPS、精确版本升级和恢复说明；持久部署/回退合同记录于 ADR-0015。
 
 ### v0.13.0：公开 Beta 加固
@@ -430,7 +430,7 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 - `nextbufctl upgrade` 改为运行目标镜像幂等 setup；正式候选从公开 `v0.12.0` 镜像验证管理员、附件、备份、迁移和运行时版本。
 - 发布最低 2 vCPU/4 GiB/40 GiB Beta 档位、已知限制、性能样本和安装/核心旅程/升级/恢复人工验收模板。
 - 自动验证已完成；真实域名、SMTP、对象存储和邀请用户验收属于发布运营记录，不以测试夹具伪造。
-- `v0.13.2` 根据宝塔实测增加无需 `.env` 的单文件 Compose：使用正式 `latest` 拉取通道，内联首次配置，仍保留镜像精确版本、四容器、setup/preflight 和健康门禁；受控运维入口继续支持精确升级与备份恢复。
+- `v0.13.2` 根据宝塔实测增加无需 `.env` 的单文件 Compose：使用 `latest` 拉取通道，内联首次配置，仍保留源码 SemVer、commit/Digest 构建身份、四容器、setup/preflight 和健康门禁；受控运维入口继续支持精确升级与备份恢复。
 - `v0.13.3` 根据宝塔容器列表实测，将单实例面板模板的主服务改名为 `nextbuf`，并固定四个容器名；受控 Compose 保留默认命名以支持多实例和横向扩容。
 - `v0.13.4` 将全新安装的 UID 序列起点修正为 1，同时保持历史公开 UID 不变；后台内容与节点管理按列表、新建、编辑和删除工作流拆分。
 - `v0.13.5` 将管理后台切换为官方 shadcn/ui `radix-nova` 组件体系，保留服务端授权和既有业务合同；补充响应式 Sidebar、键盘跳转、控件标签、实时操作反馈和设置修订号同步。
