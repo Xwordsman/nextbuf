@@ -6,6 +6,7 @@ import { MarkdownEditor } from "@/components/community/markdown-editor.client";
 import { Button } from "@/components/shadcn/ui/button";
 import { PostLikeButton } from "@/components/interactions/post-like-button.client";
 import { ReportDialog } from "@/components/moderation/report-dialog.client";
+import { replyFloorLabel, replyFloorNumber } from "@/shared/community/reply-floor";
 
 type ReplyActionsProps = {
   topicNumber: number;
@@ -48,7 +49,8 @@ export function ReplyActions({
   const [message, setMessage] = useState("");
 
   const action = async (kind: "save" | "delete" | "restore") => {
-    if (kind === "delete" && !window.confirm(`确定删除 #${position} 的回复吗？`)) return;
+    if (kind === "delete" && !window.confirm(`确定删除 ${replyFloorLabel(position)} 的回复吗？`))
+      return;
     setPending(kind);
     setMessage("");
     const response = await fetch(`/api/community/topics/${topicNumber}/posts/${position}`, {
@@ -80,7 +82,7 @@ export function ReplyActions({
           onChange={setBody}
           maxLength={bodyMax}
           disabled={Boolean(pending)}
-          ariaLabel={`编辑第 ${position} 楼回复`}
+          ariaLabel={`编辑第 ${replyFloorNumber(position)} 楼回复`}
         />
         <div className="flex flex-wrap justify-end gap-2">
           <Button type="button" variant="ghost" onClick={() => setEditing(false)}>

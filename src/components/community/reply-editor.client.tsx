@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { MarkdownEditor } from "@/components/community/markdown-editor.client";
 import { Button } from "@/components/shadcn/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/shadcn/ui/card";
+import { postReferenceLabel } from "@/shared/community/reply-floor";
 
 type ReplyEditorProps = {
   topicNumber: number;
@@ -170,7 +171,7 @@ export function ReplyEditor({ topicNumber, initialDraft, bodyMax }: ReplyEditorP
           {quote ? (
             <div className="flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
               <span>
-                引用 #{quote.position} · {quote.authorName}
+                引用 {postReferenceLabel(quote.position)} · {quote.authorName}
               </span>
               <Button
                 type="button"

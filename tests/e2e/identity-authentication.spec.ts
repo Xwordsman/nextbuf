@@ -237,8 +237,8 @@ test.describe.serial("identity authentication", () => {
     await page.goto(topicUrl);
 
     await firstReply.getByRole("button", { name: "引用" }).click();
-    await expect(page.getByText(/引用 #2/)).toBeVisible();
-    await page.getByLabel("回复正文").fill("这是引用第二楼后发布的第二条浏览器回复。");
+    await expect(page.getByText(/引用 #1/)).toBeVisible();
+    await page.getByLabel("回复正文").fill("这是引用第一条回复后发布的第二条浏览器回复。");
     const quotedReplyRequestPromise = page.waitForRequest((request) => {
       return (
         request.method() === "POST" &&
@@ -251,11 +251,11 @@ test.describe.serial("identity authentication", () => {
     await expect(page).toHaveURL(/#post-3$/);
     const secondReply = page.locator("#post-3");
     const secondReplyQuote = secondReply.getByTestId("reply-quote");
-    await expect(secondReplyQuote).toContainText("#2");
+    await expect(secondReplyQuote).toContainText("#1");
     await expect(secondReplyQuote).toContainText("认证测试用户");
     await expect(secondReplyQuote).toContainText("这是第一条浏览器回复");
     await secondReply.getByRole("button", { name: "编辑" }).click();
-    await page.getByLabel("编辑第 3 楼回复").fill("这是修改后的第二条浏览器回复。");
+    await page.getByLabel("编辑第 2 楼回复").fill("这是修改后的第二条浏览器回复。");
     await secondReply.getByRole("button", { name: "保存修改" }).click();
     await expect(
       secondReply.getByText("这是修改后的第二条浏览器回复。", { exact: true }),

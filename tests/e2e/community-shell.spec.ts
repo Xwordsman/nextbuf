@@ -61,6 +61,13 @@ test.describe("community shell", () => {
     await expect(page.getByText("UID 10086", { exact: true })).toHaveCount(0);
     await expect(page.getByText("TL3", { exact: true })).toHaveCount(0);
 
+    const footer = page.getByTestId("site-footer");
+    await expect(footer).toBeVisible();
+    await expect(footer.getByRole("navigation", { name: "页脚链接" })).toBeVisible();
+    await expect(footer.getByText("Powered by NextBuf", { exact: true })).toBeVisible();
+    await expect(footer.getByRole("heading")).toHaveCount(0);
+    await expect(footer.getByText("Select Language", { exact: true })).toHaveCount(0);
+
     await expectNoHorizontalOverflow(page);
     await captureFullPage(page, testInfo, "desktop-1440");
   });
@@ -144,8 +151,8 @@ test.describe("community shell", () => {
       replyHeader.getByRole("link", { name: "社区示例用户", exact: true }),
     ).toHaveAttribute("href", "/u/community_fixture");
     const replyTime = replyHeader.locator("time");
-    const replyFloor = replyHeader.getByRole("link", { name: "第 2 楼永久链接" });
-    await expect(replyFloor).toHaveText("#2");
+    const replyFloor = replyHeader.getByRole("link", { name: "第 1 楼永久链接" });
+    await expect(replyFloor).toHaveText("#1");
     const [replyHeaderBox, replyTimeBox, replyFloorBox] = await Promise.all([
       replyHeader.evaluate((element) => element.getBoundingClientRect().toJSON()),
       replyTime.evaluate((element) => element.getBoundingClientRect().toJSON()),

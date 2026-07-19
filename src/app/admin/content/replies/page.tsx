@@ -23,6 +23,7 @@ import {
 import { getAuth } from "@/infrastructure/auth/better-auth";
 import { listAdminReplies } from "@/modules/admin/content.server";
 import { AdminError } from "@/modules/admin/errors";
+import { replyFloorNumber } from "@/shared/community/reply-floor";
 
 export const metadata = { title: "回复管理" };
 
@@ -145,7 +146,7 @@ export default async function AdminRepliesPage({
                       className="font-medium hover:underline"
                       href={`/topics/${reply.topic.number}#post-${reply.position}`}
                     >
-                      #{reply.topic.number} · {reply.position} 楼
+                      #{reply.topic.number} · {replyFloorNumber(reply.position)} 楼
                     </Link>
                     <p className="text-sm text-muted-foreground">
                       {reply.topic.title} · {reply.topic.node.name} · {reply.author.name} (@

@@ -28,6 +28,11 @@ import {
 } from "@/modules/community/queries.server";
 import { getCurrentAccount } from "@/modules/identity/session.server";
 import { getSiteSettings } from "@/modules/settings/settings.server";
+import {
+  postReferenceLabel,
+  replyFloorLabel,
+  replyFloorPermalinkLabel,
+} from "@/shared/community/reply-floor";
 
 type TopicPageProps = {
   params: Promise<{ number: string }>;
@@ -262,9 +267,9 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
                         <Link
                           className="shrink-0 rounded-sm outline-none hover:text-foreground hover:underline hover:underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring/50"
                           href={`#post-${reply.position}`}
-                          aria-label={`第 ${reply.position} 楼永久链接`}
+                          aria-label={replyFloorPermalinkLabel(reply.position)}
                         >
-                          #{reply.position}
+                          {replyFloorLabel(reply.position)}
                         </Link>
                       </div>
                       {reply.quote ? (
@@ -273,7 +278,7 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
                           data-testid="reply-quote"
                         >
                           <Link href={`#post-${reply.quote.position}`}>
-                            #{reply.quote.position} · {reply.quote.authorName}
+                            {postReferenceLabel(reply.quote.position)} · {reply.quote.authorName}
                           </Link>
                           <p>{reply.quote.excerpt}</p>
                         </blockquote>
