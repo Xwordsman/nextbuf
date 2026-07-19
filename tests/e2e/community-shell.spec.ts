@@ -94,11 +94,14 @@ test.describe("community shell", () => {
       .getAttribute("href");
     expect(topicHref).toMatch(/^\/topics\/\d+$/);
 
-    await page.goto(topicHref!);
+    const topicResponse = await page.goto(topicHref!);
+    expect(topicResponse?.ok(), `Expected ${topicHref} to load successfully`).toBe(true);
     const shell = page.getByTestId("community-shell");
     const left = page.getByTestId("community-left-rail");
     const main = page.getByTestId("community-main");
     const right = page.getByTestId("community-right-rail");
+    await expect(shell).toBeVisible();
+    await expect(page.getByRole("heading", { name: "E2E 人工智能社区主题" })).toBeVisible();
     const [shellBox, leftBox, mainBox, rightBox] = await Promise.all([
       shell.evaluate((element) => element.getBoundingClientRect().toJSON()),
       left.evaluate((element) => element.getBoundingClientRect().toJSON()),
@@ -112,7 +115,6 @@ test.describe("community shell", () => {
     expect(rightBox.width).toBeCloseTo(300, 0);
     expect(mainBox.x - (leftBox.x + leftBox.width)).toBeCloseTo(16, 0);
     expect(rightBox.x - (mainBox.x + mainBox.width)).toBeCloseTo(16, 0);
-    await expect(page.getByRole("heading", { name: "E2E 人工智能社区主题" })).toBeVisible();
     await expect(left.getByRole("link", { name: /人工智能/ })).toHaveAttribute(
       "aria-current",
       "page",
