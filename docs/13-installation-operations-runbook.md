@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 面向部署者的目标操作流程，包括 Docker Compose、宝塔、非 Docker、升级、备份、恢复和故障排查。
 
-> 当前实现状态：`v0.13.6` 公开 Beta 已交付生产镜像、四容器 Compose、无需 `.env` 且固定容器名的宝塔单文件入口、通用空节点安装、首位用户 UID 1、官方 shadcn/ui 管理后台与首页、`nextbufctl`、首次管理员、备份恢复、跨 Beta 升级和非 Docker 资产。容器/恢复验收由 GitHub Actions 在 Linux amd64/arm64 上执行；Mailpit 只出现在测试覆盖中，不进入生产拓扑。长期决策见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)、[ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md) 和 [ADR-0017](./adr/0017-single-file-panel-compose.md)。
+> 当前实现状态：`v0.13.7` 公开 Beta 已交付生产镜像、四容器 Compose、无需 `.env` 且固定容器名的宝塔单文件入口、通用空节点安装、首位用户 UID 1、官方 shadcn/ui 管理后台与全站公开前台、`nextbufctl`、首次管理员、备份恢复、跨 Beta 升级和非 Docker 资产。容器/恢复验收由 GitHub Actions 在 Linux amd64/arm64 上执行；Mailpit 只出现在测试覆盖中，不进入生产拓扑。长期决策见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)、[ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md) 和 [ADR-0017](./adr/0017-single-file-panel-compose.md)。
 
 ## 1. 发布包合同
 
@@ -499,7 +499,7 @@ Worker 日志中的 `Connection timeout` 表示 TCP/TLS 连接尚未建立，不
 
 ## 15. 文档实现责任
 
-`v0.13.6` 交付物包括：
+`v0.13.7` 交付物包括：
 
 - `compose.yml`。
 - `.env.example`。
