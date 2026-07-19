@@ -1,14 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
-import {
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  FilePenLine,
-  MessageCircle,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, FilePenLine } from "lucide-react";
 import { notFound } from "next/navigation";
 import { MarkdownContent } from "@/components/community/markdown-content";
 import { ReplyActions } from "@/components/community/reply-actions.client";
@@ -24,14 +17,6 @@ import { TopicViewTracker } from "@/components/interactions/topic-view-tracker.c
 import { ReportDialog } from "@/components/moderation/report-dialog.client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/shadcn/ui/avatar";
 import { Badge } from "@/components/shadcn/ui/badge";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/shadcn/ui/breadcrumb";
 import { Button } from "@/components/shadcn/ui/button";
 import { Card, CardContent } from "@/components/shadcn/ui/card";
 import { getAuth } from "@/infrastructure/auth/better-auth";
@@ -42,6 +27,8 @@ import {
   getTopicPageView,
 } from "@/modules/community/queries.server";
 import { getCurrentAccount } from "@/modules/identity/session.server";
+import { getSiteSettings } from "@/modules/settings/settings.server";
+import { runtimeEnv } from "@/shared/config/runtime-env";
 
 type TopicPageProps = {
   params: Promise<{ number: string }>;
@@ -69,10 +56,11 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
   if (!number) notFound();
   const session = await getAuth().api.getSession({ headers: await headers() });
   const from = replyFrom((await searchParams).from);
-  const [topic, community, account] = await Promise.all([
+  const [topic, community, account, siteSettings] = await Promise.all([
     getTopicPageView(number, session?.user.id, from),
     getCommunityHomeView({}),
     getCurrentAccount(),
+    getSiteSettings(),
   ]);
   if (!topic) notFound();
   const statusLabel: Record<string, string> = {
@@ -88,6 +76,8 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
     hotTopics: community.view.hotTopics,
     onlineMembers: community.view.onlineMembers,
   };
+  const siteHost = new URL(runtimeEnv.APP_URL).host;
+  const topicPostedAt = topic.publishedAt ?? topic.createdAt;
 
   return (
     <CommunityThreeColumnShell
@@ -106,32 +96,32 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
             markRead={topic.canInteract}
           />
         ) : null}
-        <Card size="sm" className="gap-0 py-0">
-          <CardContent className="grid gap-3 py-4">
-            <header className="grid gap-3">
-              <Breadcrumb>
-                <BreadcrumbList className="text-xs">
-                  <BreadcrumbItem>
-                    <BreadcrumbLink asChild>
-                      <Link
-                        className="inline-flex items-center gap-1.5"
-                        href={`/nodes/${topic.node.slug}`}
-                      >
-                        <span
-                          className="size-2 rounded-full"
-                          style={{ backgroundColor: topic.node.color }}
-                          aria-hidden="true"
-                        />
-                        {topic.node.name}
-                      </Link>
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>主题 #{topic.number}</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
+        <Card size="sm" className="gap-0 py-0" id="post-1" data-testid="topic-primary-post">
+          <CardContent className="grid gap-5 py-4 sm:py-5">
+            <header className="grid gap-3.5">
+              <div
+                className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
+                data-testid="topic-context"
+              >
+                <Link
+                  href="/"
+                  className="break-words font-medium text-foreground outline-none hover:underline hover:underline-offset-4 focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+                >
+                  {siteSettings.siteName}
+                </Link>
+                <span className="min-w-0 break-all">{siteHost}</span>
+                <span aria-hidden="true">/</span>
+                <Badge asChild variant="secondary" className="h-5 rounded-md px-1.5 text-[10px]">
+                  <Link href={`/nodes/${topic.node.slug}`}>
+                    <span
+                      className="size-1.5 rounded-full"
+                      style={{ backgroundColor: topic.node.color }}
+                      aria-hidden="true"
+                    />
+                    {topic.node.name}
+                  </Link>
+                </Badge>
+              </div>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <h1
                   id="topic-title"
@@ -157,20 +147,41 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
                   ) : null}
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1">
-                  <CalendarDays /> {topic.publishedAt?.toLocaleString("zh-CN") ?? "尚未发布"}
-                </span>
+              <div
+                className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
+                data-testid="topic-primary-meta"
+              >
+                <Link
+                  className="font-medium text-foreground/80 outline-none hover:text-foreground hover:underline hover:underline-offset-4 focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+                  href={`/u/${topic.author.username}`}
+                >
+                  {topic.author.name}
+                </Link>
+                <span aria-hidden="true">·</span>
+                <time dateTime={topicPostedAt.toISOString()}>
+                  {topicPostedAt.toLocaleString("zh-CN")}
+                </time>
+                <span aria-hidden="true">·</span>
                 <span className="inline-flex items-center gap-1">
                   <Eye /> {topic.viewCount} 浏览
                 </span>
-                <span className="inline-flex items-center gap-1">
-                  <MessageCircle /> {topic.replyCount} 回复
-                </span>
-                {topic.editedAt ? <span>首帖已编辑 {topic.revisionCount - 1} 次</span> : null}
               </div>
             </header>
+            {topic.bodyHtml ? (
+              <MarkdownContent html={topic.bodyHtml} />
+            ) : (
+              <p className="text-sm text-muted-foreground">该草稿尚未填写正文。</p>
+            )}
             <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+              {isPublicTopic ? (
+                <PostLikeButton
+                  postId={topic.postId}
+                  initialLiked={topic.liked}
+                  initialCount={topic.likeCount}
+                  canInteract={topic.canInteract}
+                  signInHref={`/auth/sign-in?next=/topics/${topic.number}`}
+                />
+              ) : null}
               {isPublicTopic ? (
                 <TopicActions
                   topicNumber={topic.number}
@@ -198,49 +209,6 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
           </CardContent>
         </Card>
 
-        <Card size="sm" className="py-0" id="post-1">
-          <CardContent className="grid gap-4 py-4 sm:grid-cols-[132px_minmax(0,1fr)]">
-            <aside className="flex items-center gap-2 border-b pb-4 sm:flex-col sm:items-start sm:border-r sm:border-b-0 sm:pr-4 sm:pb-0">
-              <Avatar className="size-12">
-                <AvatarImage src={topic.author.image ?? undefined} alt={topic.author.name} />
-                <AvatarFallback>{topic.author.initials}</AvatarFallback>
-              </Avatar>
-              <div className="grid gap-0.5">
-                <Link
-                  className="text-sm font-medium hover:underline"
-                  href={`/u/${topic.author.username}`}
-                >
-                  {topic.author.name}
-                </Link>
-                <span className="text-xs text-muted-foreground">@{topic.author.username}</span>
-                <small className="text-xs text-muted-foreground">UID {topic.author.uid}</small>
-              </div>
-            </aside>
-            <div className="min-w-0">
-              <div className="mb-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                <span>#1</span>
-                <time>{topic.createdAt.toLocaleString("zh-CN")}</time>
-              </div>
-              {topic.bodyHtml ? (
-                <MarkdownContent html={topic.bodyHtml} />
-              ) : (
-                <p className="text-sm text-muted-foreground">该草稿尚未填写正文。</p>
-              )}
-              {isPublicTopic ? (
-                <div className="mt-5 flex items-center gap-2 border-t pt-3">
-                  <PostLikeButton
-                    postId={topic.postId}
-                    initialLiked={topic.liked}
-                    initialCount={topic.likeCount}
-                    canInteract={topic.canInteract}
-                    signInHref={`/auth/sign-in?next=/topics/${topic.number}`}
-                  />
-                </div>
-              ) : null}
-            </div>
-          </CardContent>
-        </Card>
-
         <section className="grid gap-3" aria-labelledby="topic-replies-title">
           <div className="flex items-center justify-between">
             <h2 id="topic-replies-title" className="text-sm font-medium">
@@ -251,35 +219,53 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
           {topic.replies.length > 0 ? (
             <div className="grid gap-3">
               {topic.replies.map((reply) => (
-                <Card size="sm" className="py-0" id={`post-${reply.position}`} key={reply.id}>
-                  <CardContent className="grid gap-4 py-4 sm:grid-cols-[132px_minmax(0,1fr)]">
-                    <aside className="flex items-center gap-2 border-b pb-4 sm:flex-col sm:items-start sm:border-r sm:border-b-0 sm:pr-4 sm:pb-0">
-                      <Avatar className="size-10">
-                        <AvatarImage
-                          src={reply.author.image ?? undefined}
-                          alt={reply.author.name}
-                        />
-                        <AvatarFallback>{reply.author.initials}</AvatarFallback>
-                      </Avatar>
-                      <div className="grid gap-0.5">
-                        <Link
-                          className="text-sm font-medium hover:underline"
-                          href={`/u/${reply.author.username}`}
-                        >
-                          {reply.author.name}
-                        </Link>
-                        <span className="text-xs text-muted-foreground">
-                          @{reply.author.username}
-                        </span>
-                        <small className="text-xs text-muted-foreground">
-                          UID {reply.author.uid}
-                        </small>
-                      </div>
+                <Card
+                  size="sm"
+                  className="py-0"
+                  id={`post-${reply.position}`}
+                  key={reply.id}
+                  data-testid={`topic-reply-${reply.position}`}
+                >
+                  <CardContent className="grid grid-cols-[44px_minmax(0,1fr)] gap-3 py-4 sm:grid-cols-[52px_minmax(0,1fr)] sm:gap-4">
+                    <aside className="pt-0.5">
+                      <Link
+                        className="block w-fit rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                        href={`/u/${reply.author.username}`}
+                        aria-label={`查看 ${reply.author.name} 的个人主页`}
+                      >
+                        <Avatar className="size-10 sm:size-11">
+                          <AvatarImage
+                            src={reply.author.image ?? undefined}
+                            alt={reply.author.name}
+                          />
+                          <AvatarFallback>{reply.author.initials}</AvatarFallback>
+                        </Avatar>
+                      </Link>
                     </aside>
                     <div className="min-w-0">
-                      <div className="mb-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                        <Link href={`#post-${reply.position}`}>#{reply.position}</Link>
-                        <time>{reply.createdAt.toLocaleString("zh-CN")}</time>
+                      <div
+                        className="mb-4 flex items-start justify-between gap-3 text-xs text-muted-foreground"
+                        data-testid="reply-header"
+                      >
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                          <Link
+                            className="min-w-0 break-words font-medium text-foreground outline-none hover:underline hover:underline-offset-4 focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
+                            href={`/u/${reply.author.username}`}
+                          >
+                            {reply.author.name}
+                          </Link>
+                          <span aria-hidden="true">·</span>
+                          <time dateTime={reply.createdAt.toISOString()}>
+                            {reply.createdAt.toLocaleString("zh-CN")}
+                          </time>
+                        </div>
+                        <Link
+                          className="shrink-0 rounded-sm outline-none hover:text-foreground hover:underline hover:underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring/50"
+                          href={`#post-${reply.position}`}
+                          aria-label={`第 ${reply.position} 楼永久链接`}
+                        >
+                          #{reply.position}
+                        </Link>
                       </div>
                       {reply.quote ? (
                         <blockquote

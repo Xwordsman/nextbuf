@@ -120,6 +120,36 @@ test.describe("community shell", () => {
       "page",
     );
     await expect(right).toBeVisible();
+    const primaryPost = page.getByTestId("topic-primary-post");
+    await expect(primaryPost).toContainText("E2E 人工智能社区主题");
+    await expect(primaryPost.getByTestId("topic-context")).toContainText("NextBuf");
+    await expect(primaryPost.getByTestId("topic-primary-meta")).toContainText("浏览");
+    await expect(
+      primaryPost.getByText("这是用于验证真实社区首页、节点筛选和主题详情页的人工智能主题。"),
+    ).toBeVisible();
+
+    const reply = page.getByTestId("topic-reply-2");
+    await expect(reply).toBeVisible();
+    await expect(reply.getByRole("link", { name: "查看 社区示例用户 的个人主页" })).toHaveAttribute(
+      "href",
+      "/u/community_fixture",
+    );
+    const replyHeader = reply.getByTestId("reply-header");
+    await expect(
+      replyHeader.getByRole("link", { name: "社区示例用户", exact: true }),
+    ).toHaveAttribute("href", "/u/community_fixture");
+    const replyTime = replyHeader.locator("time");
+    const replyFloor = replyHeader.getByRole("link", { name: "第 2 楼永久链接" });
+    await expect(replyFloor).toHaveText("#2");
+    const [replyHeaderBox, replyTimeBox, replyFloorBox] = await Promise.all([
+      replyHeader.evaluate((element) => element.getBoundingClientRect().toJSON()),
+      replyTime.evaluate((element) => element.getBoundingClientRect().toJSON()),
+      replyFloor.evaluate((element) => element.getBoundingClientRect().toJSON()),
+    ]);
+    expect(replyFloorBox.x).toBeGreaterThan(replyTimeBox.x);
+    expect(
+      Math.abs(replyFloorBox.x + replyFloorBox.width - (replyHeaderBox.x + replyHeaderBox.width)),
+    ).toBeLessThanOrEqual(1);
     await captureFullPage(page, testInfo, "topic-desktop-1440");
 
     await page.setViewportSize({ width: 1024, height: 900 });

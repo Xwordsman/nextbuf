@@ -111,6 +111,34 @@ export default async function globalSetup() {
         source: "create",
       },
     });
+    if (fixture.slug === "ai") {
+      const reply = await prisma.communityPost.create({
+        data: {
+          topicId: topic.id,
+          authorId: user.id,
+          position: 2,
+          status: "published",
+          bodySource: "这是用于验证主题详情回复布局的 E2E 回复内容。",
+        },
+      });
+      await prisma.communityPostRevision.create({
+        data: {
+          postId: reply.id,
+          editorId: user.id,
+          version: 1,
+          bodySource: reply.bodySource,
+          source: "create",
+        },
+      });
+      await prisma.communityTopic.update({
+        where: { id: topic.id },
+        data: {
+          replyCount: 1,
+          nextPostPosition: 3,
+          lastActivityAt: reply.createdAt,
+        },
+      });
+    }
   }
   await database.disconnectPrismaClient();
 }
