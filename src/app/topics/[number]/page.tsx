@@ -28,7 +28,6 @@ import {
 } from "@/modules/community/queries.server";
 import { getCurrentAccount } from "@/modules/identity/session.server";
 import { getSiteSettings } from "@/modules/settings/settings.server";
-import { runtimeEnv } from "@/shared/config/runtime-env";
 
 type TopicPageProps = {
   params: Promise<{ number: string }>;
@@ -76,7 +75,6 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
     hotTopics: community.view.hotTopics,
     onlineMembers: community.view.onlineMembers,
   };
-  const siteHost = new URL(runtimeEnv.APP_URL).host;
   const topicPostedAt = topic.publishedAt ?? topic.createdAt;
 
   return (
@@ -105,11 +103,11 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
               >
                 <Link
                   href="/"
+                  data-testid="topic-site-link"
                   className="break-words font-medium text-foreground outline-none hover:underline hover:underline-offset-4 focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   {siteSettings.siteName}
                 </Link>
-                <span className="min-w-0 break-all">{siteHost}</span>
                 <span aria-hidden="true">/</span>
                 <Badge asChild variant="secondary" className="h-5 rounded-md px-1.5 text-[10px]">
                   <Link href={`/nodes/${topic.node.slug}`}>
@@ -167,11 +165,13 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
                 </span>
               </div>
             </header>
-            {topic.bodyHtml ? (
-              <MarkdownContent html={topic.bodyHtml} />
-            ) : (
-              <p className="text-sm text-muted-foreground">该草稿尚未填写正文。</p>
-            )}
+            <div className="border-t pt-5" data-testid="topic-primary-body">
+              {topic.bodyHtml ? (
+                <MarkdownContent html={topic.bodyHtml} />
+              ) : (
+                <p className="text-sm text-muted-foreground">该草稿尚未填写正文。</p>
+              )}
+            </div>
             <div className="flex flex-wrap items-center gap-2 border-t pt-3">
               {isPublicTopic ? (
                 <PostLikeButton

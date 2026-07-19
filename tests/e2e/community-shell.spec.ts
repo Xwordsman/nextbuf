@@ -123,7 +123,12 @@ test.describe("community shell", () => {
     const primaryPost = page.getByTestId("topic-primary-post");
     await expect(primaryPost).toContainText("E2E 人工智能社区主题");
     await expect(primaryPost.getByTestId("topic-context")).toContainText("NextBuf");
+    await expect(primaryPost.getByTestId("topic-site-link")).toHaveAttribute("href", "/");
     await expect(primaryPost.getByTestId("topic-primary-meta")).toContainText("浏览");
+    await expect(primaryPost.getByTestId("topic-primary-body")).toHaveCSS(
+      "border-top-width",
+      "1px",
+    );
     await expect(
       primaryPost.getByText("这是用于验证真实社区首页、节点筛选和主题详情页的人工智能主题。"),
     ).toBeVisible();
