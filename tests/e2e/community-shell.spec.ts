@@ -64,6 +64,8 @@ test.describe("community shell", () => {
     const footer = page.getByTestId("site-footer");
     await expect(footer).toBeVisible();
     await expect(footer.getByRole("navigation", { name: "页脚链接" })).toBeVisible();
+    await expect(footer.getByTestId("footer-tagline")).toHaveText("独立开发者与站长的社区");
+    await expect(footer.getByTestId("footer-runtime")).toContainText("VERSION:");
     await expect(footer.getByText("Powered by NextBuf", { exact: true })).toBeVisible();
     await expect(footer.getByRole("heading")).toHaveCount(0);
     await expect(footer.getByText("Select Language", { exact: true })).toHaveCount(0);

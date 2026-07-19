@@ -11,16 +11,16 @@ const footerLinks = [
 
 export function SiteFooter({ siteName = "NextBuf" }: { siteName?: string }) {
   return (
-    <footer className="mt-[18px] border-t bg-background" data-testid="site-footer">
-      <div className="mx-auto w-full max-w-[1380px] px-[18px] py-5 max-sm:px-3 max-sm:py-4">
+    <footer className="mt-[18px] border-t border-border/80 bg-card" data-testid="site-footer">
+      <div className="mx-auto w-full max-w-[1380px] px-[18px] pt-5 pb-6 max-sm:px-3 max-sm:pt-4 max-sm:pb-5">
         <nav
           aria-label="页脚链接"
-          className="flex flex-wrap items-center gap-y-1 text-xs leading-5 text-muted-foreground"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] leading-5 text-muted-foreground"
         >
           {footerLinks.map((link, index) => (
-            <span className="inline-flex items-center gap-x-2.5" key={link.label}>
+            <span className="inline-flex items-center gap-x-3" key={link.label}>
               <a
-                className="rounded-sm outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded-sm font-medium outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
                 href={link.href}
               >
                 {link.label}
@@ -30,23 +30,38 @@ export function SiteFooter({ siteName = "NextBuf" }: { siteName?: string }) {
           ))}
         </nav>
 
-        <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
-          面向 AI、建站、主机与域名话题的开源社区。
+        <p
+          className="mt-5 text-[13px] leading-5 text-muted-foreground"
+          data-testid="footer-tagline"
+        >
+          独立开发者与站长的社区
+        </p>
+        <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+          Build quietly, share openly.
         </p>
 
-        <div className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs leading-5 text-muted-foreground">
-          <span>© 2026 {siteName}</span>
-          <span aria-hidden="true">·</span>
-          <LegalAttribution />
-          <span aria-hidden="true">·</span>
+        <div
+          className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-muted-foreground"
+          data-testid="footer-runtime"
+        >
+          <span className="inline-flex items-center gap-x-2">
+            <span>VERSION: {PROJECT.version}</span>
+            <span aria-hidden="true">·</span>
+          </span>
+          <span className="inline-flex items-center gap-x-2">
+            <span>© 2026 {siteName}</span>
+            <span aria-hidden="true">·</span>
+          </span>
+          <span className="inline-flex items-center gap-x-2">
+            <LegalAttribution />
+            <span aria-hidden="true">·</span>
+          </span>
           <a
-            className="rounded-sm outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            className="rounded-sm outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             href={`${PROJECT.repositoryUrl}/blob/main/LICENSE`}
           >
             AGPL-3.0-only
           </a>
-          <span aria-hidden="true">·</span>
-          <span>v{PROJECT.version}</span>
         </div>
       </div>
     </footer>
