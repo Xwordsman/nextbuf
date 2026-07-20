@@ -9,6 +9,7 @@ import {
   requireConfirmation,
   requireElevatedSiteAdmin,
 } from "@/modules/admin/reauthentication.server";
+import { managedReplyWhere, managedTopicWhere } from "@/modules/community/topic-visibility";
 import { governanceActorRoles, writeGovernanceAudit } from "@/modules/moderation/governance.server";
 
 export async function listAdminUsers(
@@ -49,7 +50,13 @@ export async function listAdminUsers(
       createdAt: true,
       trustState: { select: { currentLevel: true } },
       communityRoles: { select: { role: true, scopeKey: true } },
-      _count: { select: { communityTopics: true, communityPosts: true, sessions: true } },
+      _count: {
+        select: {
+          communityTopics: { where: managedTopicWhere() },
+          communityPosts: { where: managedReplyWhere() },
+          sessions: true,
+        },
+      },
     },
   });
   const hasMore = users.length > pageSize;
@@ -102,8 +109,8 @@ export async function getAdminUserDetail(actorId: string, uid: number) {
       },
       _count: {
         select: {
-          communityTopics: true,
-          communityPosts: true,
+          communityTopics: { where: managedTopicWhere() },
+          communityPosts: { where: managedReplyWhere() },
           interactionPostLikes: true,
           moderationReports: true,
         },

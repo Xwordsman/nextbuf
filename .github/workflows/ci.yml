@@ -163,7 +163,9 @@ jobs:
     needs: check
     name: image-smoke (${{ matrix.architecture }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 45
+    env:
+      NEXTBUF_UPGRADE_BASELINE: 0.13.7
     permissions:
       contents: read
       packages: write
@@ -182,6 +184,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Detect migrations since the current public release
+        id: migration-change
+        shell: bash
+        run: |
+          baseline_ref="refs/tags/v${NEXTBUF_UPGRADE_BASELINE}"
+          if ! git rev-parse --verify --quiet "$baseline_ref" >/dev/null; then
+            git fetch --no-tags --depth=1 origin "$baseline_ref:$baseline_ref"
+          fi
+
+          set +e
+          git diff --quiet "$baseline_ref" "$GITHUB_SHA" -- prisma/migrations/
+          diff_status=$?
+          set -e
+          case "$diff_status" in
+            0) changed=false ;;
+            1) changed=true ;;
+            *) exit "$diff_status" ;;
+          esac
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
 
       - name: Resolve application version
         id: version
@@ -247,11 +271,10 @@ jobs:
           chmod +x nextbufctl tests/smoke/docker-smoke.sh
           timeout --signal=TERM --kill-after=30s 20m tests/smoke/docker-smoke.sh "${{ matrix.architecture }}"
 
-      - name: Upgrade v0.12.0 to the release candidate
-        if: matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      - name: Upgrade the current public release to the candidate
+        if: matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.migration-change.outputs.changed == 'true'))
         env:
           NEXTBUF_SMOKE_VERSION: ${{ steps.version.outputs.version }}
-          NEXTBUF_UPGRADE_BASELINE: 0.12.0
         run: |
           chmod +x nextbufctl tests/smoke/docker-upgrade-smoke.sh
           timeout --signal=TERM --kill-after=30s 12m tests/smoke/docker-upgrade-smoke.sh "${{ matrix.architecture }}"
@@ -412,6 +435,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
           files: |
             release/*.tar.gz
             release/*.sha256

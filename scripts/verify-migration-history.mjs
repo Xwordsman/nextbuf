@@ -5,6 +5,7 @@ import path from "node:path";
 const root = process.cwd();
 const migrationsRoot = path.join(root, "prisma", "migrations");
 const baselinesRoot = path.join(root, "prisma", "migration-baselines");
+const packageMetadata = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 
 function digest(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -19,9 +20,19 @@ const baselineFiles = (await readdir(baselinesRoot))
   .sort();
 
 if (baselineFiles.length === 0) throw new Error("No migration baseline manifests were found");
+const currentBaselineFile = `v${packageMetadata.version}.json`;
+if (!baselineFiles.includes(currentBaselineFile)) {
+  throw new Error(
+    `${currentBaselineFile} is required for package version ${packageMetadata.version}`,
+  );
+}
 
 for (const file of baselineFiles) {
   const baseline = JSON.parse(await readFile(path.join(baselinesRoot, file), "utf8"));
+  const filenameVersion = file.slice(1, -".json".length);
+  if (baseline.version !== filenameVersion) {
+    throw new Error(`${file} declares version ${String(baseline.version)}`);
+  }
   if (!Array.isArray(baseline.migrations) || baseline.migrations.length === 0) {
     throw new Error(`${file} has no migration entries`);
   }
@@ -29,6 +40,9 @@ for (const file of baselineFiles) {
   const actualPrefix = current.slice(0, expectedPrefix.length);
   if (JSON.stringify(actualPrefix) !== JSON.stringify(expectedPrefix)) {
     throw new Error(`${file} migration order no longer matches the repository history`);
+  }
+  if (file === currentBaselineFile && expectedPrefix.length !== current.length) {
+    throw new Error(`${file} must cover all ${current.length} current migrations`);
   }
 
   for (const migration of baseline.migrations) {

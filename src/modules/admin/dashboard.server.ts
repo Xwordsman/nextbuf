@@ -4,6 +4,11 @@ import { getPrismaClient } from "@/infrastructure/database/client";
 import { getSystemQueueHealth } from "@/infrastructure/queue/health";
 import { buildOperationalAlerts } from "@/infrastructure/operations/capacity-policy";
 import { requireAdministrator } from "@/modules/admin/authorization.server";
+import {
+  managedPostWhere,
+  managedReplyWhere,
+  managedTopicWhere,
+} from "@/modules/community/topic-visibility";
 import { getErrorMessage } from "@/shared/errors/error-message";
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
 
@@ -14,6 +19,7 @@ export async function getAdminDashboard(actorId: string) {
   const dayAgo = new Date(now.getTime() - 86_400_000);
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86_400_000);
   const staleWorkerAt = new Date(now.getTime() - getAuthEnvironment().WORKER_STALE_AFTER_MS);
+  const visibleTopicWhere = managedTopicWhere();
 
   const [
     totalUsers,
@@ -41,16 +47,22 @@ export async function getAdminDashboard(actorId: string) {
     prisma.user.count({
       where: {
         OR: [
-          { communityPosts: { some: { createdAt: { gte: thirtyDaysAgo } } } },
+          {
+            communityPosts: {
+              some: { ...managedPostWhere(), createdAt: { gte: thirtyDaysAgo } },
+            },
+          },
           { interactionReadStates: { some: { lastReadAt: { gte: thirtyDaysAgo } } } },
           { interactionPostLikes: { some: { createdAt: { gte: thirtyDaysAgo } } } },
         ],
       },
     }),
-    prisma.communityTopic.count(),
-    prisma.communityPost.count({ where: { position: { gt: 1 } } }),
-    prisma.communityTopic.count({ where: { createdAt: { gte: dayAgo } } }),
-    prisma.communityPost.count({ where: { position: { gt: 1 }, createdAt: { gte: dayAgo } } }),
+    prisma.communityTopic.count({ where: visibleTopicWhere }),
+    prisma.communityPost.count({ where: managedReplyWhere() }),
+    prisma.communityTopic.count({
+      where: { AND: [visibleTopicWhere, { createdAt: { gte: dayAgo } }] },
+    }),
+    prisma.communityPost.count({ where: { ...managedReplyWhere(), createdAt: { gte: dayAgo } } }),
     prisma.moderationReport.count({ where: { status: "open" } }),
     prisma.moderationCase.count({ where: { status: { in: ["open", "in_review"] } } }),
     prisma.outboxEvent.count({ where: { publishedAt: null } }),

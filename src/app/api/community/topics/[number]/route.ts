@@ -7,16 +7,19 @@ import {
   updateTopicContent,
 } from "@/modules/community/topics.server";
 import { getRequestSession } from "@/modules/identity/current-session.server";
+import { MAX_EDITOR_SESSION_REVISION } from "@/shared/community/editor-session";
 import { hasSameOrigin } from "@/shared/http/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const contentSchema = z.object({
-  action: z.enum(["save", "publish"]),
+  action: z.enum(["autosave", "save", "publish"]),
   nodeSlug: z.string().trim().min(1).max(64),
   title: z.string().max(200),
   body: z.string().max(25_000),
+  editorSessionKey: z.string().uuid(),
+  editorSessionRevision: z.number().int().min(1).max(MAX_EDITOR_SESSION_REVISION),
 });
 const stateSchema = z.union([
   z.object({ action: z.literal("delete") }),
@@ -73,7 +76,12 @@ export async function PATCH(request: Request, context: { params: Promise<{ numbe
     } else {
       topic = await updateTopicContent(writeContext, number, input.data);
     }
-    return Response.json({ ok: true, number: topic.number, status: topic.status });
+    return Response.json({
+      ok: true,
+      number: topic.number,
+      status: topic.status,
+      editorSessionRevision: topic.editorSessionRevision,
+    });
   } catch (error) {
     return errorResponse(error);
   }

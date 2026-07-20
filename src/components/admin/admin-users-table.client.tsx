@@ -173,7 +173,7 @@ export function AdminUsersTable({ users }: { users: UserRow[] }) {
                 <TableCell className="whitespace-normal">
                   <p>{user._count.communityTopics} 主题</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {Math.max(user._count.communityPosts - user._count.communityTopics, 0)} 回复
+                    {user._count.communityPosts} 回复
                   </p>
                 </TableCell>
                 <TableCell>{user._count.sessions}</TableCell>

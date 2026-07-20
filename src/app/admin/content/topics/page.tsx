@@ -26,6 +26,13 @@ import { AdminError } from "@/modules/admin/errors";
 
 export const metadata = { title: "主题管理" };
 
+const topicStatusLabels: Record<string, string> = {
+  published: "已发布",
+  closed: "已关闭",
+  hidden: "已隐藏",
+  deleted: "已删除",
+};
+
 export default async function AdminTopicsPage({
   searchParams,
 }: {
@@ -36,6 +43,7 @@ export default async function AdminTopicsPage({
   const params = await searchParams;
   const page = params.page && /^\d+$/.test(params.page) ? Number(params.page) : 1;
   const node = params.node && params.node !== "all" ? params.node : undefined;
+  const status = Object.hasOwn(topicStatusLabels, params.status ?? "") ? params.status : undefined;
   let result: Awaited<ReturnType<typeof listAdminTopics>>;
   try {
     result = await listAdminTopics(session.user.id, {
@@ -51,7 +59,7 @@ export default async function AdminTopicsPage({
 
   const query = new URLSearchParams();
   if (params.q) query.set("q", params.q);
-  if (params.status) query.set("status", params.status);
+  if (status) query.set("status", status);
   if (node) query.set("node", node);
   const pageHref = (nextPage: number) => {
     const copy = new URLSearchParams(query);
@@ -85,7 +93,7 @@ export default async function AdminTopicsPage({
               name="q"
               placeholder="主题编号、标题或作者"
             />
-            <Select defaultValue={params.status ?? "all"} name="status">
+            <Select defaultValue={status ?? "all"} name="status">
               <SelectTrigger aria-label="主题状态" className="w-full">
                 <SelectValue placeholder="全部状态" />
               </SelectTrigger>
@@ -95,7 +103,6 @@ export default async function AdminTopicsPage({
                 <SelectItem value="closed">已关闭</SelectItem>
                 <SelectItem value="hidden">已隐藏</SelectItem>
                 <SelectItem value="deleted">已删除</SelectItem>
-                <SelectItem value="draft">草稿</SelectItem>
               </SelectContent>
             </Select>
             <Select defaultValue={node ?? "all"} name="node">
@@ -150,7 +157,7 @@ export default async function AdminTopicsPage({
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                    <Badge variant="outline">{topic.status}</Badge>
+                    <Badge variant="outline">{topicStatusLabels[topic.status] ?? "未知状态"}</Badge>
                     <span className="text-xs text-muted-foreground">
                       {topic.replyCount} 回复 · {topic.viewCount} 浏览
                     </span>

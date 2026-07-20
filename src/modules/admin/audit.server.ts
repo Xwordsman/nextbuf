@@ -6,6 +6,7 @@ import {
   requireConfirmation,
   requireElevatedSiteAdmin,
 } from "@/modules/admin/reauthentication.server";
+import { managedTopicWhere } from "@/modules/community/topic-visibility";
 import { governanceActorRoles, writeGovernanceAudit } from "@/modules/moderation/governance.server";
 import { AUDIT_EXPORT_CONFIRMATION } from "@/shared/admin-contracts";
 
@@ -88,6 +89,7 @@ async function collectAuditEvents(input: AuditFilters, maxEvents: number) {
             ...dateWhere(input),
             ...(actorId ? { actorId } : {}),
             ...(action ? { action: { contains: action, mode: "insensitive" } } : {}),
+            OR: [{ topicId: null }, { topic: { is: managedTopicWhere() } }],
           },
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           take: maxEvents,

@@ -1,10 +1,15 @@
 import { Buffer } from "node:buffer";
 import { expect, test, type Page } from "@playwright/test";
 import { disconnectPrismaClient, getPrismaClient } from "../../src/infrastructure/database/client";
+import {
+  EDITOR_AUTOSAVE_DELAY_MS,
+  EDITOR_WRITE_TIMEOUT_MS,
+} from "../../src/shared/community/editor-session";
 
 const mailpitUrl = process.env.MAILPIT_API_URL ?? "http://127.0.0.1:8025";
 const oldPassword = "old-password-for-e2e";
 const newPassword = "new-password-for-e2e";
+const networkBarrierFailsafeMs = EDITOR_WRITE_TIMEOUT_MS - 5_000;
 
 type MailpitMessage = {
   ID: string;
@@ -51,11 +56,20 @@ async function signIn(page: Page, email: string, password: string) {
   await page.getByRole("button", { name: "登录", exact: true }).click();
 }
 
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 test.describe.serial("identity authentication", () => {
   test("registers, verifies, manages sessions and resets the password", async ({
     browser,
     page,
   }, testInfo) => {
+    test.setTimeout(120_000);
     const email = `identity-e2e-${Date.now()}-${testInfo.retry}@nextbuf.test`;
     const username = `e2e_${Date.now().toString(36)}_${testInfo.retry}`;
     await page.goto("/account/security");
@@ -122,11 +136,135 @@ test.describe.serial("identity authentication", () => {
     await page.getByRole("button", { name: "创建节点" }).click();
     await expect(page).toHaveURL(`/admin/nodes/${nodeSlug}`);
     await expect(page.getByText(nodeSlug, { exact: true })).toBeVisible();
+    await page.goto("/admin/content/topics");
+    await page.getByLabel("主题状态").click();
+    await expect(page.getByRole("option", { name: "草稿", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await page.goto("/admin/content/replies");
+    await page.getByLabel("回复状态").click();
+    await expect(page.getByRole("option", { name: "草稿", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+
+    const privateDraftSuffix = Date.now().toString(36);
+    const privateDraftOwner = await prisma.user.create({
+      data: {
+        name: "E2E 私人草稿作者",
+        username: `draft_owner_${privateDraftSuffix}`.slice(0, 24),
+        email: `draft-owner-${privateDraftSuffix}@nextbuf.test`,
+        emailVerified: true,
+        status: "active",
+        activatedAt: new Date(),
+      },
+    });
+    const privateDraftNode = await prisma.communityNode.findUniqueOrThrow({
+      where: { slug: "ai" },
+    });
+    const privateDraft = await prisma.communityTopic.create({
+      data: {
+        nodeId: privateDraftNode.id,
+        authorId: privateDraftOwner.id,
+        title: "E2E 管理员不可枚举的私人草稿",
+        status: "draft",
+        posts: {
+          create: {
+            authorId: privateDraftOwner.id,
+            position: 1,
+            status: "draft",
+            bodySource: "管理员对按编号写入入口发起请求时，只能得到与不存在主题相同的响应。",
+          },
+        },
+      },
+    });
+    try {
+      const privateDraftResponses = await page.evaluate(async (number) => {
+        const payloads = [
+          {
+            action: "save",
+            nodeSlug: "ai",
+            title: "管理员不能修改私人草稿",
+            body: "这是一个格式完整但必须被伪装成主题不存在的内容修改请求。",
+            editorSessionKey: crypto.randomUUID(),
+            editorSessionRevision: 1,
+          },
+          { action: "delete" },
+          { action: "restore" },
+          {
+            action: "moderate",
+            isPinned: false,
+            isEssence: false,
+            isClosed: false,
+            isHidden: false,
+          },
+        ];
+        const results: Array<{ status: number; code?: string }> = [];
+        for (const payload of payloads) {
+          const response = await fetch(`/api/community/topics/${number}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const body = (await response.json()) as { code?: string };
+          results.push({ status: response.status, code: body.code });
+        }
+        return results;
+      }, privateDraft.number);
+      expect(privateDraftResponses).toEqual(
+        Array.from({ length: 4 }, () => ({ status: 404, code: "topic_not_found" })),
+      );
+    } finally {
+      await prisma.communityTopic.delete({ where: { id: privateDraft.id } });
+      await prisma.user.delete({ where: { id: privateDraftOwner.id } });
+    }
     await prisma.communityRoleAssignment.deleteMany({
       where: { userId: registeredUser.id, role: "admin", scopeKey: "site" },
     });
 
+    const legacyTopicWriteStatus = await page.evaluate(async () =>
+      fetch("/api/community/topics", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          nodeSlug: "ai",
+          title: "缺少编辑会话的旧客户端主题",
+          body: "这个请求必须在进入领域服务前被拒绝，不能创建重复草稿。",
+          action: "draft",
+        }),
+      }).then((response) => response.status),
+    );
+    expect(legacyTopicWriteStatus).toBe(400);
+    const oversizedTopicRevisionStatus = await page.evaluate(async () =>
+      fetch("/api/community/topics", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          nodeSlug: "ai",
+          title: "超过 PostgreSQL INTEGER 上限的编辑版本",
+          body: "这个请求必须在进入数据库前被拒绝，不能触发数值溢出。",
+          action: "draft",
+          editorSessionKey: crypto.randomUUID(),
+          editorSessionRevision: 2_147_483_648,
+        }),
+      }).then((response) => response.status),
+    );
+    expect(oversizedTopicRevisionStatus).toBe(400);
+
     const topicTitle = `E2E 用户主题 ${Date.now()}`;
+    const releaseTopicAutosave = deferred();
+    const topicWrites: Array<{ method: string; action?: string }> = [];
+    let heldTopicAutosave = false;
+    await page.route(/\/api\/community\/topics(?:\/\d+)?$/, async (route) => {
+      const request = route.request();
+      const payload = request.postDataJSON() as { action?: string };
+      topicWrites.push({ method: request.method(), action: payload.action });
+      if (!heldTopicAutosave && request.method() === "POST" && payload.action === "draft") {
+        heldTopicAutosave = true;
+        await Promise.race([
+          releaseTopicAutosave.promise,
+          new Promise((resolve) => setTimeout(resolve, networkBarrierFailsafeMs)),
+        ]);
+      }
+      await route.continue();
+    });
     await page.goto("/topics/new");
     await page.getByLabel("标题").fill(topicTitle);
     await page.getByLabel("节点", { exact: true }).click();
@@ -134,26 +272,60 @@ test.describe.serial("identity authentication", () => {
     await page
       .getByLabel("正文")
       .fill("这是通过真实浏览器发布的 **Markdown 主题正文**，用于验证完整内容流程。");
+    const releaseAttachmentUpload = deferred();
+    let heldAttachmentUpload = false;
+    await page.route(/\/api\/community\/attachments$/, async (route) => {
+      heldAttachmentUpload = true;
+      await Promise.race([
+        releaseAttachmentUpload.promise,
+        new Promise((resolve) => setTimeout(resolve, networkBarrierFailsafeMs)),
+      ]);
+      await route.continue();
+    });
     await page.getByLabel("选择附件").setInputFiles({
       name: "e2e-notes.txt",
       mimeType: "text/plain",
       buffer: Buffer.from("NextBuf E2E attachment"),
     });
+    await expect.poll(() => heldAttachmentUpload, { timeout: 10_000 }).toBe(true);
+    try {
+      const bodyWhileUploading = `${await page.getByLabel("正文").inputValue()}\n\n上传期间继续输入的内容也必须保留。`;
+      await page.getByLabel("正文").fill(bodyWhileUploading);
+      await page.getByRole("tab", { name: "预览" }).click();
+      await expect(page.getByRole("button", { name: "发布主题" })).toBeDisabled();
+    } finally {
+      releaseAttachmentUpload.resolve();
+    }
     await expect(page.getByLabel("正文")).toHaveValue(/e2e-notes\.txt/);
+    await expect(page.getByLabel("正文")).toHaveValue(/上传期间继续输入的内容也必须保留/);
+    await page.unroute(/\/api\/community\/attachments$/);
     await page.getByRole("tab", { name: "预览" }).click();
     await expect(page.getByText("Markdown 主题正文", { exact: true })).toBeVisible();
-    const publishResponsePromise = page.waitForResponse(
-      (response) => {
-        const request = response.request();
-        return (
-          ["POST", "PATCH"].includes(request.method()) &&
-          /^\/api\/community\/topics(?:\/\d+)?$/.test(new URL(response.url()).pathname) &&
-          request.postData()?.includes('"action":"publish"') === true
-        );
-      },
-      { timeout: 10_000 },
-    );
-    await page.getByRole("button", { name: "发布主题" }).click();
+    await expect.poll(() => heldTopicAutosave, { timeout: 10_000 }).toBe(true);
+    let publishResponsePromise!: ReturnType<Page["waitForResponse"]>;
+    try {
+      await page.getByRole("tab", { name: "编写" }).click();
+      const topicBody = await page.getByLabel("正文").inputValue();
+      await page.getByLabel("正文").fill(`${topicBody}\n\n这是自动保存期间输入的最终正文。`);
+      await page.waitForTimeout(EDITOR_AUTOSAVE_DELAY_MS + 200);
+      publishResponsePromise = page.waitForResponse(
+        (response) => {
+          const request = response.request();
+          return (
+            ["POST", "PATCH"].includes(request.method()) &&
+            /^\/api\/community\/topics(?:\/\d+)?$/.test(new URL(response.url()).pathname) &&
+            request.postData()?.includes('"action":"publish"') === true
+          );
+        },
+        { timeout: 10_000 },
+      );
+      await page.getByRole("button", { name: "发布主题" }).click();
+      await page.waitForTimeout(250);
+      expect(topicWrites).toHaveLength(1);
+      expect(topicWrites.filter((write) => write.action === "publish")).toHaveLength(0);
+    } finally {
+      releaseTopicAutosave.resolve();
+    }
     const publishResponse = await publishResponsePromise;
     const publishBody = publishResponse.ok()
       ? ""
@@ -165,6 +337,16 @@ test.describe.serial("identity authentication", () => {
     await expect(page).toHaveURL(/\/topics\/\d+$/);
     await expect(page.getByRole("heading", { name: topicTitle })).toBeVisible();
     await expect(page.getByRole("link", { name: "e2e-notes.txt" })).toBeVisible();
+    expect(topicWrites.filter((write) => write.action === "draft")).toHaveLength(1);
+    expect(topicWrites.filter((write) => write.action === "publish")).toHaveLength(1);
+    await page.unroute(/\/api\/community\/topics(?:\/\d+)?$/);
+    const persistedTopics = await prisma.communityTopic.findMany({
+      where: { authorId: registeredUser.id, title: topicTitle },
+      include: { posts: { where: { position: 1 }, take: 1 } },
+    });
+    expect(persistedTopics).toHaveLength(1);
+    expect(persistedTopics[0]).toMatchObject({ status: "published" });
+    expect(persistedTopics[0]?.posts[0]?.bodySource).toContain("这是自动保存期间输入的最终正文。");
     const topicUrl = new URL(page.url()).pathname;
     await page.getByRole("button", { name: /^收藏 0$/ }).click();
     await expect(page.getByRole("button", { name: /^已收藏 1$/ })).toBeVisible();
@@ -185,9 +367,47 @@ test.describe.serial("identity authentication", () => {
     await expect(page.getByRole("link", { name: topicTitle })).toBeVisible();
     await page.goto(topicUrl);
 
+    const legacyReplyWriteStatus = await page.evaluate(async () =>
+      fetch(`${window.location.pathname}/replies`.replace("/topics/", "/api/community/topics/"), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ body: "缺少编辑会话的旧客户端回复草稿" }),
+      }).then((response) => response.status),
+    );
+    expect(legacyReplyWriteStatus).toBe(400);
+
+    const releaseReplyAutosave = deferred();
+    const replyWrites: Array<{ method: string }> = [];
+    let heldReplyAutosave = false;
+    await page.route(/\/api\/community\/topics\/\d+\/replies$/, async (route) => {
+      const request = route.request();
+      replyWrites.push({ method: request.method() });
+      if (!heldReplyAutosave && request.method() === "PUT") {
+        heldReplyAutosave = true;
+        await Promise.race([
+          releaseReplyAutosave.promise,
+          new Promise((resolve) => setTimeout(resolve, networkBarrierFailsafeMs)),
+        ]);
+      }
+      await route.continue();
+    });
     await page.getByLabel("回复正文").fill(`这是第一条浏览器回复，并提及 @${username} 验证解析。`);
-    await page.getByRole("button", { name: "发布回复" }).click();
+    await expect.poll(() => heldReplyAutosave, { timeout: 10_000 }).toBe(true);
+    try {
+      await page
+        .getByLabel("回复正文")
+        .fill(`这是第一条浏览器回复，并提及 @${username} 验证解析，保留最终版本。`);
+      await page.waitForTimeout(EDITOR_AUTOSAVE_DELAY_MS + 200);
+      await page.getByRole("button", { name: "发布回复" }).click();
+      await page.waitForTimeout(250);
+      expect(replyWrites).toEqual([{ method: "PUT" }]);
+    } finally {
+      releaseReplyAutosave.resolve();
+    }
     await expect(page).toHaveURL(/\/topics\/\d+\?from=2#post-2$/);
+    expect(replyWrites.filter((write) => write.method === "PUT")).toHaveLength(1);
+    expect(replyWrites.filter((write) => write.method === "POST")).toHaveLength(1);
+    await page.unroute(/\/api\/community\/topics\/\d+\/replies$/);
     const firstReply = page.locator("#post-2");
     await expect(firstReply.getByText("这是第一条浏览器回复", { exact: false })).toBeVisible();
 
@@ -199,6 +419,12 @@ test.describe.serial("identity authentication", () => {
     const notificationPost = await prisma.communityPost.findUniqueOrThrow({
       where: { topicId_position: { topicId: notificationTopic.id, position: 2 } },
     });
+    expect(notificationPost.bodySource).toContain("保留最终版本");
+    await expect(
+      prisma.communityPostDraft.count({
+        where: { topicId: notificationTopic.id, authorId: recipient.id },
+      }),
+    ).resolves.toBe(0);
     for (const type of ["mention", "followed_topic_reply"] as const) {
       await prisma.notification.create({
         data: {
@@ -269,6 +495,88 @@ test.describe.serial("identity authentication", () => {
     await expect(
       secondReply.getByText("这是修改后的第二条浏览器回复。", { exact: true }),
     ).toBeVisible();
+
+    const supersededSessionKey = globalThis.crypto.randomUUID();
+    await prisma.communityReplyEditorSession.create({
+      data: {
+        topicId: notificationTopic.id,
+        authorId: registeredUser.id,
+        key: supersededSessionKey,
+        revision: 1,
+        state: "superseded",
+      },
+    });
+    await page.evaluate(
+      ({ key, topicNumber }) => {
+        const state =
+          history.state && typeof history.state === "object" ? { ...history.state } : {};
+        state.nextbufReplyEditorSession = {
+          key,
+          revision: 1,
+          topicNumber,
+          path: `${location.pathname}${location.search}`,
+        };
+        history.replaceState(state, "", location.href);
+      },
+      { key: supersededSessionKey, topicNumber: notificationTopic.number },
+    );
+    const supersededRecoveryPattern =
+      /\/api\/community\/topics\/\d+\/replies\/editor-session\/[^/]+$/;
+    let supersededRecoveryRequests = 0;
+    await page.route(supersededRecoveryPattern, async (route) => {
+      supersededRecoveryRequests += 1;
+      await route.continue();
+    });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          history.state && typeof history.state === "object"
+            ? history.state.nextbufReplyEditorSession
+            : undefined,
+        ),
+      )
+      .toBeUndefined();
+    await expect(page.getByLabel("回复正文")).toBeVisible();
+    expect(supersededRecoveryRequests).toBe(1);
+    await page.unroute(supersededRecoveryPattern);
+    await prisma.communityReplyEditorSession.delete({
+      where: { authorId_key: { authorId: registeredUser.id, key: supersededSessionKey } },
+    });
+
+    const responseLossBody = "这条回复已提交，但浏览器会被测试故意丢弃响应。";
+    let responseLossPosition = 0;
+    await page.route(/\/api\/community\/topics\/\d+\/replies$/, async (route) => {
+      const request = route.request();
+      if (request.method() !== "POST" || !request.postData()?.includes(responseLossBody)) {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const result = (await response.json()) as { position?: number };
+      responseLossPosition = result.position ?? 0;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: '{"ok":true,"position":',
+      });
+    });
+    await page.getByLabel("回复正文").fill(responseLossBody);
+    await page.getByRole("button", { name: "发布回复" }).click();
+    await expect(page.getByText("无法确认回复是否已经发布", { exact: false })).toBeVisible();
+    await expect.poll(() => responseLossPosition, { timeout: 10_000 }).toBeGreaterThan(0);
+    await page.reload();
+    await expect(page).toHaveURL(new RegExp(`#post-${responseLossPosition}$`));
+    await page.unroute(/\/api\/community\/topics\/\d+\/replies$/);
+    await expect(
+      prisma.communityPost.count({
+        where: {
+          topicId: notificationTopic.id,
+          authorId: registeredUser.id,
+          bodySource: responseLossBody,
+        },
+      }),
+    ).resolves.toBe(1);
 
     await page.getByRole("link", { name: "编辑主题" }).click();
     await page

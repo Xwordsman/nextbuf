@@ -14,6 +14,7 @@ import type {
 } from "@/modules/community/contracts/home-view";
 import { CommunityError } from "@/modules/community/errors";
 import { renderCommunityMarkdown } from "@/modules/community/markdown.server";
+import { isPrivateTopicDraftLineage } from "@/modules/community/topic-visibility";
 import { isHotTopic } from "@/modules/community/topic-policy";
 import { listHotTopicIds } from "@/modules/interactions/discovery.server";
 
@@ -483,9 +484,8 @@ export async function getTopicPageView(number: number, viewerId?: string, reques
     : null;
   const canModerate = permissions?.active === true && permissions.canModerate;
   const isAuthor = viewerId === topic.authorId;
-  const canEdit = Boolean(
-    permissions?.active && (isAuthor || (canModerate && topic.status !== "draft")),
-  );
+  const privateDraft = isPrivateTopicDraftLineage(topic);
+  const canEdit = Boolean(permissions?.active && (isAuthor || (canModerate && !privateDraft)));
   if (!["published", "closed"].includes(topic.status) && !canEdit) return null;
   const post = topic.posts[0];
   if (!post) return null;
@@ -497,7 +497,11 @@ export async function getTopicPageView(number: number, viewerId?: string, reques
   const [replyRows, draft, topicInteractions] = await Promise.all([
     ["published", "closed"].includes(topic.status)
       ? prisma.communityPost.findMany({
-          where: { topicId: topic.id, position: { gte: replyFrom } },
+          where: {
+            topicId: topic.id,
+            position: { gte: replyFrom },
+            status: { in: ["published", "hidden", "deleted"] },
+          },
           orderBy: { position: "asc" },
           take: replyPageSize + 1,
           include: {
@@ -513,7 +517,7 @@ export async function getTopicPageView(number: number, viewerId?: string, reques
           },
         })
       : [],
-    viewerId && canReply
+    viewerId
       ? prisma.communityPostDraft.findUnique({
           where: { topicId_authorId: { topicId: topic.id, authorId: viewerId } },
           include: {
@@ -550,6 +554,8 @@ export async function getTopicPageView(number: number, viewerId?: string, reques
     number: topic.number,
     title: topic.title,
     status: topic.status,
+    editorSessionKey: isAuthor ? topic.editorSessionKey : null,
+    editorSessionRevision: isAuthor ? topic.editorSessionRevision : null,
     isClosed: Boolean(topic.closedAt),
     isHidden: topic.status === "hidden",
     isPinned: topic.isPinned,
@@ -588,14 +594,17 @@ export async function getTopicPageView(number: number, viewerId?: string, reques
     canModerate,
     canRestore: canEdit && topic.status === "deleted",
     canReply,
-    replyDraft: draft
-      ? {
-          body: draft.bodySource,
-          quotedPosition: draft.quotedPost?.position ?? null,
-          quotedAuthorName: draft.quotedPost?.author.name ?? null,
-          updatedAt: draft.updatedAt,
-        }
-      : null,
+    replyDraft:
+      draft && draft.bodySource.length > 0
+        ? {
+            body: draft.bodySource,
+            quotedPosition: draft.quotedPost?.position ?? null,
+            quotedAuthorName: draft.quotedPost?.author.name ?? null,
+            editorSessionKey: draft.editorSessionKey,
+            editorSessionRevision: draft.editorSessionRevision,
+            updatedAt: draft.updatedAt,
+          }
+        : null,
     replies: visibleReplies.map((reply) => {
       const ownsReply = viewerId === reply.authorId;
       const canManageReply = Boolean(permissions?.active && (ownsReply || canModerate));
@@ -619,17 +628,20 @@ export async function getTopicPageView(number: number, viewerId?: string, reques
           image: reply.author.image,
           initials: reply.author.name.trim().slice(0, 1).toLocaleUpperCase("zh-CN") || "U",
         },
-        quote: reply.quotedPost
-          ? {
-              position: reply.quotedPost.position,
-              authorName: reply.quotedPost.author.name,
-              authorUsername: reply.quotedPost.author.username,
-              excerpt:
-                reply.quotedPost.status === "deleted"
-                  ? "该回复已删除"
-                  : reply.quotedPost.bodySource.replace(/\s+/gu, " ").slice(0, 160),
-            }
-          : null,
+        quote:
+          reply.quotedPost && reply.quotedPost.status !== "draft"
+            ? {
+                position: reply.quotedPost.position,
+                authorName: reply.quotedPost.author.name,
+                authorUsername: reply.quotedPost.author.username,
+                excerpt:
+                  reply.quotedPost.status === "deleted"
+                    ? "该回复已删除"
+                    : reply.quotedPost.status === "hidden" && !canModerate
+                      ? "该回复已隐藏"
+                      : reply.quotedPost.bodySource.replace(/\s+/gu, " ").slice(0, 160),
+              }
+            : null,
         canEdit: canManageReply && reply.status === "published",
         canDelete: canManageReply && reply.status === "published",
         canRestore: canManageReply && reply.status === "deleted",

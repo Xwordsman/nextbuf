@@ -5,7 +5,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$ROOT"
 
 ARCH=${1:-amd64}
-BASELINE_VERSION=${NEXTBUF_UPGRADE_BASELINE:-0.12.0}
+BASELINE_VERSION=${NEXTBUF_UPGRADE_BASELINE:-0.13.7}
 TARGET_VERSION=${NEXTBUF_SMOKE_VERSION:?Set NEXTBUF_SMOKE_VERSION}
 REGISTRY_NAME="nextbuf-upgrade-registry-$$"
 REGISTRY_ADDRESS=127.0.0.1:5510
@@ -105,6 +105,87 @@ response=$(curl --fail-with-body --silent \
   http://127.0.0.1:3200/api/setup)
 printf '%s' "$response" | grep -q '"ok":true'
 printf 'upgrade-proof-%s\n' "$ARCH" | NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup -ec 'cat > /app/data/uploads/upgrade-proof.txt'
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+INSERT INTO community_nodes (
+  id, slug, name, description, color, icon, sort_order, visibility, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000001', 'upgrade-proof', 'Upgrade proof',
+  'Durable upgrade fixture', '#334455', 'grid', 10, 'public', CURRENT_TIMESTAMP
+);
+INSERT INTO community_topics (
+  id, node_id, author_id, title, status, reply_count, next_post_position,
+  published_at, last_activity_at, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000002',
+  '20000000-0000-4000-8000-000000000001',
+  (SELECT id FROM users WHERE email = 'upgrade-admin@nextbuf.test'),
+  'Durable upgrade topic', 'published', 1, 3,
+  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+);
+INSERT INTO community_posts (
+  id, topic_id, author_id, position, status, body_source, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000003',
+  '20000000-0000-4000-8000-000000000002',
+  (SELECT id FROM users WHERE email = 'upgrade-admin@nextbuf.test'),
+  1, 'published', 'Durable upgrade body', CURRENT_TIMESTAMP
+);
+INSERT INTO community_post_revisions (
+  id, post_id, editor_id, version, title, body_source, source
+) VALUES (
+  '20000000-0000-4000-8000-000000000004',
+  '20000000-0000-4000-8000-000000000003',
+  (SELECT id FROM users WHERE email = 'upgrade-admin@nextbuf.test'),
+  1, 'Durable upgrade topic', 'Durable upgrade body', 'create'
+);
+INSERT INTO community_posts (
+  id, topic_id, author_id, position, status, body_source, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000005',
+  '20000000-0000-4000-8000-000000000002',
+  (SELECT id FROM users WHERE email = 'upgrade-admin@nextbuf.test'),
+  2, 'published', 'Durable upgrade reply', CURRENT_TIMESTAMP
+);
+INSERT INTO community_post_revisions (
+  id, post_id, editor_id, version, title, body_source, source
+) VALUES (
+  '20000000-0000-4000-8000-000000000006',
+  '20000000-0000-4000-8000-000000000005',
+  (SELECT id FROM users WHERE email = 'upgrade-admin@nextbuf.test'),
+  1, NULL, 'Durable upgrade reply', 'create'
+);
+INSERT INTO community_post_drafts (
+  id, topic_id, author_id, quoted_post_id, body_source, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000007',
+  '20000000-0000-4000-8000-000000000002',
+  (SELECT id FROM users WHERE email = 'upgrade-admin@nextbuf.test'),
+  '20000000-0000-4000-8000-000000000005',
+  'Durable upgrade reply draft', CURRENT_TIMESTAMP
+);
+INSERT INTO community_attachments (
+  id, uploader_id, storage_driver, storage_key, original_name, content_type,
+  kind, status, size_bytes, checksum_sha256, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000008',
+  (SELECT id FROM users WHERE email = 'upgrade-admin@nextbuf.test'),
+  'local', 'upgrade-proof.txt', 'upgrade-proof.txt', 'text/plain',
+  'file', 'ready', 20, repeat('0', 64), CURRENT_TIMESTAMP
+);
+INSERT INTO community_post_attachments (post_id, attachment_id) VALUES (
+  '20000000-0000-4000-8000-000000000005',
+  '20000000-0000-4000-8000-000000000008'
+);
+INSERT INTO community_revision_attachments (revision_id, attachment_id) VALUES (
+  '20000000-0000-4000-8000-000000000006',
+  '20000000-0000-4000-8000-000000000008'
+);
+INSERT INTO community_post_draft_attachments (draft_id, attachment_id) VALUES (
+  '20000000-0000-4000-8000-000000000007',
+  '20000000-0000-4000-8000-000000000008'
+);
+SQL
 
 stage "upgrade $BASELINE_VERSION to $TARGET_VERSION"
 NEXTBUFCTL_ASSUME_YES=1 \
@@ -130,9 +211,24 @@ migration_count=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh
 generic_node_migration=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260717200000_remove_builtin_nodes'\'' AND finished_at IS NOT NULL"' | tr -d '\r')
 [ "$generic_node_migration" = 1 ]
-preserved_nodes=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
-  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM community_nodes WHERE id IN ('\''10000000-0000-4000-8000-000000000001'\'', '\''10000000-0000-4000-8000-000000000002'\'', '\''10000000-0000-4000-8000-000000000003'\'', '\''10000000-0000-4000-8000-000000000004'\'', '\''10000000-0000-4000-8000-000000000005'\'', '\''10000000-0000-4000-8000-000000000006'\'')"' | tr -d '\r')
-[ "$preserved_nodes" = 6 ]
+editor_session_migration=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260720090000_editor_session_idempotency'\'' AND finished_at IS NOT NULL"' | tr -d '\r')
+[ "$editor_session_migration" = 1 ]
+preserved_fixture=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM community_topics AS topic JOIN community_posts AS post ON post.topic_id = topic.id AND post.position = 1 JOIN community_nodes AS node ON node.id = topic.node_id WHERE node.slug = '\''upgrade-proof'\'' AND topic.title = '\''Durable upgrade topic'\'' AND topic.editor_session_key IS NULL AND post.body_source = '\''Durable upgrade body'\'' AND post.editor_session_key IS NULL"' | tr -d '\r')
+[ "$preserved_fixture" = 1 ]
+preserved_reply=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM community_posts WHERE id = '\''20000000-0000-4000-8000-000000000005'\'' AND position = 2 AND status = '\''published'\'' AND body_source = '\''Durable upgrade reply'\'' AND editor_session_key IS NULL AND editor_session_revision IS NULL"' | tr -d '\r')
+[ "$preserved_reply" = 1 ]
+preserved_reply_draft=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM community_post_drafts WHERE id = '\''20000000-0000-4000-8000-000000000007'\'' AND quoted_post_id = '\''20000000-0000-4000-8000-000000000005'\'' AND body_source = '\''Durable upgrade reply draft'\'' AND editor_session_key IS NULL AND editor_session_revision IS NULL"' | tr -d '\r')
+[ "$preserved_reply_draft" = 1 ]
+preserved_attachment=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM community_attachments AS attachment WHERE attachment.id = '\''20000000-0000-4000-8000-000000000008'\'' AND attachment.storage_driver = '\''local'\'' AND attachment.storage_key = '\''upgrade-proof.txt'\'' AND attachment.status = '\''ready'\'' AND EXISTS (SELECT 1 FROM community_post_attachments WHERE post_id = '\''20000000-0000-4000-8000-000000000005'\'' AND attachment_id = attachment.id) AND EXISTS (SELECT 1 FROM community_revision_attachments WHERE revision_id = '\''20000000-0000-4000-8000-000000000006'\'' AND attachment_id = attachment.id) AND EXISTS (SELECT 1 FROM community_post_draft_attachments WHERE draft_id = '\''20000000-0000-4000-8000-000000000007'\'' AND attachment_id = attachment.id)"' | tr -d '\r')
+[ "$preserved_attachment" = 1 ]
+session_table=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT to_regclass('\''community_reply_editor_sessions'\'') IS NOT NULL"' | tr -d '\r')
+[ "$session_table" = t ]
 find "$BACKUP_DIR" -maxdepth 1 -name "nextbuf-$BASELINE_VERSION-*.tar.gz" -print -quit | grep -q .
 NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor
 

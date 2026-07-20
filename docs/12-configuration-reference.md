@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 环境变量的目标合同。`v0.1.0` 必须建立统一配置 Schema，`v0.12.0` 前必须让 `.env.example`、Compose、安装向导、Web、Worker、CLI 与本文完全一致。
 
-> 当前实现状态：`v0.13.7` 已让共享 Zod Schema、根 `.env.example`、生产 Compose、宝塔单文件 Compose、Web、Worker、CLI、setup、doctor 和发布包使用同一合同。站点名称、注册策略、发布开关和每小时限额继续由 PostgreSQL `site_settings` 管理；Provider 密钥不在线保存或回显。
+> 当前实现状态：`v0.13.8` 候选让共享 Zod Schema、根 `.env.example`、生产 Compose、宝塔单文件 Compose、Web、Worker、CLI、setup、doctor 和发布包继续使用同一合同。站点名称、注册策略、发布开关和每小时限额由 PostgreSQL `site_settings` 管理；Provider 密钥不在线保存或回显。编辑会话无需新增环境变量，其 UUID/revision 和终态由浏览器当前 history entry 与 PostgreSQL 管理。
 
 ## 1. 配置规则
 

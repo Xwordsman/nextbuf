@@ -16,6 +16,22 @@ import {
   SelectValue,
 } from "@/components/shadcn/ui/select";
 import { Separator } from "@/components/shadcn/ui/separator";
+import { SerialTaskQueue } from "@/shared/async/serial-task-queue";
+import {
+  EDITOR_AUTOSAVE_DELAY_MS,
+  EDITOR_RECOVERY_ATTEMPTS,
+  EDITOR_RECOVERY_RETRY_MS,
+  EDITOR_RECOVERY_TIMEOUT_MS,
+  EDITOR_WRITE_TIMEOUT_MS,
+  MAX_EDITOR_SESSION_REVISION,
+  type EditorSession,
+} from "@/shared/community/editor-session";
+import {
+  clearTopicEditorSession,
+  readTopicEditorSession,
+  writeTopicEditorSession,
+} from "@/shared/community/editor-session-history.client";
+import { fetchWithTimeout, readJsonResponse } from "@/shared/http/fetch-with-timeout.client";
 
 type TopicEditorProps = {
   nodes: Array<{ slug: string; name: string }>;
@@ -31,6 +47,8 @@ type TopicEditorProps = {
     body: string;
     nodeSlug: string;
     status: string;
+    editorSessionKey: string | null;
+    editorSessionRevision: number | null;
     isClosed: boolean;
     isHidden: boolean;
     isPinned: boolean;
@@ -40,6 +58,43 @@ type TopicEditorProps = {
   };
 };
 
+const topicEditorStatuses = new Set(["draft", "published", "closed", "hidden", "deleted"]);
+
+type TopicWriteResult = {
+  number: number;
+  status: string;
+  editorSessionRevision: number | null;
+};
+
+function validEditorSessionRevision(value: unknown): value is number | null {
+  return (
+    value === null ||
+    (typeof value === "number" &&
+      Number.isSafeInteger(value) &&
+      value >= 1 &&
+      value <= MAX_EDITOR_SESSION_REVISION)
+  );
+}
+
+function isTopicWriteResult(value: unknown): value is TopicWriteResult {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const result = value as Record<string, unknown>;
+  return (
+    typeof result.number === "number" &&
+    Number.isSafeInteger(result.number) &&
+    result.number >= 1 &&
+    typeof result.status === "string" &&
+    topicEditorStatuses.has(result.status) &&
+    validEditorSessionRevision(result.editorSessionRevision)
+  );
+}
+
+function responseCode(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const code = (value as Record<string, unknown>).code;
+  return typeof code === "string" ? code : undefined;
+}
+
 function errorMessage(code: string) {
   const messages: Record<string, string> = {
     invalid_topic: "请检查标题、正文长度、链接数量和附件引用。",
@@ -48,6 +103,7 @@ function errorMessage(code: string) {
     topic_rate_limited: "已达到站点当前的每小时主题上限，请稍后再试。",
     topic_posting_disabled: "站点当前已暂停发布新主题。",
     draft_limit_reached: "最多保留 20 个草稿，请先处理已有草稿。",
+    editor_session_conflict: "编辑内容发生冲突，请刷新页面后确认最新版本。",
     forbidden: "你没有执行该操作的权限。",
     invalid_topic_state: "当前主题状态不允许执行该操作。",
     topic_not_found: "主题不存在或已经不可访问。",
@@ -58,55 +114,233 @@ function errorMessage(code: string) {
 export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const autosaveSequence = useRef(0);
-  const autosavePromise = useRef<Promise<unknown> | null>(null);
+  const autosaveQueue = useRef<SerialTaskQueue | null>(null);
   const autosaveTimer = useRef<number | null>(null);
+  const explicitWrite = useRef(false);
+  const mounted = useRef(true);
+  const recoveryPending = useRef(!topic);
+  const editorConflict = useRef(false);
+  const newTopic = useRef(!topic);
+  const editorSession = useRef<EditorSession | null>(
+    topic?.editorSessionKey && topic.editorSessionRevision
+      ? { key: topic.editorSessionKey, revision: topic.editorSessionRevision }
+      : null,
+  );
+  if (autosaveQueue.current === null) autosaveQueue.current = new SerialTaskQueue();
   const [pending, setPending] = useState("");
   const [message, setMessage] = useState("");
   const [title, setTitle] = useState(topic?.title ?? "");
+  const titleRef = useRef(topic?.title ?? "");
   const [body, setBody] = useState(topic?.body ?? "");
+  const bodyRef = useRef(topic?.body ?? "");
   const [nodeSlug, setNodeSlug] = useState(topic?.nodeSlug ?? "");
+  const nodeSlugRef = useRef(topic?.nodeSlug ?? "");
   const [draftNumber, setDraftNumber] = useState<number | null>(topic?.number ?? null);
   const draftNumberRef = useRef<number | null>(topic?.number ?? null);
   const [status, setStatus] = useState(topic?.status ?? "draft");
+  const statusRef = useRef(topic?.status ?? "draft");
+  const [uploadPending, setUploadPending] = useState(false);
+  const uploadPendingRef = useRef(false);
+  const [recovering, setRecovering] = useState(!topic);
+  const [conflicted, setConflicted] = useState(false);
   const [autosaveStatus, setAutosaveStatus] = useState(
     topic?.status === "draft" ? "已载入草稿" : "",
   );
 
+  useEffect(() => {
+    mounted.current = true;
+    let cancelled = false;
+    if (topic) {
+      recoveryPending.current = false;
+      return () => {
+        cancelled = true;
+        mounted.current = false;
+      };
+    }
+    const stored = readTopicEditorSession();
+    if (!stored) {
+      recoveryPending.current = false;
+      window.queueMicrotask(() => {
+        if (!cancelled) setRecovering(false);
+      });
+      return () => {
+        cancelled = true;
+        mounted.current = false;
+      };
+    }
+    editorSession.current = stored;
+    void (async () => {
+      let networkUnavailable = false;
+      for (let attempt = 0; attempt < EDITOR_RECOVERY_ATTEMPTS; attempt += 1) {
+        if (cancelled) return;
+        const response = await fetchWithTimeout(
+          `/api/community/topics/editor-session/${stored.key}`,
+          { method: "GET", cache: "no-store" },
+          EDITOR_RECOVERY_TIMEOUT_MS,
+        );
+        if (cancelled) return;
+        if (response?.ok) {
+          const target = await readJsonResponse<unknown>(response);
+          if (cancelled) return;
+          if (!isTopicWriteResult(target) || target.editorSessionRevision === null) {
+            editorConflict.current = true;
+            setConflicted(true);
+            setMessage("无法恢复上一次编辑会话，请刷新页面后重试。");
+            break;
+          }
+          if (target.editorSessionRevision && target.editorSessionRevision > stored.revision) {
+            editorSession.current = { key: stored.key, revision: target.editorSessionRevision };
+          }
+          const path =
+            target.status === "draft"
+              ? `/topics/${target.number}/edit?recovered=1`
+              : target.status === "deleted"
+                ? "/account/topics"
+                : `/topics/${target.number}`;
+          if (clearTopicEditorSession(path)) {
+            window.location.reload();
+          } else {
+            window.location.replace(path);
+          }
+          return;
+        }
+        if (response && response.status !== 404) {
+          editorConflict.current = true;
+          setConflicted(true);
+          setMessage("无法恢复上一次编辑会话，请刷新页面后重试。");
+          break;
+        }
+        if (!response) networkUnavailable = true;
+        if (attempt + 1 < EDITOR_RECOVERY_ATTEMPTS) {
+          await new Promise((resolve) => window.setTimeout(resolve, EDITOR_RECOVERY_RETRY_MS));
+        }
+      }
+      if (!cancelled) {
+        recoveryPending.current = false;
+        setRecovering(false);
+        if (networkUnavailable && !editorConflict.current) {
+          setMessage("暂时无法确认上一次保存状态；再次提交仍会沿用同一编辑会话。");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      mounted.current = false;
+    };
+  }, [topic]);
+
   const request = useCallback(
     async (action: string, payload?: Record<string, unknown>, background = false) => {
-      if (!background) setPending(action);
-      setMessage("");
-      const response = await fetch(
-        draftNumberRef.current
-          ? `/api/community/topics/${draftNumberRef.current}`
-          : "/api/community/topics",
+      const contentAction = ["autosave", "draft", "save", "publish"].includes(action);
+      if (contentAction && (recoveryPending.current || editorConflict.current)) return null;
+      if (!background && mounted.current) setPending(action);
+      if (!background && mounted.current) setMessage("");
+      const number = draftNumberRef.current;
+      const creating = number === null;
+      let editorPayload: Record<string, unknown> = {};
+      if (contentAction) {
+        const current = editorSession.current ??
+          (newTopic.current ? readTopicEditorSession() : null) ?? {
+            key: globalThis.crypto.randomUUID(),
+            revision: 0,
+          };
+        if (current.revision >= MAX_EDITOR_SESSION_REVISION) {
+          if (!background && mounted.current) {
+            setPending("");
+            setMessage("编辑版本已达到上限，请刷新页面后继续。内容尚未发布。");
+          }
+          return null;
+        }
+        const next = { key: current.key, revision: current.revision + 1 };
+        editorSession.current = next;
+        if (creating) writeTopicEditorSession(next);
+        editorPayload = {
+          editorSessionKey: next.key,
+          editorSessionRevision: next.revision,
+        };
+      }
+      const response = await fetchWithTimeout(
+        number ? `/api/community/topics/${number}` : "/api/community/topics",
         {
-          method: draftNumberRef.current ? "PATCH" : "POST",
+          method: number ? "PATCH" : "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action, ...payload }),
+          body: JSON.stringify({ action, ...payload, ...editorPayload }),
         },
-      ).catch(() => null);
+        EDITOR_WRITE_TIMEOUT_MS,
+      );
+      if (!mounted.current) return null;
       if (!response) {
-        if (!background) setPending("");
-        setMessage("网络请求失败，请检查连接后重试。");
+        if (!background && mounted.current) setPending("");
+        if (!background && mounted.current) {
+          setMessage(
+            action === "publish"
+              ? "网络请求失败，无法确认主题是否已经发布。请先到“我的主题”检查，避免重复提交。"
+              : "网络请求中断，无法确认本次操作是否已经提交。请刷新后检查，再决定是否重试。",
+          );
+        }
         return null;
       }
-      const result = (await response.json().catch(() => ({}))) as {
-        code?: string;
-        number?: number;
-        status?: string;
-      };
+      const result = await readJsonResponse<unknown>(response);
+      if (!mounted.current) return null;
+      if (result === null) {
+        if (!background && mounted.current) setPending("");
+        if (!background && mounted.current) {
+          setMessage(
+            response.ok
+              ? action === "publish"
+                ? "服务器响应不完整，无法确认主题是否已经发布。请先到“我的主题”检查，避免重复提交。"
+                : "服务器响应不完整，无法确认本次保存结果，请刷新后检查。"
+              : "服务器返回了无法识别的错误响应，请稍后重试。",
+          );
+        }
+        return null;
+      }
       if (!response.ok) {
-        if (!background) setPending("");
-        setMessage(errorMessage(result.code ?? "request_failed"));
+        const code = responseCode(result);
+        if (code === "editor_session_conflict" && mounted.current) {
+          editorConflict.current = true;
+          setConflicted(true);
+          if (background) setAutosaveStatus("编辑冲突，请刷新页面");
+        }
+        if (!background && mounted.current) setPending("");
+        if (!background && mounted.current) {
+          const base = errorMessage(code ?? "request_failed");
+          setMessage(
+            action === "publish"
+              ? `${base} ${draftNumberRef.current ? "内容仍保留为草稿，尚未发布。" : "主题尚未发布，当前内容仍保留在编辑器中。"}`
+              : base,
+          );
+        }
         return null;
       }
-      if (result.number) {
-        draftNumberRef.current = result.number;
-        setDraftNumber(result.number);
+      if (!isTopicWriteResult(result) || (contentAction && result.editorSessionRevision === null)) {
+        if (!background && mounted.current) setPending("");
+        if (!background && mounted.current) {
+          setMessage(
+            action === "publish"
+              ? "服务器响应不完整，无法确认主题是否已经发布。请先到“我的主题”检查，避免重复提交。"
+              : "服务器响应不完整，无法确认本次保存结果，请刷新后检查。",
+          );
+        }
+        return null;
       }
-      if (result.status) setStatus(result.status);
-      if (!background) setPending("");
+      draftNumberRef.current = result.number;
+      if (mounted.current) setDraftNumber(result.number);
+      if (mounted.current) {
+        statusRef.current = result.status;
+        setStatus(result.status);
+      }
+      if (
+        result.editorSessionRevision &&
+        editorSession.current &&
+        result.editorSessionRevision > editorSession.current.revision
+      ) {
+        editorSession.current = {
+          key: editorSession.current.key,
+          revision: result.editorSessionRevision,
+        };
+      }
+      if (!background && mounted.current) setPending("");
       return result;
     },
     [],
@@ -114,67 +348,138 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
 
   const persistContent = useCallback(
     async (intent: "draft" | "publish" | "save", background = false) => {
-      const normalizedTitle = title.trim();
-      const normalizedBody = body.trim();
+      const normalizedTitle = titleRef.current.trim();
+      const normalizedBody = bodyRef.current.trim();
+      const currentNodeSlug = nodeSlugRef.current;
       const requiresPublishRules =
-        intent === "publish" || (intent === "save" && status !== "draft");
+        intent === "publish" || (intent === "save" && statusRef.current !== "draft");
+      const minimumTitleLength = requiresPublishRules ? limits.publishTitleMin : 1;
+      const minimumBodyLength = requiresPublishRules ? limits.publishBodyMin : 0;
       if (
-        !nodeSlug ||
-        normalizedTitle.length < (requiresPublishRules ? limits.publishTitleMin : 1) ||
+        !currentNodeSlug ||
+        normalizedTitle.length < minimumTitleLength ||
         normalizedTitle.length > limits.titleMax ||
-        normalizedBody.length < (requiresPublishRules ? limits.publishBodyMin : 0) ||
+        normalizedBody.length < minimumBodyLength ||
         normalizedBody.length > limits.bodyMax
       ) {
-        if (!background) setMessage("请检查标题、正文长度和节点选择。");
+        if (!background) {
+          const base = !currentNodeSlug
+            ? "请选择节点。"
+            : normalizedTitle.length < minimumTitleLength
+              ? `标题至少需要 ${minimumTitleLength} 个字符。`
+              : normalizedTitle.length > limits.titleMax
+                ? `标题不能超过 ${limits.titleMax} 个字符。`
+                : normalizedBody.length < minimumBodyLength
+                  ? `正文至少需要 ${minimumBodyLength} 个字符。`
+                  : `正文不能超过 ${limits.bodyMax} 个字符。`;
+          setMessage(
+            intent === "publish"
+              ? `${base} ${draftNumberRef.current ? "内容仍保留为草稿，尚未发布。" : "主题尚未发布，当前内容仍保留在编辑器中。"}`
+              : base,
+          );
+        }
         return null;
       }
-      const action = intent === "draft" && draftNumberRef.current ? "save" : intent;
+      const action = intent === "draft" && draftNumberRef.current ? "autosave" : intent;
+      const creating = draftNumberRef.current === null;
       const result = await request(
         action,
-        { title: normalizedTitle, body: normalizedBody, nodeSlug },
+        { title: normalizedTitle, body: normalizedBody, nodeSlug: currentNodeSlug },
         background,
       );
       const number = result?.number ?? draftNumberRef.current;
       if (!result || !number) return null;
-      if (background) {
-        window.history.replaceState(null, "", `/topics/${number}/edit?autosaved=1`);
-      } else if (intent === "draft") {
-        window.location.assign(`/topics/${number}/edit?created=draft`);
-      } else {
-        window.location.assign(`/topics/${number}`);
+      if (!mounted.current) return result;
+      if (creating) {
+        const durablePath =
+          result.status === "draft"
+            ? `/topics/${number}/edit?${background ? "autosaved=1" : "created=draft"}`
+            : `/topics/${number}`;
+        clearTopicEditorSession(durablePath);
+        newTopic.current = false;
+      }
+      if (!background) {
+        window.location.assign(
+          intent === "draft" ? `/topics/${number}/edit?created=draft` : `/topics/${number}`,
+        );
       }
       return result;
     },
-    [body, limits, nodeSlug, request, status, title],
+    [limits, request],
   );
 
   const runExplicitSave = async (intent: "draft" | "publish" | "save") => {
+    if (explicitWrite.current) return null;
+    if (recoveryPending.current) return null;
+    if (editorConflict.current) {
+      setMessage("编辑内容已在其他页面发生变化，请刷新后确认最新版本。");
+      return null;
+    }
+    if (uploadPendingRef.current) {
+      setMessage("请等待附件上传完成后再提交。");
+      return null;
+    }
+    explicitWrite.current = true;
     setPending(intent);
     autosaveSequence.current += 1;
     if (autosaveTimer.current !== null) {
       window.clearTimeout(autosaveTimer.current);
       autosaveTimer.current = null;
     }
-    await autosavePromise.current;
-    const result = await persistContent(intent);
-    if (!result) setPending("");
-    return result;
+    try {
+      await autosaveQueue.current?.onIdle();
+      if (!mounted.current) return null;
+      const result = await persistContent(intent);
+      if (result) return result;
+    } catch {
+      if (mounted.current) setMessage("操作未完成，当前内容仍保留在编辑器中，请重试。");
+    }
+    if (mounted.current) {
+      explicitWrite.current = false;
+      setPending("");
+    }
+    return null;
   };
 
   useEffect(() => {
-    if (status !== "draft" || !nodeSlug || title.trim().length < 1) return;
+    if (
+      explicitWrite.current ||
+      recoveryPending.current ||
+      editorConflict.current ||
+      status !== "draft" ||
+      !nodeSlug ||
+      title.trim().length < 1
+    ) {
+      return;
+    }
     const sequence = ++autosaveSequence.current;
-    autosaveTimer.current = window.setTimeout(async () => {
+    autosaveTimer.current = window.setTimeout(() => {
       autosaveTimer.current = null;
-      setAutosaveStatus("正在自动保存");
-      const operation = persistContent("draft", true);
-      autosavePromise.current = operation;
-      const result = await operation;
-      if (autosavePromise.current === operation) autosavePromise.current = null;
-      if (sequence === autosaveSequence.current) {
-        setAutosaveStatus(result ? "已自动保存" : "自动保存失败");
-      }
-    }, 1_500);
+      void autosaveQueue.current
+        ?.run(async () => {
+          if (!mounted.current || sequence !== autosaveSequence.current || explicitWrite.current) {
+            return;
+          }
+          if (mounted.current) setAutosaveStatus("正在自动保存");
+          const result = await persistContent("draft", true);
+          if (mounted.current && sequence === autosaveSequence.current && !explicitWrite.current) {
+            setAutosaveStatus(
+              result
+                ? "已自动保存"
+                : editorConflict.current
+                  ? "编辑冲突，请刷新页面"
+                  : "自动保存未完成或结果未知",
+            );
+          }
+        })
+        .catch(() => {
+          if (mounted.current && sequence === autosaveSequence.current && !explicitWrite.current) {
+            setAutosaveStatus(
+              editorConflict.current ? "编辑冲突，请刷新页面" : "自动保存未完成或结果未知",
+            );
+          }
+        });
+    }, EDITOR_AUTOSAVE_DELAY_MS);
     return () => {
       if (autosaveTimer.current !== null) {
         window.clearTimeout(autosaveTimer.current);
@@ -193,12 +498,12 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
       isClosed: data.get("isClosed") === "on",
       isHidden: data.get("isHidden") === "on",
     });
-    if (result) window.location.reload();
+    if (result && mounted.current) window.location.reload();
   };
 
   const changeState = async (action: "delete" | "restore") => {
     const result = await request(action);
-    if (!result) return;
+    if (!result || !mounted.current) return;
     const number = result.number ?? draftNumber;
     window.location.assign(
       action === "delete" ? "/account/topics" : `/topics/${number ?? ""}/edit`,
@@ -245,7 +550,10 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
               name="title"
               value={title}
               maxLength={limits.titleMax}
+              disabled={Boolean(pending) || recovering || conflicted}
               onChange={(event) => {
+                if (explicitWrite.current) return;
+                titleRef.current = event.target.value;
                 setTitle(event.target.value);
                 if (status === "draft") setAutosaveStatus("等待自动保存");
               }}
@@ -258,7 +566,10 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
             <Label htmlFor="topic-node">节点</Label>
             <Select
               value={nodeSlug}
+              disabled={Boolean(pending) || recovering || conflicted}
               onValueChange={(value) => {
+                if (explicitWrite.current) return;
+                nodeSlugRef.current = value;
                 setNodeSlug(value);
                 if (status === "draft") setAutosaveStatus("等待自动保存");
               }}
@@ -282,12 +593,18 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
               name="body"
               value={body}
               onChange={(value) => {
+                if (explicitWrite.current) return;
+                bodyRef.current = value;
                 setBody(value);
                 if (status === "draft") setAutosaveStatus("等待自动保存");
               }}
               maxLength={limits.bodyMax}
               placeholder="补充背景、尝试过的方法和期望得到的帮助"
-              disabled={Boolean(pending)}
+              disabled={Boolean(pending) || recovering || conflicted}
+              onUploadPendingChange={(nextPending) => {
+                uploadPendingRef.current = nextPending;
+                setUploadPending(nextPending);
+              }}
             />
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
               <p>发布时至少 20 个字符，最多 5 个 HTTP(S) 链接。</p>
@@ -300,7 +617,7 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
                 type="button"
                 variant="outline"
                 onClick={() => runExplicitSave("draft")}
-                disabled={Boolean(pending)}
+                disabled={Boolean(pending) || uploadPending || recovering || conflicted}
               >
                 {pending === "draft" || pending === "save" ? (
                   <LoaderCircle className="animate-spin" />
@@ -314,7 +631,7 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
                 type="button"
                 variant="outline"
                 onClick={() => runExplicitSave("save")}
-                disabled={Boolean(pending)}
+                disabled={Boolean(pending) || uploadPending || recovering || conflicted}
               >
                 {pending === "save" ? <LoaderCircle className="animate-spin" /> : <Save />}
                 保存修改
@@ -324,7 +641,7 @@ export function TopicEditor({ nodes, limits, topic }: TopicEditorProps) {
               <Button
                 type="button"
                 onClick={() => runExplicitSave("publish")}
-                disabled={Boolean(pending)}
+                disabled={Boolean(pending) || uploadPending || recovering || conflicted}
               >
                 {pending === "publish" ? <LoaderCircle className="animate-spin" /> : <Send />}
                 发布主题

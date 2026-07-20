@@ -27,6 +27,12 @@ import { replyFloorNumber } from "@/shared/community/reply-floor";
 
 export const metadata = { title: "回复管理" };
 
+const replyStatusLabels: Record<string, string> = {
+  published: "已发布",
+  hidden: "已隐藏",
+  deleted: "已删除",
+};
+
 export default async function AdminRepliesPage({
   searchParams,
 }: {
@@ -37,6 +43,7 @@ export default async function AdminRepliesPage({
   const params = await searchParams;
   const page = params.page && /^\d+$/.test(params.page) ? Number(params.page) : 1;
   const node = params.node && params.node !== "all" ? params.node : undefined;
+  const status = Object.hasOwn(replyStatusLabels, params.status ?? "") ? params.status : undefined;
   let result: Awaited<ReturnType<typeof listAdminReplies>>;
   try {
     result = await listAdminReplies(session.user.id, {
@@ -52,7 +59,7 @@ export default async function AdminRepliesPage({
 
   const query = new URLSearchParams();
   if (params.q) query.set("q", params.q);
-  if (params.status) query.set("status", params.status);
+  if (status) query.set("status", status);
   if (node) query.set("node", node);
   const pageHref = (nextPage: number) => {
     const copy = new URLSearchParams(query);
@@ -86,7 +93,7 @@ export default async function AdminRepliesPage({
               name="q"
               placeholder="主题编号、回复正文或作者"
             />
-            <Select defaultValue={params.status ?? "all"} name="status">
+            <Select defaultValue={status ?? "all"} name="status">
               <SelectTrigger aria-label="回复状态" className="w-full">
                 <SelectValue placeholder="全部状态" />
               </SelectTrigger>
@@ -95,7 +102,6 @@ export default async function AdminRepliesPage({
                 <SelectItem value="published">已发布</SelectItem>
                 <SelectItem value="hidden">已隐藏</SelectItem>
                 <SelectItem value="deleted">已删除</SelectItem>
-                <SelectItem value="draft">草稿</SelectItem>
               </SelectContent>
             </Select>
             <Select defaultValue={node ?? "all"} name="node">
@@ -155,7 +161,7 @@ export default async function AdminRepliesPage({
                     <p className="line-clamp-2 text-sm text-muted-foreground">{reply.bodySource}</p>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                    <Badge variant="outline">{reply.status}</Badge>
+                    <Badge variant="outline">{replyStatusLabels[reply.status] ?? "未知状态"}</Badge>
                     <span className="text-xs text-muted-foreground">
                       {reply.likeCount} 赞 · {reply.revisionCount} 版
                     </span>

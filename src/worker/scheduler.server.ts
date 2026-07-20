@@ -8,6 +8,7 @@ import { WORKER_MAINTENANCE_TASK } from "@/worker/contracts";
 import { TRUST_DAILY_TASK } from "@/modules/trust/contracts";
 import { scheduleDailyTrustRecalculation } from "@/modules/trust/trust.server";
 import { restoreExpiredSuspensions } from "@/modules/moderation/actions.server";
+import { pruneReplyEditorSessionTombstones } from "@/modules/community/editor-session-maintenance.server";
 
 export async function ensureWorkerScheduledTasks(): Promise<void> {
   await Promise.all([
@@ -27,11 +28,12 @@ export async function ensureWorkerScheduledTasks(): Promise<void> {
 async function executeTask(name: string, workerId: string, now: Date): Promise<void> {
   let result: Record<string, unknown>;
   if (name === WORKER_MAINTENANCE_TASK) {
-    const [replayed, restoredSuspensions] = await Promise.all([
+    const [replayed, restoredSuspensions, prunedReplyEditorSessions] = await Promise.all([
       processReplayRequests(),
       restoreExpiredSuspensions(),
+      pruneReplyEditorSessionTombstones(now),
     ]);
-    result = { replayed, restoredSuspensions };
+    result = { replayed, restoredSuspensions, prunedReplyEditorSessions };
   } else if (name === TRUST_DAILY_TASK) {
     result = { batchId: await scheduleDailyTrustRecalculation() };
   } else {

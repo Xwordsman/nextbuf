@@ -20,6 +20,8 @@ export class CommunityError extends Error {
       | "topic_not_found"
       | "topic_rate_limited"
       | "draft_limit_reached"
+      | "editor_session_conflict"
+      | "editor_session_rate_limited"
       | "invalid_topic_state",
     public readonly status: number,
     public readonly details?: Record<string, unknown>,

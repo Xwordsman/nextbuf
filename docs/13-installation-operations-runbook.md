@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 面向部署者的目标操作流程，包括 Docker Compose、宝塔、非 Docker、升级、备份、恢复和故障排查。
 
-> 当前实现状态：`v0.13.7` 公开 Beta 已交付生产镜像、四容器 Compose、无需 `.env` 且固定容器名的宝塔单文件入口、通用空节点安装、首位用户 UID 1、官方 shadcn/ui 管理后台与全站公开前台、`nextbufctl`、首次管理员、备份恢复、跨 Beta 升级和非 Docker 资产。容器/恢复验收由 GitHub Actions 在 Linux amd64/arm64 上执行；Mailpit 只出现在测试覆盖中，不进入生产拓扑。长期决策见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)、[ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)、[ADR-0017](./adr/0017-single-file-panel-compose.md) 和 [ADR-0018](./adr/0018-validated-main-image-channel.md)。
+> 当前实现状态：`v0.13.8` 公开 Beta 候选已交付生产镜像、四容器 Compose、无需 `.env` 且固定容器名的宝塔单文件入口、通用空节点安装、首位用户 UID 1、官方 shadcn/ui 管理后台与全站公开前台、编辑会话恢复、`nextbufctl`、首次管理员、备份恢复、跨 Beta 升级和非 Docker 资产。容器/恢复验收由 GitHub Actions 在 Linux amd64/arm64 上执行；Mailpit 只出现在测试覆盖中，不进入生产拓扑。长期决策见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)、[ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)、[ADR-0017](./adr/0017-single-file-panel-compose.md)、[ADR-0018](./adr/0018-validated-main-image-channel.md) 和 [ADR-0019](./adr/0019-editor-autosave-idempotency-and-draft-privacy.md)。
 
 ## 1. 发布包合同
 
@@ -499,7 +499,7 @@ Worker 日志中的 `Connection timeout` 表示 TCP/TLS 连接尚未建立，不
 
 ## 15. 文档实现责任
 
-`v0.13.7` 交付物包括：
+`v0.13.8` 候选交付物包括：
 
 - `compose.yml`。
 - `.env.example`。
@@ -509,6 +509,8 @@ Worker 日志中的 `Connection timeout` 表示 TCP/TLS 连接尚未建立，不
 - 备份/恢复和升级/回滚工具。
 - 本文中的全部核心命令。
 
-CI 在主分支、定时、手动和正式标签运行中使用原生 amd64/arm64 Runner 验证空数据库通过默认 Compose 自动 setup、Web/Worker 健康、四个生产容器且无停止的 setup 记录，以及一次性管理员流程；通过门槛的主分支会发布滚动 `latest`。定时、手动和正式标签运行的 amd64 额外把 PostgreSQL、配置和附件备份恢复到删除卷后的空安装，并执行故障注入与跨版本升级；正式标签另发布不可变 SemVer、非 Docker x64 包和供应链资产。生产部署者仍应在自己的域名、SMTP、对象存储和备份目标上完成上线清单，因为 CI 不能替代实例级凭据和灾难恢复演练。
+CI 在主分支、定时、手动和正式标签运行中使用原生 amd64/arm64 Runner 验证空数据库通过默认 Compose 自动 setup、Web/Worker 健康、四个生产容器且无停止的 setup 记录，以及一次性管理员流程；通过门槛的主分支会发布滚动 `latest`。只要当前候选相对最后公开标签仍有迁移差异，每个后续主分支提交都会在更新 `latest` 前额外执行当前公开版本到候选的真实备份/升级；定时、手动和正式标签运行的 amd64 继续执行恢复、故障注入和跨版本升级。正式标签另发布不可变 SemVer、非 Docker x64 包和供应链资产。生产部署者仍应在自己的域名、SMTP、对象存储和备份目标上完成上线清单，因为 CI 不能替代实例级凭据和灾难恢复演练。
+
+正式迁移版本的标签、镜像和 Release 全部通过后，下一次开发提交才把 `.github/workflows/ci.yml` 的 `NEXTBUF_UPGRADE_BASELINE` 提升到该已发布版本；不能在标签验证前提前提升，否则会跳过真正需要证明的旧版升级。`v0.13.8` 发布前该值必须保持 `0.13.7`。
 
 `v0.13.0` 的 `nextbufctl doctor` 同时输出 PostgreSQL 数据量/连接、Redis 内存/淘汰策略、Worker 并发和 Queue/Outbox/邮件积压。报告不包含连接串和凭据，可以用于工单诊断；但仍应在分享前检查实例名称、对象存储桶名和业务规模是否属于不应公开的信息。

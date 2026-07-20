@@ -89,10 +89,7 @@ export default async function AdminUserDetailPage({
                 ["创建时间", date(user.createdAt)],
                 ["激活时间", date(user.activatedAt)],
                 ["注销计划", date(user.deletionScheduledAt)],
-                [
-                  "主题 / 回复",
-                  `${user._count.communityTopics} / ${Math.max(user._count.communityPosts - user._count.communityTopics, 0)}`,
-                ],
+                ["主题 / 回复", `${user._count.communityTopics} / ${user._count.communityPosts}`],
                 ["登录方式", user.accounts.map((account) => account.providerId).join(", ") || "-"],
               ]}
             />

@@ -3,6 +3,7 @@ import { communityErrorResponse } from "@/app/api/community/community-response";
 import { createReply, saveReplyDraft } from "@/modules/community/replies.server";
 import { getRequestSession } from "@/modules/identity/current-session.server";
 import { hasSameOrigin } from "@/shared/http/same-origin";
+import { MAX_EDITOR_SESSION_REVISION } from "@/shared/community/editor-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
 const schema = z.object({
   body: z.string().max(25_000),
   quotedPosition: z.number().int().min(1).nullable().optional(),
+  editorSessionKey: z.string().uuid(),
+  editorSessionRevision: z.number().int().min(1).max(MAX_EDITOR_SESSION_REVISION),
 });
 
 async function requestContext(request: Request, context: { params: Promise<{ number: string }> }) {
@@ -38,7 +41,14 @@ export async function POST(request: Request, context: { params: Promise<{ number
       parsed.number,
       parsed.input,
     );
-    return Response.json({ ok: true, position: reply.position }, { status: 201 });
+    return Response.json(
+      {
+        ok: true,
+        position: reply.position,
+        editorSessionRevision: reply.editorSessionRevision,
+      },
+      { status: 201 },
+    );
   } catch (error) {
     return communityErrorResponse(error);
   }
@@ -56,7 +66,11 @@ export async function PUT(request: Request, context: { params: Promise<{ number:
       parsed.number,
       parsed.input,
     );
-    return Response.json({ ok: true, savedAt: draft?.updatedAt.toISOString() ?? null });
+    return Response.json({
+      ok: true,
+      savedAt: draft?.updatedAt.toISOString() ?? null,
+      editorSessionRevision: draft?.editorSessionRevision ?? parsed.input.editorSessionRevision,
+    });
   } catch (error) {
     return communityErrorResponse(error);
   }

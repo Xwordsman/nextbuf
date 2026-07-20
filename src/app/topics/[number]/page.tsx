@@ -348,11 +348,12 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
           ) : null}
         </section>
 
-        {topic.canReply ? (
+        {topic.canReply || topic.replyDraft ? (
           <ReplyEditor
             topicNumber={topic.number}
             initialDraft={topic.replyDraft}
             bodyMax={POST_BODY_MAX_LENGTH}
+            canReply={topic.canReply}
           />
         ) : topic.status === "closed" ? (
           <Card size="sm">

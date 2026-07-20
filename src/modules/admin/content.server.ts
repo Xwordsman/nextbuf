@@ -3,6 +3,7 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { getPrismaClient } from "@/infrastructure/database/client";
 import { requireAdministrator } from "@/modules/admin/authorization.server";
+import { managedReplyWhere, managedTopicWhere } from "@/modules/community/topic-visibility";
 
 type AdminContentListInput = {
   query?: string;
@@ -24,33 +25,35 @@ async function getContentListContext(actorId: string, input: AdminContentListInp
 
 function topicFilters(input: AdminContentListInput, query: string, topicNumber: number | null) {
   const topicWhere: Prisma.CommunityTopicWhereInput = {
-    ...(input.status && input.status !== "all" ? { status: input.status } : {}),
+    AND: [
+      managedTopicWhere(input.status),
+      ...(query
+        ? [
+            {
+              OR: [
+                ...(topicNumber && Number.isSafeInteger(topicNumber)
+                  ? [{ number: topicNumber }]
+                  : []),
+                { title: { contains: query, mode: "insensitive" as const } },
+                { author: { username: { contains: query, mode: "insensitive" as const } } },
+              ],
+            },
+          ]
+        : []),
+    ],
     ...(input.node ? { node: { slug: input.node } } : {}),
-    ...(query
-      ? {
-          OR: [
-            ...(topicNumber && Number.isSafeInteger(topicNumber) ? [{ number: topicNumber }] : []),
-            { title: { contains: query, mode: "insensitive" as const } },
-            { author: { username: { contains: query, mode: "insensitive" as const } } },
-          ],
-        }
-      : {}),
   };
   return topicWhere;
 }
 
 function replyFilters(input: AdminContentListInput, query: string, topicNumber: number | null) {
   const replyWhere: Prisma.CommunityPostWhereInput = {
-    position: { gt: 1 },
-    ...(input.status && input.status !== "all" ? { status: input.status } : {}),
-    ...(input.node || (topicNumber && Number.isSafeInteger(topicNumber))
-      ? {
-          topic: {
-            ...(input.node ? { node: { slug: input.node } } : {}),
-            ...(topicNumber && Number.isSafeInteger(topicNumber) ? { number: topicNumber } : {}),
-          },
-        }
-      : {}),
+    ...managedReplyWhere(input.status),
+    topic: {
+      ...managedTopicWhere(),
+      ...(input.node ? { node: { slug: input.node } } : {}),
+      ...(topicNumber && Number.isSafeInteger(topicNumber) ? { number: topicNumber } : {}),
+    },
     ...(query
       ? {
           OR: [
@@ -118,6 +121,10 @@ export async function getAdminNodes(actorId: string) {
   await prisma.$transaction((transaction) => requireAdministrator(transaction, actorId));
   return prisma.communityNode.findMany({
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    include: { _count: { select: { topics: true, roleAssignments: true } } },
+    include: {
+      _count: {
+        select: { topics: { where: managedTopicWhere() }, roleAssignments: true },
+      },
+    },
   });
 }

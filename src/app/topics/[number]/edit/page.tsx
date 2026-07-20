@@ -53,6 +53,8 @@ export default async function EditTopicPage({ params }: EditTopicPageProps) {
           body: topic.body,
           nodeSlug: topic.node.slug,
           status: topic.status,
+          editorSessionKey: topic.editorSessionKey,
+          editorSessionRevision: topic.editorSessionRevision,
           isClosed: topic.isClosed,
           isHidden: topic.isHidden,
           isPinned: topic.isPinned,

@@ -6,6 +6,7 @@ export function communityErrorResponse(error: unknown): Response {
     "topic_rate_limited",
     "reply_rate_limited",
     "attachment_rate_limited",
+    "editor_session_rate_limited",
   ].includes(error.code)
     ? String(error.details?.retryAfter ?? 3600)
     : null;

@@ -3,6 +3,7 @@ import { getRequestSession } from "@/modules/identity/current-session.server";
 import { CommunityError } from "@/modules/community/errors";
 import { createTopic } from "@/modules/community/topics.server";
 import { hasSameOrigin } from "@/shared/http/same-origin";
+import { MAX_EDITOR_SESSION_REVISION } from "@/shared/community/editor-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,8 @@ const schema = z.object({
   title: z.string().max(200),
   body: z.string().max(25_000),
   action: z.enum(["draft", "publish"]),
+  editorSessionKey: z.string().uuid(),
+  editorSessionRevision: z.number().int().min(1).max(MAX_EDITOR_SESSION_REVISION),
 });
 
 function errorResponse(error: unknown) {
@@ -42,7 +45,15 @@ export async function POST(request: Request) {
       { userId: session.user.id, requestId: request.headers.get("x-request-id") ?? undefined },
       input.data,
     );
-    return Response.json({ ok: true, number: topic.number, status: topic.status }, { status: 201 });
+    return Response.json(
+      {
+        ok: true,
+        number: topic.number,
+        status: topic.status,
+        editorSessionRevision: topic.editorSessionRevision,
+      },
+      { status: 201 },
+    );
   } catch (error) {
     return errorResponse(error);
   }
