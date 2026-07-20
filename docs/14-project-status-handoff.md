@@ -3,9 +3,9 @@
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
 - 最后更新：2026-07-20
-- 当前已发布版本：`v0.13.7` 公开 Beta 补丁
-- 当前候选版本：`v0.13.8` 编辑器幂等与私人草稿修复
-- 下一动作：完成候选 CI、`v0.13.7 -> v0.13.8` 升级验证和真实服务器复验；未经明确批准不开始 `v1.0.0`
+- 当前已发布版本：`v0.13.8` 公开 Beta 补丁
+- 当前候选版本：无
+- 下一动作：继续真实服务器与邀请用户 Beta 验收，只在发现问题时追加 `v0.13.x` 修复；未经明确批准不开始 `v1.0.0`
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -168,8 +168,8 @@
 - 后台界面修订（`v0.13.5`）：`components/admin/ui` 使用官方 shadcn/ui `radix-nova` 原语，管理后台采用响应式 Sidebar、Card、Table、Dialog、Select、Switch 和 Alert；社区前台既有 `components/ui` 不被替换。该补丁不修改 PostgreSQL、环境变量、Better Auth、授权、部署或镜像拓扑合同；站点设置成功后以 API 返回 revision 更新客户端状态，避免连续保存产生冲突。
 - 首页界面修订（`v0.13.6`）：仅公开首页 `/` 使用官方 shadcn/ui `radix-nova` Card、Tabs、Badge、Button、Avatar 和 Sheet，继续读取真实 PostgreSQL 节点、主题、概览与热议数据，在线成员保持明确空状态；1380px/230px/300px/16px 布局、搜索、筛选和 cursor 分页合同不变。`/nodes/[slug]` 继续使用既有呈现层，该补丁不修改数据库、Better Auth、授权、配置、部署或镜像拓扑合同。
 - 全站公开界面修订（`v0.13.7`）：官方 shadcn/ui `radix-nova` 原语已从历史 `components/admin/ui` 收敛到 `components/shadcn/ui`；节点、主题、账户、认证、安装、搜索、通知、状态与公共页头/页脚均按相同组件体系迁移。保留真实数据、URL、表单字段、Better Auth 旅程、草稿、附件、互动、举报、分页和无障碍入口；不再维护平行的 `components/ui` 原语目录。本补丁只替换展示层，不改变 PostgreSQL、Better Auth、授权、Worker、配置、部署或镜像拓扑合同。
-- 编辑器与草稿修订（`v0.13.8` 候选）：主题/回复自动保存严格串行，显式发布取消 debounce、等待在途保存并阻止上传期间提交；15 秒写入超时不再误判服务端未提交。作者级 UUID/revision、history 恢复接口和回复 `active/cleared/published/superseded` 会话状态保证重复发布、清空草稿、迟到请求、刷新与响应丢失不会制造重复 Topic/楼层或复活草稿。后台主题、回复、仪表盘、用户/节点计数和社区审计排除活动草稿、删除自草稿及删除来源未知的私人谱系；数字编号写入口对非作者统一伪装为 404，未知删除来源只恢复为私人草稿。公开回复排除异常 draft，新引用只接受 published，历史 hidden/deleted 引用按权限显示正文或安全占位。追加迁移不回填旧数据、不修改 UID/Topic number/楼层，也不自动删除或合并既有草稿；决策见 [ADR-0019](./adr/0019-editor-autosave-idempotency-and-draft-privacy.md)。
-- 编辑会话资源与恢复边界（`v0.13.8` 候选）：响应体无效的 2xx 与超时同属结果未知，必须保留原 key 恢复；恢复到 `superseded` 时清除旧 history 并重新加载规范 Topic 页面状态。每用户滚动一小时最多创建 60 个新回复编辑会话；`cleared`/`superseded` 墓碑保留 30 天，由 Worker 每批最多清理 500 条，`active`/`published` 不清理。Topic 关闭或账号受限后，作者仍可删除自己的既有回复草稿；站点 `repliesEnabled=false` 只阻止正式发布，仍允许保存和编辑草稿。
+- 编辑器与草稿修订（`v0.13.8`）：主题/回复自动保存严格串行，显式发布取消 debounce、等待在途保存并阻止上传期间提交；15 秒写入超时不再误判服务端未提交。作者级 UUID/revision、history 恢复接口和回复 `active/cleared/published/superseded` 会话状态保证重复发布、清空草稿、迟到请求、刷新与响应丢失不会制造重复 Topic/楼层或复活草稿。后台主题、回复、仪表盘、用户/节点计数和社区审计排除活动草稿、删除自草稿及删除来源未知的私人谱系；数字编号写入口对非作者统一伪装为 404，未知删除来源只恢复为私人草稿。公开回复排除异常 draft，新引用只接受 published，历史 hidden/deleted 引用按权限显示正文或安全占位。追加迁移不回填旧数据、不修改 UID/Topic number/楼层，也不自动删除或合并既有草稿；决策见 [ADR-0019](./adr/0019-editor-autosave-idempotency-and-draft-privacy.md)。
+- 编辑会话资源与恢复边界（`v0.13.8`）：响应体无效的 2xx 与超时同属结果未知，必须保留原 key 恢复；恢复到 `superseded` 时清除旧 history 并重新加载规范 Topic 页面状态。每用户滚动一小时最多创建 60 个新回复编辑会话；`cleared`/`superseded` 墓碑保留 30 天，由 Worker 每批最多清理 500 条，`active`/`published` 不清理。Topic 关闭或账号受限后，作者仍可删除自己的既有回复草稿；站点 `repliesEnabled=false` 只阻止正式发布，仍允许保存和编辑草稿。
 - 滚动镜像通道修订（`main`）：完整检查及原生 amd64/arm64 基础镜像冒烟通过后自动更新宝塔使用的 `latest`，并保留 `sha-<提交>` 多架构 manifest；正式标签只发布不可变 SemVer、Release 和供应链资产，不再回写 `latest`。决策见 [ADR-0018](./adr/0018-validated-main-image-channel.md)。
 - 交付：公开 Beta 已知限制、2 vCPU/4 GiB/40 GiB 最低档位、性能报告、人工安装/旅程/升级/恢复验收模板见 [Beta 就绪记录](./16-public-beta-readiness.md)。
 
@@ -199,8 +199,8 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 ## 3. 测试与验证边界
 
-- 当前候选本地已通过：Prisma generate、Prettier、ESLint、TypeScript、72 项单元测试、生产依赖零已知漏洞、13 条迁移清单和 Next.js/Worker/CLI 生产构建；本机无 Docker，真实服务与镜像以 Actions 为最终门槛。
-- 候选集成测试共 46 项，覆盖运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任、后台、容量、迁移索引、编辑会话并发、私人草稿防枚举和引用可见性；周期任务竞争夹具隔离其他到期任务。
+- 当前版本本地已通过：Prisma generate、Prettier、ESLint、TypeScript、72 项单元测试、生产依赖零已知漏洞、13 条迁移清单和 Next.js/Worker/CLI 生产构建；本机无 Docker，真实服务与镜像以 Actions 为最终门槛。
+- 当前版本集成测试共 46 项，覆盖运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任、后台、容量、迁移索引、编辑会话并发、私人草稿防枚举和引用可见性；周期任务竞争夹具隔离其他到期任务。
 - Playwright 共 14 项，覆盖完整身份/社区旅程、编辑器网络屏障与响应丢失恢复、私人草稿 HTTP 防枚举、性能样本、三种视口布局，以及四个公开页面的 serious/critical axe、水平溢出、键盘和 reduced-motion。
 - 主分支 `0.13.0` 候选已由 CI #56/#57 完成 amd64 setup、首次管理员、故障注入、空卷恢复和 `v0.12.0` 升级；正式标签 CI #58 已重跑 amd64 并完成原生 arm64、manifest、SBOM/provenance、非 Docker x64 归档和 Release。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
@@ -210,7 +210,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - `v0.13.5` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29639852944) 已通过格式、Lint、类型、60 项单元测试、32 项 PostgreSQL/Redis/Mailpit 集成测试、10 项 Playwright、迁移历史、生产依赖审计、amd64/arm64 空安装与首次管理员、恢复和 `v0.12.0` 升级，并发布非 Docker x64 资产与 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.5)。不可变 GHCR `0.13.5` OCI index 为 `sha256:0163cdcf3242b1183d1c8efa6e780aff6b70a182df2416d864703eb20dfac3a6`。
 - `v0.13.6` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29643059227) 已通过完整检查、生产依赖审计、非 Docker x64 归档以及 amd64/arm64 空安装、首次管理员、恢复和 `v0.12.0` 升级，并发布 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.6)、SHA-256 与 SBOM 资产。不可变 GHCR `0.13.6` OCI index 为 `sha256:42daf6fe42ec027db7fb0844f22421b303da3e498d637d61bc0e2c6e1057652e`；两个平台镜像均固化版本 `0.13.6` 与提交 `e9e2eaa165ca3a43e917647cc38c65300cfd1d8d`。
 - `v0.13.7` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29673793861) 已通过完整检查、生产依赖审计、63 项单元测试、32 项 PostgreSQL/Redis/Mailpit 集成测试、12 项 Playwright、非 Docker x64 归档以及 amd64/arm64 空安装、首次管理员、恢复和 `v0.12.0` 升级，并发布 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.7)、SHA-256 与 SBOM 资产。不可变 GHCR `0.13.7` OCI index 为 `sha256:fad3486005f3f5787eeaefa6df7ee5aa7df42f6aa0f5d98a9b0d5218c330a9eb`，两个平台镜像均固化版本 `0.13.7` 与提交 `51c86568073fa3777e32ca0d74074a5f736287e5`。
-- `v0.13.8` 候选本地已通过 Prisma generate、Prettier、TypeScript、ESLint、72 项单元测试、生产依赖审计、13 条迁移哈希和生产构建；真实 PostgreSQL/Redis/Mailpit、Playwright、Shell 语法、amd64/arm64 镜像及 `v0.13.7` 升级以本次 GitHub Actions 为最终门槛，未通过前不得标记已发布。
+- `v0.13.8` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29733660199) 已通过完整检查、生产依赖审计、72 项单元测试、46 项 PostgreSQL/Redis/Mailpit 集成测试、14 项 Playwright、非 Docker x64 归档以及 amd64/arm64 空安装、首次管理员、恢复和 `v0.13.7 -> v0.13.8` 升级，并发布 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.8)、SHA-256 与 SBOM 资产。不可变 GHCR `0.13.8` OCI index 为 `sha256:59558fa9e366343897f140da6c650299cf9516f6f660cc680eefdf4742fb528e`，两个平台镜像均固化版本 `0.13.8` 与提交 `d6349011f42f6f7378fcbe80dd2938810ec2be7b`；同一提交的滚动 `latest` 已在真实服务器拉取复验通过。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
 ## 4. 当前真实数据边界
