@@ -29,7 +29,7 @@ flowchart LR
 | 层面 | 选择 | 状态 | 说明 |
 | --- | --- | --- | --- |
 | 语言 | TypeScript 严格模式 | 已确定 | 前后台和 Worker 共享类型与领域代码 |
-| Web | Next.js 16.2.10、App Router | 已确定 | 创建工程时锁定精确版本，升级需测试 |
+| Web | Next.js 16.2.11、App Router | 已确定 | 创建工程时锁定精确版本，升级需测试 |
 | 运行时 | Node.js 24 LTS | 已确定 | 镜像和 CI 使用同一主版本 |
 | 包管理 | pnpm，锁定 lockfile | 已确定 | CI 使用 `--frozen-lockfile` |
 | UI | React、Tailwind CSS、shadcn/ui | 已确定 | 复用组件原语，不引入整套后台模板 |

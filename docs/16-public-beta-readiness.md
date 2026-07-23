@@ -83,7 +83,14 @@ pnpm audit --prod --json
 - `postcss 8.4.31`：GHSA-qx2v-qp2m-jg93，中危。
 - `@hono/node-server 1.19.11`：GHSA-92pp-h63x-v22m，中危，只经 Prisma 工具链进入。
 
-仓库级 pnpm override 固定到已修复的 `postcss 8.5.10` 和 `@hono/node-server 1.19.13`，完整安装、单元测试、类型检查和生产构建必须验证兼容性。修复后生产审计为 0 项。CI 对生产依赖执行审计，并至少阻断 high/critical。
+2026-07-23 的稳定版准备再次发现 Next.js、`fast-uri`、Sharp 和 Hono Node adapter 新公告：
+
+- Next.js `16.2.10`：App Router Proxy 绕过、Server Actions DoS/SSRF 和 rewrites SSRF，高危；升级到 `16.2.11`。
+- `fast-uri 3.1.3`：反斜杠 authority 混淆，高危；覆盖到 `3.1.4`。
+- Next.js 可选 Sharp `0.34.5`：继承 libvips 高危公告；覆盖到项目已验证的 `0.35.3`。
+- `@hono/node-server` 后续路径遍历与 WebSocket 中止泄漏公告，中危；仅经 Prisma/shadcn 工具链进入，统一覆盖到 `2.0.11`。
+
+仓库与非 Docker runtime lockfile 统一固定 `postcss 8.5.10`、`@hono/node-server 2.0.11`、`fast-uri 3.1.4`，并让 Next.js 使用 Sharp `0.35.3`。完整安装、Prisma generate、单元测试、类型检查、生产构建、真实服务和镜像测试必须验证覆盖兼容性；两份生产依赖审计均为 0 项。CI 至少阻断 high/critical，稳定版发布记录额外保存完整 audit 结果。
 
 依赖升级不能批量追逐最新版。Better Auth、Prisma、Next.js、PostgreSQL、Redis、BullMQ、Sharp 或邮件链路升级后，必须重新执行真实服务、身份、附件、Worker、迁移和恢复测试。
 

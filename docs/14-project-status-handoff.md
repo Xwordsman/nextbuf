@@ -4,8 +4,8 @@
 
 - 最后更新：2026-07-20
 - 当前已发布版本：`v0.13.8` 公开 Beta 补丁
-- 当前候选版本：无
-- 下一动作：继续真实服务器与邀请用户 Beta 验收，只在发现问题时追加 `v0.13.x` 修复；未经明确批准不开始 `v1.0.0`
+- 当前候选版本：`v1.0.0` 稳定版准备
+- 下一动作：关闭依赖、定时 CI、隐私注销、支持政策、第三方通知和真实 `v0.13.8 -> v1.0.0` 升级/恢复门槛；不混入 `v1.1.0` 功能
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -13,7 +13,7 @@
 
 ### `v0.1.0` 工程与治理
 
-- Next.js 16.2.10、React 19、Node.js 24、pnpm 11、TypeScript 严格模式和统一 `src/app`。
+- Next.js 16.2.11、React 19、Node.js 24、pnpm 11、TypeScript 严格模式和统一 `src/app`。
 - ESLint、Prettier、Vitest、standalone 构建与 GitHub Actions CI。
 - Zod 环境基础、结构化日志、AppError、request ID、首页、错误页、404、版本接口。
 - AGPL-3.0-only、Section 7(b) `Powered by NextBuf`、DCO 1.1、贡献与安全政策。
@@ -243,7 +243,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 ## 5. 已确定且不得自行更改
 
-1. Next.js 16.2.10、TypeScript、App Router、Node.js 24、pnpm。
+1. Next.js 16.2.11、TypeScript、App Router、Node.js 24、pnpm。
 2. PostgreSQL 18 是唯一官方数据库；Redis 8 + BullMQ。
 3. 模块化单体，前台、后台、API 和 Worker 同仓库，不拆 frontend/backend。
 4. 一个应用镜像，Web 与 Worker 分进程；默认生产四个常驻容器。

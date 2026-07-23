@@ -272,7 +272,7 @@ jobs:
           timeout --signal=TERM --kill-after=30s 20m tests/smoke/docker-smoke.sh "${{ matrix.architecture }}"
 
       - name: Upgrade the current public release to the candidate
-        if: matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.migration-change.outputs.changed == 'true'))
+        if: matrix.architecture == 'amd64' && steps.version.outputs.version != env.NEXTBUF_UPGRADE_BASELINE && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.migration-change.outputs.changed == 'true'))
         env:
           NEXTBUF_SMOKE_VERSION: ${{ steps.version.outputs.version }}
         run: |

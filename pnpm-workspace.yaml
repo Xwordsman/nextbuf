@@ -8,5 +8,7 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - bullmq@5.80.2
 overrides:
-  "@hono/node-server": 1.19.13
+  "@hono/node-server": 2.0.11
+  fast-uri: 3.1.4
+  "next>sharp": 0.35.3
   postcss: 8.5.10

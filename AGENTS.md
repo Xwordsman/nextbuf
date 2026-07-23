@@ -2,7 +2,7 @@
 
 Before changing code, read `docs/14-project-status-handoff.md`, the current milestone in `docs/09-detailed-development-plan.md`, and the relevant architecture document.
 
-- Current completed milestone: `v0.13.0`; do not begin `v1.0.0` or later work without explicit user approval.
+- Current completed milestone: `v0.13.8`; `v1.0.0` stabilization is explicitly approved. Do not begin `v1.1.0` or later feature work without explicit user approval.
 - Better Auth owns authentication. Do not replace its password, session, verification, OAuth, or Cookie behavior without a superseding ADR and migration plan.
 - Nodes, topics, posts, revisions, mentions, attachments and member/topic/reply overview counts are real PostgreSQL data. Online-member tracking is not implemented; keep it at an explicit empty state instead of inventing demo activity.
 - Real identity includes immutable UID, `@username`, permanent aliases, profile, local avatars, privacy settings, public member pages, cancellable deletion requests and persisted trust state. Follow ADR-0009 and ADR-0013.
@@ -15,7 +15,7 @@ Before changing code, read `docs/14-project-status-handoff.md`, the current mile
 - `v0.12.0` production packaging, setup gating, first administrator, backup/restore and conservative upgrade behavior follow ADR-0015.
 - `v0.13.0` security, performance, migration, recovery and accessibility gates follow `docs/16-public-beta-readiness.md`; preserve them during Beta fixes.
 - Preserve the approved layout contract: max width 1380px, desktop columns 230px and 300px, and 16px gaps.
-- Use Node.js 24, pnpm, Next.js 16.2.10, TypeScript strict mode, and `src/app`.
+- Use Node.js 24, pnpm, Next.js 16.2.11, TypeScript strict mode, and `src/app`.
 - Do not create separate top-level frontend/backend projects.
 - Keep server code behind `server-only`; client code must not import database, queue, Redis, or secrets.
 - Do not implement future milestone features early.
