@@ -2,7 +2,7 @@
 
 本文件定义部署架构和运维原则。逐步安装、升级、备份、恢复和故障排查见 [安装与运维运行手册](./13-installation-operations-runbook.md)。
 
-> 当前实现状态：`v0.13.8` 公开 Beta 候选已交付生产打包、首次管理员、通用空节点安装、UID 从 1 开始、官方 shadcn/ui 管理后台与全站公开前台、编辑会话恢复、备份恢复、精确升级和无需 `.env`、固定容器名的宝塔单文件 Compose。Mailpit 只用于开发、测试和 CI，不是第五个生产容器。生产与恢复合同见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)，面板启动协调见 [ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)，单文件面板入口见 [ADR-0017](./adr/0017-single-file-panel-compose.md)。
+> 当前实现状态：`v0.13.9` 最终 Beta 候选已交付生产打包、首次管理员、通用空节点安装、UID 从 1 开始、官方 shadcn/ui 管理后台与全站公开前台、编辑会话恢复、可验证备份恢复、精确升级和无需 `.env`、固定容器名的宝塔单文件 Compose。归档固化版本/commit/构建时间，目标镜像在迁移前验证，普通备份与升级由内核锁串行化。Mailpit 只用于开发、测试和 CI，不是第五个生产容器。生产与恢复合同见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)，面板启动协调见 [ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)，单文件面板入口见 [ADR-0017](./adr/0017-single-file-panel-compose.md)。
 
 ## 1. 部署目标
 

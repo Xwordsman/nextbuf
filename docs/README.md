@@ -2,7 +2,7 @@
 
 本目录是 NextBuf 的产品、架构和工程基线。它用于回答三个问题：我们要做什么、为什么这样设计、开发和发布时必须遵守什么。
 
-> 当前阶段：`v0.13.8` 公开 Beta 补丁已发布，修复编辑器幂等、刷新恢复和私人草稿边界，并保持真实社区数据、既有三栏布局、无需 `.env`、固定容器名的宝塔单文件 Compose、工作流化后台内容管理和 UID 1 安装合同；下一步继续真实服务器与邀请用户 Beta 验收，只在发现问题时追加 `v0.13.x` 修复，不自动开始 `v1.0.0`。`UI/index.html` 仅是历史视觉参考，运行页面以 `src/app` 和 `src/components` 为准。
+> 当前阶段：`v0.13.8` 公开 Beta 补丁已发布，`v0.13.9` 最终 Beta 加固正在验证；它保持真实社区数据、既有三栏布局、无需 `.env`、固定容器名的宝塔单文件 Compose、工作流化后台内容管理和 UID 1 安装合同，并收紧安全、依赖、归档、备份和升级边界。`v1.0.0` 稳定化已经批准，必须先发布并验证 `v0.13.9`，且不提前实现 `v1.1.0`。`UI/index.html` 仅是历史视觉参考，运行页面以 `src/app` 和 `src/components` 为准。
 
 ## 项目定位
 
@@ -38,6 +38,7 @@ NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开
 | [15-license-attribution-policy.md](./15-license-attribution-policy.md) | AGPLv3、页脚署名、商标和贡献许可规则 | 所有参与者、部署者 |
 | [16-public-beta-readiness.md](./16-public-beta-readiness.md) | `v0.13.0` 威胁模型、安全、性能、迁移、恢复和 Beta 验收记录 | 安全、测试、发布、运维 |
 | [17-public-beta-acceptance-template.md](./17-public-beta-acceptance-template.md) | 安装、核心旅程、升级与恢复的人工验收记录模板 | 测试、发布、运维 |
+| [18-v0.13.9-release-notes.md](./18-v0.13.9-release-notes.md) | 最终 Beta 的变更、升级、恢复和已知限制 | 部署、发布、运维 |
 | [adr/](./adr/) | 关键架构决策的背景、取舍和后果 | 架构、维护者 |
 
 ## 推荐阅读顺序
