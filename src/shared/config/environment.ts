@@ -1,3 +1,4 @@
+import { findInvalidTrustedProxies } from "@better-auth/core/utils/ip";
 import { z } from "zod";
 
 const optionalUrl = z.preprocess((value) => (value === "" ? undefined : value), z.url().optional());
@@ -13,6 +14,24 @@ const exampleAuthSecret = "replace-with-at-least-32-random-characters";
 const exampleMailPayloadKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 const exampleSetupToken = "replace-with-at-least-32-random-characters";
 const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+
+function trustedProxyEntries(value: string): string[] {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+const trustedProxies = z
+  .string()
+  .default("")
+  .refine((value) => {
+    const entries = trustedProxyEntries(value);
+    return (
+      findInvalidTrustedProxies(entries).length === 0 &&
+      entries.every((entry) => !entry.endsWith("/0"))
+    );
+  }, "must contain only IP addresses or CIDR ranges");
 
 function isLoopbackUrl(value: string): boolean {
   return loopbackHosts.has(new URL(value).hostname);
@@ -65,7 +84,7 @@ const environmentSchema = z.object({
   AUTH_VERIFICATION_EXPIRES_IN_SECONDS: z.coerce.number().int().min(300).default(86_400),
   AUTH_PASSWORD_RESET_EXPIRES_IN_SECONDS: z.coerce.number().int().min(300).default(3_600),
   AUTH_TRUSTED_ORIGINS: z.string().default(""),
-  AUTH_TRUSTED_PROXIES: z.string().default(""),
+  AUTH_TRUSTED_PROXIES: trustedProxies,
   MAIL_PAYLOAD_KEY: optionalString,
   SMTP_HOST: optionalString,
   SMTP_PORT: z.coerce.number().int().min(1).max(65_535).default(1_025),

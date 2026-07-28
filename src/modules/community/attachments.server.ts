@@ -162,7 +162,15 @@ export async function getAttachmentDelivery(attachmentId: string, viewerId?: str
     where: { id: attachmentId },
     include: {
       posts: {
-        include: { post: { include: { topic: { select: { status: true } } } } },
+        include: {
+          post: {
+            include: {
+              topic: {
+                select: { status: true, node: { select: { visibility: true } } },
+              },
+            },
+          },
+        },
       },
     },
   });
@@ -170,7 +178,9 @@ export async function getAttachmentDelivery(attachmentId: string, viewerId?: str
   const owner = viewerId === attachment.uploaderId;
   const publiclyReferenced = attachment.posts.some(
     ({ post }) =>
-      post.status === "published" && ["published", "closed"].includes(post.topic.status),
+      post.status === "published" &&
+      ["published", "closed"].includes(post.topic.status) &&
+      post.topic.node.visibility === "public",
   );
   if (!owner && (!publiclyReferenced || attachment.status !== "ready")) return null;
   const driver = attachment.storageDriver as "local" | "s3";

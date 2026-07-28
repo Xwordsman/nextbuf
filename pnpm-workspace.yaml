@@ -7,8 +7,19 @@ allowBuilds:
   unrs-resolver: true
 minimumReleaseAgeExclude:
   - bullmq@5.80.2
+  - "@prisma/adapter-pg@7.9.1"
+  - "@prisma/client-runtime-utils@7.9.1"
+  - "@prisma/client@7.9.1"
+  - "@prisma/config@7.9.1"
+  - "@prisma/debug@7.9.1"
+  - "@prisma/driver-adapter-utils@7.9.1"
+  - "@prisma/engines@7.9.1"
+  - "@prisma/fetch-engine@7.9.1"
+  - "@prisma/get-platform@7.9.1"
+  - postcss@8.5.24
+  - prisma@7.9.1
 overrides:
   "@hono/node-server": 2.0.11
   fast-uri: 3.1.4
   "next>sharp": 0.35.3
-  postcss: 8.5.10
+  postcss: 8.5.24

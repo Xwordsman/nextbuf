@@ -26,8 +26,86 @@ require_files() {
   [ -f "$ENV_FILE" ] || die "missing $ENV_FILE; run ./nextbufctl init first"
 }
 
+is_exact_semver() {
+  printf '%s' "$1" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.((0|[1-9][0-9]*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
+}
+
+semver_compare() {
+  left=$1
+  right=$2
+  LC_ALL=C awk -v left="$left" -v right="$right" '
+    function compare_numeric(left_value, right_value) {
+      if (length(left_value) < length(right_value)) return -1
+      if (length(left_value) > length(right_value)) return 1
+      if (("x" left_value) < ("x" right_value)) return -1
+      if (("x" left_value) > ("x" right_value)) return 1
+      return 0
+    }
+    function split_version(value, core, pre, marker) {
+      marker = index(value, "-")
+      if (marker == 0) {
+        core[1] = value
+        pre[1] = ""
+      } else {
+        core[1] = substr(value, 1, marker - 1)
+        pre[1] = substr(value, marker + 1)
+      }
+    }
+    function compare_prerelease(left_pre, right_pre, left_parts, right_parts, left_count, right_count, count, i, left_numeric, right_numeric) {
+      if (left_pre == "" && right_pre == "") return 0
+      if (left_pre == "") return 1
+      if (right_pre == "") return -1
+      left_count = split(left_pre, left_parts, ".")
+      right_count = split(right_pre, right_parts, ".")
+      count = left_count > right_count ? left_count : right_count
+      for (i = 1; i <= count; i++) {
+        if (i > left_count) return -1
+        if (i > right_count) return 1
+        left_numeric = left_parts[i] ~ /^[0-9]+$/
+        right_numeric = right_parts[i] ~ /^[0-9]+$/
+        if (left_numeric && right_numeric) {
+          numeric_result = compare_numeric(left_parts[i], right_parts[i])
+          if (numeric_result != 0) return numeric_result
+        } else if (left_numeric != right_numeric) {
+          return left_numeric ? -1 : 1
+        } else {
+          if (("x" left_parts[i]) < ("x" right_parts[i])) return -1
+          if (("x" left_parts[i]) > ("x" right_parts[i])) return 1
+        }
+      }
+      return 0
+    }
+    BEGIN {
+      split_version(left, left_core_value, left_pre_value)
+      split_version(right, right_core_value, right_pre_value)
+      split(left_core_value[1], left_core, ".")
+      split(right_core_value[1], right_core, ".")
+      for (i = 1; i <= 3; i++) {
+        core_result = compare_numeric(left_core[i], right_core[i])
+        if (core_result != 0) { print core_result; exit }
+      }
+      print compare_prerelease(left_pre_value[1], right_pre_value[1])
+    }
+  '
+}
+
 compose() {
   NEXTBUF_ENV_FILE="$ENV_FILE" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+compose_for_version() {
+  requested_version=$1
+  shift
+  NEXTBUF_VERSION="$requested_version" NEXTBUF_ENV_FILE="$ENV_FILE" \
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+acquire_operation_lock() {
+  require_command flock
+  lock_file="$ROOT/.nextbufctl.lock"
+  exec 9>"$lock_file"
+  chmod 600 "$lock_file"
+  flock -n 9 || die "another NextBuf operation is already running"
 }
 
 env_get() {
@@ -84,6 +162,38 @@ wait_for_service() {
     [ $((now - started)) -lt "$timeout" ] || die "timed out waiting for $service"
     sleep 2
   done
+}
+
+service_is_running() {
+  service=$1
+  id=$(compose ps -q "$service" 2>/dev/null || true)
+  [ -n "$id" ] || return 1
+  [ "$(docker inspect --format '{{.State.Running}}' "$id" 2>/dev/null || true)" = true ]
+}
+
+resume_app_services() {
+  resume_web=$1
+  resume_worker=$2
+  if [ "$resume_web" = 1 ]; then
+    compose up -d --no-deps web
+    wait_for_service web 180
+  fi
+  if [ "$resume_worker" = 1 ]; then
+    compose up -d --no-deps worker
+    wait_for_service worker 180
+  fi
+}
+
+resume_app_services_best_effort() {
+  resume_web=$1
+  resume_worker=$2
+  services=
+  if [ "$resume_web" = 1 ]; then services="web"; fi
+  if [ "$resume_worker" = 1 ]; then services="$services worker"; fi
+  if [ -n "$services" ]; then
+    # shellcheck disable=SC2086
+    compose up -d --no-deps $services >/dev/null 2>&1 || true
+  fi
 }
 
 confirm_destructive() {
@@ -162,6 +272,7 @@ do_doctor() {
 }
 
 do_backup() {
+  keep_stopped=${1:-0}
   require_files
   require_command tar
   require_command sha256sum
@@ -169,8 +280,23 @@ do_backup() {
   chmod 700 "$BACKUP_DIR"
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
   version=$(env_get NEXTBUF_VERSION)
+  is_exact_semver "$version" || die "NEXTBUF_VERSION is not an exact SemVer: $version"
   temp=$(mktemp -d "$BACKUP_DIR/.nextbuf-backup.XXXXXX")
-  trap 'rm -rf "$temp"' EXIT HUP INT TERM
+  partial=
+  resume_web=0
+  resume_worker=0
+  if service_is_running web; then resume_web=1; fi
+  if service_is_running worker; then resume_worker=1; fi
+  backup_abort() {
+    status=$?
+    [ "$status" -ne 0 ] || status=1
+    trap - EXIT HUP INT TERM
+    rm -rf "$temp"
+    if [ -n "$partial" ]; then rm -f "$partial"; fi
+    resume_app_services_best_effort "$resume_web" "$resume_worker"
+    exit "$status"
+  }
+  trap backup_abort EXIT HUP INT TERM
   database_kb=$(compose exec -T postgres sh -ec 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT CEIL(pg_database_size(current_database()) / 1024.0)::bigint"' | tr -d '\r')
   if [ "$(env_get STORAGE_DRIVER)" = local ]; then
     uploads_kb=$(compose run --rm --no-deps --entrypoint sh setup -ec 'du -sk /app/data/uploads | cut -f1')
@@ -180,32 +306,45 @@ do_backup() {
   available_kb=$(df -Pk "$BACKUP_DIR" | awk 'NR == 2 { print $4 }')
   required_kb=$(((database_kb + uploads_kb) * 2 + 102400))
   [ "$available_kb" -gt "$required_kb" ] || die "insufficient free space for backup: need at least ${required_kb} KiB"
+  info "stopping Web and Worker to create a database/attachment-consistent backup"
+  compose stop web worker >/dev/null
+  if service_is_running web || service_is_running worker; then
+    die "Web or Worker is still running; consistency backup aborted"
+  fi
   info "creating PostgreSQL dump"
   compose exec -T postgres sh -ec 'exec pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --no-owner --no-privileges' >"$temp/database.dump"
+  compose exec -T postgres sh -ec 'exec pg_restore --list' <"$temp/database.dump" >"$temp/database.list"
+  [ -s "$temp/database.list" ] || die "PostgreSQL dump validation produced an empty object list"
   cp "$ENV_FILE" "$temp/config.env"
   chmod 600 "$temp/config.env"
   cp "$COMPOSE_FILE" "$temp/compose.yml"
   if [ "$(env_get STORAGE_DRIVER)" = local ]; then
     compose run --rm --no-deps --entrypoint sh setup -ec 'tar -C /app/data/uploads -czf - .' >"$temp/uploads.tar.gz"
+    tar -tzf "$temp/uploads.tar.gz" >"$temp/uploads.list"
+    compose run --rm --no-deps --entrypoint sh setup -ec 'cd /app/data/uploads; find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum' >"$temp/uploads.SHA256SUMS"
     attachments=true
-    attachment_file=uploads.tar.gz
+    attachment_files="uploads.tar.gz uploads.list uploads.SHA256SUMS"
   else
     printf 'driver=s3\nbucket=%s\nendpoint=%s\n' "$(env_get S3_BUCKET)" "$(env_get S3_ENDPOINT)" >"$temp/storage-s3.txt"
     attachments=false
-    attachment_file=storage-s3.txt
+    attachment_files=storage-s3.txt
   fi
   postgres_version=$(compose exec -T postgres sh -ec 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SHOW server_version"' | tr -d '\r')
   migration=$(compose exec -T postgres sh -ec 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY finished_at DESC LIMIT 1"' | tr -d '\r')
   cat >"$temp/manifest.json" <<EOF
-{"format":"nextbuf-backup-v1","createdAt":"$stamp","applicationVersion":"$version","postgresVersion":"$postgres_version","latestMigration":"$migration","attachmentsIncluded":$attachments}
+  {"format":"nextbuf-backup-v1","createdAt":"$stamp","applicationVersion":"$version","postgresVersion":"$postgres_version","latestMigration":"$migration","writeProcessesStopped":true,"databaseList":"database.list","attachmentsIncluded":$attachments}
 EOF
-  (cd "$temp" && sha256sum database.dump config.env compose.yml manifest.json "$attachment_file" >SHA256SUMS)
-  archive="$BACKUP_DIR/nextbuf-$version-$stamp.tar.gz"
+  (cd "$temp" && sha256sum database.dump database.list config.env compose.yml manifest.json $attachment_files >SHA256SUMS)
+  archive="$BACKUP_DIR/nextbuf-$version-$stamp-$$.tar.gz"
   partial="$archive.partial"
   tar -C "$temp" -czf "$partial" .
+  tar -tzf "$partial" >/dev/null
   chmod 600 "$partial"
   mv "$partial" "$archive"
   rm -rf "$temp"
+  if [ "$keep_stopped" != 1 ]; then
+    resume_app_services "$resume_web" "$resume_worker"
+  fi
   trap - EXIT HUP INT TERM
   LAST_BACKUP=$archive
   export LAST_BACKUP
@@ -237,6 +376,7 @@ do_restore() {
   (cd "$temp" && sha256sum -c SHA256SUMS)
   [ -f "$temp/database.dump" ] || die "backup has no PostgreSQL dump"
   [ -f "$temp/manifest.json" ] || die "backup has no manifest"
+  compose run --rm --no-deps --entrypoint pg_restore postgres --list <"$temp/database.dump" >/dev/null
   info "restore manifest: $(cat "$temp/manifest.json")"
   if [ -f "$temp/uploads.tar.gz" ] && tar -tzf "$temp/uploads.tar.gz" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
     die "unsafe path in attachment archive"
@@ -258,7 +398,10 @@ do_restore() {
   fi
   confirm_destructive "Restore will replace the current NextBuf database and local attachments."
 
-  compose stop web worker >/dev/null 2>&1 || true
+  compose stop web worker >/dev/null
+  if service_is_running web || service_is_running worker; then
+    die "Web or Worker is still running; restore aborted"
+  fi
   if [ "$empty" = 1 ]; then
     compose down -v
   fi
@@ -273,6 +416,13 @@ do_restore() {
   compose exec -T postgres sh -ec 'exec pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --no-privileges --exit-on-error' <"$temp/database.dump"
   if [ -f "$temp/uploads.tar.gz" ]; then
     compose run --rm --no-deps --entrypoint sh setup -ec 'find /app/data/uploads -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; tar -C /app/data/uploads -xzf -' <"$temp/uploads.tar.gz"
+    if [ -f "$temp/uploads.SHA256SUMS" ]; then
+      if [ -s "$temp/uploads.SHA256SUMS" ]; then
+        compose run --rm --no-deps --entrypoint sh setup -ec 'cd /app/data/uploads; sha256sum -c -' <"$temp/uploads.SHA256SUMS"
+      elif compose run --rm --no-deps --entrypoint sh setup -ec 'find /app/data/uploads -type f -print -quit | grep -q .'; then
+        die "attachment checksum manifest is empty but the archive contains files"
+      fi
+    fi
   fi
   compose run --rm setup
   compose up -d --no-deps web worker
@@ -285,30 +435,39 @@ do_restore() {
 
 do_upgrade() {
   require_files
-  require_command sort
   target=${1:-}
-  printf '%s' "$target" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$' || die "upgrade requires an exact version such as 0.12.1"
+  is_exact_semver "$target" || die "upgrade requires an exact SemVer such as 1.0.0 or 1.0.0-rc.1"
   current=$(env_get NEXTBUF_VERSION)
+  is_exact_semver "$current" || die "current NEXTBUF_VERSION is not an exact SemVer: $current"
   [ "$target" != "$current" ] || die "already running $target"
-  oldest=$(printf '%s\n%s\n' "$current" "$target" | sort -V | head -n 1)
-  [ "$oldest" = "$current" ] || die "downgrades are not supported by upgrade; use the documented restore procedure"
-  do_backup
+  [ "$(semver_compare "$current" "$target")" = -1 ] || die "downgrades are not supported by upgrade; use the documented restore procedure"
+  if ! compose_for_version "$target" pull web worker setup migrate doctor; then
+    die "image pull failed; configuration remains $current"
+  fi
+  if ! image_version=$(compose_for_version "$target" run --rm --no-deps setup version); then
+    die "target image version probe failed; configuration remains $current"
+  fi
+  image_version=$(printf '%s' "$image_version" | tr -d '\r')
+  if [ "$image_version" != "$target" ]; then
+    die "target image reports $image_version instead of $target; no migration was started"
+  fi
+  do_backup 1
   backup_path=$LAST_BACKUP
   env_set NEXTBUF_VERSION "$target"
-  if ! compose pull web worker setup migrate doctor; then
-    env_set NEXTBUF_VERSION "$current"
-    die "image pull failed; configuration restored to $current"
+  upgrade_log="$BACKUP_DIR/upgrade-$current-to-$target-$(date -u +%Y%m%dT%H%M%SZ)-$$.log"
+  if ! compose run --rm setup >"$upgrade_log" 2>&1; then
+    cat "$upgrade_log" >&2
+    die "upgrade setup failed after the target setup started; Web and Worker remain stopped and NEXTBUF_VERSION remains $target. Retry setup or explicitly restore $backup_path. Log: $upgrade_log"
   fi
-  compose stop web worker
-  if ! compose run --rm setup; then
-    env_set NEXTBUF_VERSION "$current"
-    compose up -d --no-deps web worker || true
-    die "upgrade setup failed; image version restored. Backup: $backup_path"
+  if ! compose up -d --no-deps web worker >>"$upgrade_log" 2>&1 ||
+    ! (wait_for_service web 180 && wait_for_service worker 180); then
+    compose logs --no-color --tail 200 web worker >>"$upgrade_log" 2>&1 || true
+    if ! compose stop web worker >/dev/null 2>&1 || service_is_running web || service_is_running worker; then
+      die "target services are unhealthy and could not be stopped; inspect them immediately. NEXTBUF_VERSION remains $target. Log: $upgrade_log"
+    fi
+    die "target services did not become healthy; Web and Worker remain stopped and NEXTBUF_VERSION remains $target. Explicitly restore $backup_path unless the release notes permit a code-only retry. Log: $upgrade_log"
   fi
-  compose up -d --no-deps web worker
-  wait_for_service web 180
-  wait_for_service worker 180
-  info "upgrade completed: $current -> $target"
+  info "upgrade completed: $current -> $target (log: $upgrade_log)"
 }
 
 command_name=${1:-help}
@@ -321,13 +480,16 @@ case "$command_name" in
 esac
 require_command docker
 case "$command_name" in
+  init|start|stop|backup|restore|upgrade) acquire_operation_lock ;;
+esac
+case "$command_name" in
   init) do_init "$@" ;;
   start) do_start "$@" ;;
   stop) do_stop "$@" ;;
   status) do_status "$@" ;;
   logs) do_logs "$@" ;;
   doctor) do_doctor "$@" ;;
-  backup) do_backup "$@" ;;
+  backup) [ "$#" -eq 0 ] || die "usage: ./nextbufctl backup"; do_backup 0 ;;
   restore) do_restore "$@" ;;
   upgrade) do_upgrade "$@" ;;
   *) die "unknown command: $command_name" ;;

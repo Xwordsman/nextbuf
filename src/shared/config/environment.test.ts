@@ -97,6 +97,31 @@ describe("environment configuration", () => {
     );
   });
 
+  it("accepts only explicit IP addresses or CIDR ranges as trusted proxies", () => {
+    expect(
+      parseEnvironment({
+        NODE_ENV: "test",
+        AUTH_TRUSTED_PROXIES: "127.0.0.1,10.0.0.0/8,2001:db8::/32",
+      }).AUTH_TRUSTED_PROXIES,
+    ).toBe("127.0.0.1,10.0.0.0/8,2001:db8::/32");
+
+    expect(() =>
+      parseEnvironment({ NODE_ENV: "test", AUTH_TRUSTED_PROXIES: "proxy.example.com" }),
+    ).toThrow("AUTH_TRUSTED_PROXIES");
+    expect(() =>
+      parseEnvironment({ NODE_ENV: "test", AUTH_TRUSTED_PROXIES: "10.0.0.0/99" }),
+    ).toThrow("AUTH_TRUSTED_PROXIES");
+    expect(() => parseEnvironment({ NODE_ENV: "test", AUTH_TRUSTED_PROXIES: "0.0.0.0/0" })).toThrow(
+      "AUTH_TRUSTED_PROXIES",
+    );
+    expect(() =>
+      parseEnvironment({ NODE_ENV: "test", AUTH_TRUSTED_PROXIES: "fe80::1%eth0" }),
+    ).toThrow("AUTH_TRUSTED_PROXIES");
+    expect(() =>
+      parseEnvironment({ NODE_ENV: "test", AUTH_TRUSTED_PROXIES: "::ffff:192.0.2.0/120" }),
+    ).toThrow("AUTH_TRUSTED_PROXIES");
+  });
+
   it("requires a complete S3 storage configuration", () => {
     const input: NodeJS.ProcessEnv = {
       NODE_ENV: "test",

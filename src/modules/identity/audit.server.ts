@@ -4,6 +4,7 @@ import { createHmac } from "node:crypto";
 import type { Prisma } from "@/generated/prisma/client";
 import { getPrismaClient } from "@/infrastructure/database/client";
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
+import { resolveClientIp } from "@/shared/http/client-ip.server";
 
 type IdentityAuditInput = {
   eventType: string;
@@ -14,10 +15,7 @@ type IdentityAuditInput = {
 };
 
 function requestIpHash(request?: Request): string | undefined {
-  const value =
-    request?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    request?.headers.get("x-real-ip") ??
-    undefined;
+  const value = request ? resolveClientIp(request) : undefined;
   if (!value) return undefined;
   return createHmac("sha256", getAuthEnvironment().AUTH_SECRET).update(value).digest("hex");
 }

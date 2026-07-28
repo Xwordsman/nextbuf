@@ -244,7 +244,7 @@ nextbuf-web.service
 nextbuf-worker.service
 ```
 
-二者使用同一发布目录和 `/etc/nextbuf/nextbuf.env`，分别调用 `deploy/bin/nextbuf-service web` 与 `worker`。PM2 示例位于 `deploy/pm2/ecosystem.config.cjs`，同样定义两个 app。
+二者共用 `/etc/nextbuf/nextbuf.env`，但实际工作目录必须是发布包内的 `/opt/nextbuf/current/runtime`，分别调用 `runtime/deploy/bin/nextbuf-service web` 与 `worker`。发布根目录的 `deploy/systemd` 和 `deploy/pm2` 只保存安装模板；PM2 示例同样把两个 app 的 `cwd` 固定到 `current/runtime`。归档内的 CLI/服务包装器按 `NEXTBUF_ENV_FILE`、`/etc/nextbuf/nextbuf.env`、当前 `runtime/.env` 的顺序选择部署配置，因此 systemd、PM2 和人工 CLI 使用同一文件；除强制收紧的 Web 监听地址外，显式进程环境优先级最高。非 Docker Web 包装器固定监听 `127.0.0.1`，公网连接必须经过同机 Nginx/Caddy，避免客户端绕过反向代理伪造转发头。`.nextbuf-build.env` 只提供版本、commit 和构建时间的只读默认值，不保存实例秘密。标签发布流水线会解压归档，在真实 PostgreSQL、Redis 和 Mailpit 上执行 setup，并从归档内分别启动 Web/Worker、核对归档默认构建身份、检查健康接口和 doctor，避免路径与身份正确性停留在静态文件存在检查。
 
 升级通过新版本目录加稳定符号链接完成，迁移成功后切换。发布文档必须注明哪些数据库迁移不支持直接回退。
 

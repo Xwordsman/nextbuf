@@ -2,10 +2,10 @@
 
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
-- 最后更新：2026-07-20
+- 最后更新：2026-07-29
 - 当前已发布版本：`v0.13.8` 公开 Beta 补丁
-- 当前候选版本：`v1.0.0` 稳定版准备
-- 下一动作：关闭依赖、定时 CI、隐私注销、支持政策、第三方通知和真实 `v0.13.8 -> v1.0.0` 升级/恢复门槛；不混入 `v1.1.0` 功能
+- 当前候选版本：`v0.13.9` 最终 Beta 加固；随后进入已批准的 `v1.0.0` 稳定版准备
+- 下一动作：发布并验证 `v0.13.9`，将其设为正式升级基线，再关闭隐私注销、管理员锁死、支持政策、第三方通知和真实 `v0.13.9 -> v1.0.0` 升级/恢复门槛；不混入 `v1.1.0` 功能
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -20,7 +20,7 @@
 
 ### `v0.2.0` 运行时基础
 
-- PostgreSQL 18、Prisma 7.8.0 与 `@prisma/adapter-pg`；Redis 8 与 BullMQ 5。
+- PostgreSQL 18、Prisma 7.9.1 与 `@prisma/adapter-pg`；Redis 8 与 BullMQ 5。
 - Web、Worker、migrate、setup、doctor 入口；Worker/CLI 构建为 Node.js 24 ESM。
 - 事务性 Outbox、稳定 BullMQ Job ID、数据库幂等任务、版本化处理器和 Worker 心跳。
 - `/health/live`、`/health/ready`、`/health/worker` 与兼容入口 `/api/health/live`。
@@ -170,6 +170,7 @@
 - 全站公开界面修订（`v0.13.7`）：官方 shadcn/ui `radix-nova` 原语已从历史 `components/admin/ui` 收敛到 `components/shadcn/ui`；节点、主题、账户、认证、安装、搜索、通知、状态与公共页头/页脚均按相同组件体系迁移。保留真实数据、URL、表单字段、Better Auth 旅程、草稿、附件、互动、举报、分页和无障碍入口；不再维护平行的 `components/ui` 原语目录。本补丁只替换展示层，不改变 PostgreSQL、Better Auth、授权、Worker、配置、部署或镜像拓扑合同。
 - 编辑器与草稿修订（`v0.13.8`）：主题/回复自动保存严格串行，显式发布取消 debounce、等待在途保存并阻止上传期间提交；15 秒写入超时不再误判服务端未提交。作者级 UUID/revision、history 恢复接口和回复 `active/cleared/published/superseded` 会话状态保证重复发布、清空草稿、迟到请求、刷新与响应丢失不会制造重复 Topic/楼层或复活草稿。后台主题、回复、仪表盘、用户/节点计数和社区审计排除活动草稿、删除自草稿及删除来源未知的私人谱系；数字编号写入口对非作者统一伪装为 404，未知删除来源只恢复为私人草稿。公开回复排除异常 draft，新引用只接受 published，历史 hidden/deleted 引用按权限显示正文或安全占位。追加迁移不回填旧数据、不修改 UID/Topic number/楼层，也不自动删除或合并既有草稿；决策见 [ADR-0019](./adr/0019-editor-autosave-idempotency-and-draft-privacy.md)。
 - 编辑会话资源与恢复边界（`v0.13.8`）：响应体无效的 2xx 与超时同属结果未知，必须保留原 key 恢复；恢复到 `superseded` 时清除旧 history 并重新加载规范 Topic 页面状态。每用户滚动一小时最多创建 60 个新回复编辑会话；`cleared`/`superseded` 墓碑保留 30 天，由 Worker 每批最多清理 500 条，`active`/`published` 不清理。Topic 关闭或账号受限后，作者仍可删除自己的既有回复草稿；站点 `repliesEnabled=false` 只阻止正式发布，仍允许保存和编辑草稿。
+- 最终 Beta 加固（`v0.13.9` 候选）：统一 Better Auth 客户端 IP/CIDR 解析并拒绝不一致代理配置；隐藏节点附件不再形成匿名公开旁路。Prisma 升至 `7.9.1`、PostCSS 固定到 `8.5.24`，根项目与非 Docker 运行时分别执行生产依赖审计。发布归档固化可复现版本/commit/构建时间并从解压产物启动真实 Web/Worker；非 Docker CLI、systemd 和 PM2 统一加载部署环境。`nextbufctl` 使用内核锁串行化运维，备份先确认 Web/Worker 停止并验证数据库/附件校验清单；升级在备份或迁移前核对目标镜像内部版本，迁移开始后的失败保持服务停止并要求显式恢复。
 - 滚动镜像通道修订（`main`）：完整检查及原生 amd64/arm64 基础镜像冒烟通过后自动更新宝塔使用的 `latest`，并保留 `sha-<提交>` 多架构 manifest；正式标签只发布不可变 SemVer、Release 和供应链资产，不再回写 `latest`。决策见 [ADR-0018](./adr/0018-validated-main-image-channel.md)。
 - 交付：公开 Beta 已知限制、2 vCPU/4 GiB/40 GiB 最低档位、性能报告、人工安装/旅程/升级/恢复验收模板见 [Beta 就绪记录](./16-public-beta-readiness.md)。
 
@@ -186,7 +187,7 @@ pnpm nextbuf migrate             只部署已有迁移
 pnpm nextbuf invite create ...   创建注册邀请码
 pnpm nextbuf mail test --to ...  通过 Outbox 发送 SMTP 测试邮件
 pnpm build                       构建 Prisma Client、Worker/CLI、Next.js standalone
-pnpm release:archive 0.13.8      生成非 Docker 平台归档和 SHA-256
+pnpm release:archive <version>   生成非 Docker 平台归档和 SHA-256
 pnpm check                       格式、Lint、类型和单元测试
 pnpm test:integration            PostgreSQL/Redis/Mailpit 真实集成测试
 pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
@@ -199,8 +200,8 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 ## 3. 测试与验证边界
 
-- 当前版本本地已通过：Prisma generate、Prettier、ESLint、TypeScript、72 项单元测试、生产依赖零已知漏洞、13 条迁移清单和 Next.js/Worker/CLI 生产构建；本机无 Docker，真实服务与镜像以 Actions 为最终门槛。
-- 当前版本集成测试共 46 项，覆盖运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任、后台、容量、迁移索引、编辑会话并发、私人草稿防枚举和引用可见性；周期任务竞争夹具隔离其他到期任务。
+- 当前版本本地已通过：Prisma generate、Prettier、ESLint、TypeScript、77 项单元测试、生产依赖零已知漏洞、13 条迁移清单和 Next.js/Worker/CLI 生产构建；本机无 Docker，真实服务与镜像以 Actions 为最终门槛。
+- 当前版本集成测试共 47 项，覆盖运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任、后台、容量、迁移索引、编辑会话并发、私人草稿防枚举、引用可见性和隐藏节点附件授权；周期任务竞争夹具隔离其他到期任务。
 - Playwright 共 14 项，覆盖完整身份/社区旅程、编辑器网络屏障与响应丢失恢复、私人草稿 HTTP 防枚举、性能样本、三种视口布局，以及四个公开页面的 serious/critical axe、水平溢出、键盘和 reduced-motion。
 - 主分支 `0.13.0` 候选已由 CI #56/#57 完成 amd64 setup、首次管理员、故障注入、空卷恢复和 `v0.12.0` 升级；正式标签 CI #58 已重跑 amd64 并完成原生 arm64、manifest、SBOM/provenance、非 Docker x64 归档和 Release。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
@@ -266,13 +267,13 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 21. 宝塔单文件入口遵循 ADR-0017 与 ADR-0018：`latest` 只负责通过验证的滚动拉取通道，源码 SemVer、commit 与 Digest 共同标识镜像；高级运维继续使用 `.env + nextbufctl`。
 22. 编辑自动保存、发布幂等、刷新恢复和私人草稿遵循 ADR-0019：浏览器超时或无效 2xx 响应体不代表事务失败，回复清空/发布终态由 PostgreSQL 保存；新回复编辑会话限 60 个/用户/小时，`cleared`/`superseded` 墓碑保留 30 天并由 Worker 每批清理 500 条；管理员和版主不能读取作者私人草稿谱系，Topic 关闭或账号受限也不能阻止作者删除自己的既有回复草稿。
 
-## 6. 下一步只做 Beta 验收
+## 6. `v1.0.0` 稳定化边界
 
 入口：[公开 Beta 人工验收模板](./17-public-beta-acceptance-template.md)
 
-在真实域名和目标服务器上执行安装、SMTP/存储、注册、发帖、举报、升级和空卷恢复，按阻断/重要/增强记录结果。任何阻断问题回到 `v0.13.x` 修复并重跑完整门槛。
+先在真实域名和目标服务器上完成最终 `v0.13.9` 安装、SMTP/存储、注册、发帖、举报、升级和空卷恢复验收；任何阻断问题继续以 `v0.13.x` 修复并重跑完整门槛。`v0.13.9` 标签、双架构镜像和 Release 全部通过后，正式版只做账号注销、管理员连续性、升级不变量、安全/支持/隐私文档、真实数据隔离演练和发布证据收口。
 
-未经用户明确批准，不开始 `v1.0.0`、插件、交易、支付或开放 API。
+`v1.0.0` 稳定化已经由用户明确批准；未经新的明确批准，不开始 `v1.1.0`、插件、交易、支付或开放 API。
 
 ## 7. 文档优先级与交接规则
 

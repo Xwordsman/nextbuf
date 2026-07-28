@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: "nextbuf-web",
-      cwd: "/opt/nextbuf/current",
+      cwd: "/opt/nextbuf/current/runtime",
       script: "deploy/bin/nextbuf-service",
       args: "web",
       interpreter: "none",
@@ -14,7 +14,7 @@ module.exports = {
     },
     {
       name: "nextbuf-worker",
-      cwd: "/opt/nextbuf/current",
+      cwd: "/opt/nextbuf/current/runtime",
       script: "deploy/bin/nextbuf-service",
       args: "worker",
       interpreter: "none",

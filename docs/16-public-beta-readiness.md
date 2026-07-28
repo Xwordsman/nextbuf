@@ -90,7 +90,7 @@ pnpm audit --prod --json
 - Next.js 可选 Sharp `0.34.5`：继承 libvips 高危公告；覆盖到项目已验证的 `0.35.3`。
 - `@hono/node-server` 后续路径遍历与 WebSocket 中止泄漏公告，中危；仅经 Prisma/shadcn 工具链进入，统一覆盖到 `2.0.11`。
 
-仓库与非 Docker runtime lockfile 统一固定 `postcss 8.5.10`、`@hono/node-server 2.0.11`、`fast-uri 3.1.4`，并让 Next.js 使用 Sharp `0.35.3`。完整安装、Prisma generate、单元测试、类型检查、生产构建、真实服务和镜像测试必须验证覆盖兼容性；两份生产依赖审计均为 0 项。CI 至少阻断 high/critical，稳定版发布记录额外保存完整 audit 结果。
+2026-07-28 再次关闭 PostCSS 任意文件读取/路径遍历和 Valibot 异常路径公告：仓库固定 `postcss 8.5.24`，Prisma 统一升级到 `7.9.1`，`shadcn` CLI 归入开发依赖。仓库与非 Docker runtime lockfile 继续固定 `@hono/node-server 2.0.11`、`fast-uri 3.1.4`，并让 Next.js 使用 Sharp `0.35.3`。完整安装、Prisma generate、单元测试、类型检查、生产构建、真实服务和镜像测试必须验证覆盖兼容性；CI 同时审计两份生产依赖 lockfile 并阻断 high/critical，稳定版发布记录额外保存完整 audit 结果。
 
 依赖升级不能批量追逐最新版。Better Auth、Prisma、Next.js、PostgreSQL、Redis、BullMQ、Sharp 或邮件链路升级后，必须重新执行真实服务、身份、附件、Worker、迁移和恢复测试。
 

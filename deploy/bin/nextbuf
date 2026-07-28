@@ -2,4 +2,17 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$ROOT"
-exec node dist/cli/index.mjs "$@"
+
+deployment_env=${NEXTBUF_ENV_FILE:-}
+if [ -z "$deployment_env" ]; then
+  if [ -r /etc/nextbuf/nextbuf.env ]; then
+    deployment_env=/etc/nextbuf/nextbuf.env
+  elif [ -r .env ]; then
+    deployment_env=.env
+  fi
+fi
+
+if [ -n "$deployment_env" ]; then
+  exec node --env-file-if-exists=.nextbuf-build.env --env-file="$deployment_env" dist/cli/index.mjs "$@"
+fi
+exec node --env-file-if-exists=.nextbuf-build.env dist/cli/index.mjs "$@"

@@ -20,12 +20,11 @@
 | --- | --- | --- | --- | --- | --- |
 | `NODE_ENV` | 是 | `development` | 全部 | 否 | `development`、`test`、`production` |
 | `APP_URL` | 生产必需 | `http://localhost:3000` | Web、Worker、setup | 否 | 用户访问的唯一规范外部地址；公网生产必须 HTTPS，只有 loopback 测试地址可使用 HTTP |
-| `HOSTNAME` | 否 | `0.0.0.0` | Web | 否 | Web 监听地址 |
+| `HOSTNAME` | 否 | `0.0.0.0` | Web | 否 | 容器/源码 Web 监听地址；非 Docker 发布包的服务包装器固定覆盖为 `127.0.0.1`，公网入口必须经过本机反向代理 |
 | `PORT` | 否 | `3000` | Web | 否 | Web 监听端口 |
 | `TZ` | 否 | `Asia/Shanghai` | 全部 | 否 | 日志和计划任务显示时区；数据库仍保存 UTC |
 | `LOG_LEVEL` | 否 | `info` | 全部 | 否 | `debug`、`info`、`warn`、`error` |
-| `LOG_FORMAT` | 否 | 生产 `json` | 全部 | 否 | `pretty` 或 `json` |
-| `TRUST_PROXY` | 生产需确认 | `false` | Web | 否 | 可信代理策略，不能无条件信任所有来源 |
+| `LOG_FORMAT` | 否 | `pretty` | 全部 | 否 | `pretty` 或 `json`；生产建议显式设置 `json` |
 
 `APP_URL` 改变会影响 Cookie、OAuth 回调、邮件链接和 Webhook，应作为受控部署变更。standalone E2E 可使用 `http://localhost`、`http://127.0.0.1` 或 `http://[::1]`；该例外不适用于局域网 IP、容器域名或公网域名。
 
@@ -37,12 +36,12 @@
 | `DATABASE_DIRECT_URL` | 否 | 使用 `DATABASE_URL` | setup、迁移 | 是 | 绕过连接池的迁移连接 |
 | `DATABASE_POOL_SIZE` | 否 | `10` | Web、Worker | 否 | 每进程连接池上限 |
 | `DATABASE_STATEMENT_TIMEOUT_MS` | 否 | `15000` | Web、Worker | 否 | 普通查询超时 |
-| `DATABASE_SSL_MODE` | 否 | `prefer` | 全部 | 否 | 托管数据库可设 `require`/`verify-full` |
 
 要求：
 
 - 只支持 PostgreSQL 18 作为官方基线。
 - 生产连接必须使用独立低权限应用用户；迁移用户可按需要单独配置。
+- 托管 PostgreSQL 的 TLS 模式通过 Provider 支持的 `DATABASE_URL` 参数配置；NextBuf 当前没有单独读取 `DATABASE_SSL_MODE`。
 - 密码包含特殊字符时必须正确 URL 编码。
 - Web 与 Worker 总连接数必须小于数据库限制并留出迁移和管理余量。
 
@@ -80,7 +79,7 @@ Redis 服务必须兼容 BullMQ 所需命令。业务事实不能只存在 Redis
 | `AUTH_VERIFICATION_EXPIRES_IN_SECONDS` | 否 | `86400` | Web | 否 | 邮箱验证链接有效期 |
 | `AUTH_PASSWORD_RESET_EXPIRES_IN_SECONDS` | 否 | `3600` | Web | 否 | 密码重置链接有效期 |
 | `AUTH_TRUSTED_ORIGINS` | 否 | 空 | Web | 否 | 逗号分隔的附加可信 Origin；`APP_URL` 自动包含 |
-| `AUTH_TRUSTED_PROXIES` | 否 | 空 | Web | 否 | 逗号分隔的可信代理地址/规则，不能无条件信任公网转发头 |
+| `AUTH_TRUSTED_PROXIES` | 否 | 空 | Web | 否 | 逗号分隔的可信代理 IP/CIDR；多跳 `X-Forwarded-For` 只从右侧剥离这些代理，拒绝 `/0` 和任意公网来源 |
 | `MAIL_PAYLOAD_KEY` | 是 | 无 | Web、Worker | 是 | Base64 编码的精确 32 字节 AES-256-GCM 密钥 |
 
 密钥生成示例：
@@ -199,7 +198,7 @@ SMTP、对象存储和 GitHub OAuth 的主机、Bucket、Client ID 等非秘密�
 | `POSTGRES_PASSWORD` | 无 | 内置 PostgreSQL 强密码 |
 | `REDIS_PASSWORD` | 无 | 内置 Redis 强密码 |
 | `WEB_PORT` | `3000` | 宿主机映射端口 |
-| `NEXTBUF_ENV_FILE` | `.env` | Compose 服务读取的环境文件；主要供测试和受控多实例目录使用 |
+| `NEXTBUF_ENV_FILE` | Compose 为 `.env`；非 Docker 自动探测 | Compose 服务或非 Docker 包装器读取的环境文件；非 Docker 未显式设置时依次查找 `/etc/nextbuf/nextbuf.env` 和当前 `runtime/.env` |
 
 Compose 应根据这些值构造应用 `DATABASE_URL` 和 `REDIS_URL`，用户不需要重复维护两套密码。
 
@@ -207,11 +206,13 @@ Compose 应根据这些值构造应用 `DATABASE_URL` 和 `REDIS_URL`，用户�
 
 ## 13. 配置优先级
 
-建议从低到高：
+Docker/源码开发建议从低到高：
 
 1. 代码安全默认值。
 2. `.env`/容器环境变量。
 3. 受支持的进程命令行参数，仅用于诊断或明确覆盖。
+
+非 Docker 归档固定为：代码安全默认值 < 归档 `.nextbuf-build.env` 中的版本/commit/构建时间 < `NEXTBUF_ENV_FILE` 指定文件，或自动发现的 `/etc/nextbuf/nextbuf.env`/`runtime/.env` < systemd、PM2 或当前 Shell 已导出的进程环境。唯一强制例外是 Web 服务包装器始终以 `HOSTNAME=127.0.0.1` 启动。包装器使用 Node.js 24 原生 dotenv 解析，不把 SMTP 显示名等配置当作 Shell 脚本执行；`.nextbuf-build.env` 不得保存数据库、Redis、认证、邮件或存储秘密。
 
 数据库站点设置属于另一层业务配置，不覆盖实例连接和秘密。相同设置不能同时在环境变量和数据库中形成两个互相争夺的来源。
 

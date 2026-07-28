@@ -7,10 +7,13 @@ cd "$ROOT"
 ARCH=${1:-amd64}
 BASELINE_VERSION=${NEXTBUF_UPGRADE_BASELINE:-0.13.7}
 TARGET_VERSION=${NEXTBUF_SMOKE_VERSION:?Set NEXTBUF_SMOKE_VERSION}
+TARGET_CORE=${TARGET_VERSION%%-*}
+MISMATCH_VERSION=$(printf '%s' "$TARGET_CORE" | awk -F. '{ printf "%d.%d.%d-mismatch.1", $1, $2, $3 + 1 }')
 REGISTRY_NAME="nextbuf-upgrade-registry-$$"
 REGISTRY_ADDRESS=127.0.0.1:5510
 UPGRADE_IMAGE="$REGISTRY_ADDRESS/nextbuf"
 ENV_FILE=.env.upgrade-smoke
+FAILURE_COMPOSE_FILE=compose.upgrade-failure-smoke.yml
 BACKUP_DIR="$ROOT/backups-upgrade-smoke"
 COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml -f deploy/compose/compose.smoke.yml"
 BASE_COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml"
@@ -46,7 +49,7 @@ cleanup() {
     NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true
   fi
   docker rm -f "$REGISTRY_NAME" >/dev/null 2>&1 || true
-  rm -f "$ENV_FILE"
+  rm -f "$ENV_FILE" "$FAILURE_COMPOSE_FILE"
   rm -rf "$BACKUP_DIR"
   exit "$status"
 }
@@ -70,8 +73,10 @@ docker pull "ghcr.io/xwordsman/nextbuf:$BASELINE_VERSION"
 docker image inspect "nextbuf-smoke:$TARGET_VERSION" >/dev/null
 docker tag "ghcr.io/xwordsman/nextbuf:$BASELINE_VERSION" "$UPGRADE_IMAGE:$BASELINE_VERSION"
 docker tag "nextbuf-smoke:$TARGET_VERSION" "$UPGRADE_IMAGE:$TARGET_VERSION"
+docker tag "nextbuf-smoke:$TARGET_VERSION" "$UPGRADE_IMAGE:$MISMATCH_VERSION"
 docker push "$UPGRADE_IMAGE:$BASELINE_VERSION"
 docker push "$UPGRADE_IMAGE:$TARGET_VERSION"
+docker push "$UPGRADE_IMAGE:$MISMATCH_VERSION"
 
 stage 'configure and start the supported baseline'
 cp .env.example "$ENV_FILE"
@@ -90,6 +95,11 @@ sed -i \
   -e 's|^AUTH_REGISTRATION_MODE=.*|AUTH_REGISTRATION_MODE=invite|' \
   "$ENV_FILE"
 mkdir -p "$BACKUP_DIR"
+sed '0,/^    command: \["setup"\]$/s||    command: ["sh", "-ec", "node dist/cli/index.mjs setup; echo NEXTBUF_INJECTED_SETUP_FAILURE >&2; exit 42"]|' \
+  compose.yml >"$FAILURE_COMPOSE_FILE"
+grep -Fq 'NEXTBUF_INJECTED_SETUP_FAILURE' "$FAILURE_COMPOSE_FILE"
+NEXTBUF_ENV_FILE="$ENV_FILE" docker compose --env-file "$ENV_FILE" \
+  -f "$FAILURE_COMPOSE_FILE" config --quiet
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE config --quiet
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d postgres redis mailpit
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE run --rm setup
@@ -187,14 +197,47 @@ INSERT INTO community_post_draft_attachments (draft_id, attachment_id) VALUES (
 );
 SQL
 
-stage "upgrade $BASELINE_VERSION to $TARGET_VERSION"
-NEXTBUFCTL_ASSUME_YES=1 \
-NEXTBUF_ENV_FILE="$ENV_FILE" \
-NEXTBUF_COMPOSE_FILE=compose.yml \
-NEXTBUF_BACKUP_DIR="$BACKUP_DIR" \
-  ./nextbufctl upgrade "$TARGET_VERSION"
+stage 'reject a mismatched image before backup or migration'
+if NEXTBUFCTL_ASSUME_YES=1 \
+  NEXTBUF_ENV_FILE="$ENV_FILE" \
+  NEXTBUF_COMPOSE_FILE=compose.yml \
+  NEXTBUF_BACKUP_DIR="$BACKUP_DIR" \
+  ./nextbufctl upgrade "$MISMATCH_VERSION"; then
+  printf 'Upgrade unexpectedly accepted an image whose internal version did not match its tag\n' >&2
+  exit 1
+fi
+grep -q "^NEXTBUF_VERSION=$BASELINE_VERSION$" "$ENV_FILE"
+if find "$BACKUP_DIR" -maxdepth 1 -name 'nextbuf-*.tar.gz' -print -quit | grep -q .; then
+  printf 'Version-mismatch rejection created a backup even though migration was not allowed to start\n' >&2
+  exit 1
+fi
+wait_for_url http://127.0.0.1:3200/health/ready 180
+wait_for_url http://127.0.0.1:3200/health/worker 180
 
-stage 'verify upgraded version, migrations and durable fixtures'
+stage 'keep services stopped when target setup fails after migration starts'
+if NEXTBUFCTL_ASSUME_YES=1 \
+  NEXTBUF_ENV_FILE="$ENV_FILE" \
+  NEXTBUF_COMPOSE_FILE="$FAILURE_COMPOSE_FILE" \
+  NEXTBUF_BACKUP_DIR="$BACKUP_DIR" \
+  ./nextbufctl upgrade "$TARGET_VERSION"; then
+  printf 'Upgrade unexpectedly succeeded after the injected target setup failure\n' >&2
+  exit 1
+fi
+grep -q "^NEXTBUF_VERSION=$TARGET_VERSION$" "$ENV_FILE"
+[ -z "$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps -q web)" ]
+[ -z "$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps -q worker)" ]
+find "$BACKUP_DIR" -maxdepth 1 -name "nextbuf-$BASELINE_VERSION-*.tar.gz" -print -quit | grep -q .
+failure_log=$(find "$BACKUP_DIR" -maxdepth 1 -name "upgrade-$BASELINE_VERSION-to-$TARGET_VERSION-*.log" -print | sort | tail -n 1)
+[ -n "$failure_log" ]
+grep -q 'NEXTBUF_INJECTED_SETUP_FAILURE' "$failure_log"
+
+stage 'retry the tested target after the injected setup failure'
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm setup
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE up -d --no-deps web worker
+wait_for_url http://127.0.0.1:3200/health/ready 180
+wait_for_url http://127.0.0.1:3200/health/worker 180
+
+stage "verify upgraded version, migrations and durable fixtures"
 grep -q "^NEXTBUF_VERSION=$TARGET_VERSION$" "$ENV_FILE"
 curl --fail --silent http://127.0.0.1:3200/api/version | grep -q "\"version\":\"$TARGET_VERSION\""
 curl --fail --silent http://127.0.0.1:3200/api/setup | grep -q '"complete":true'

@@ -4,8 +4,8 @@ import { access, chmod, cp, mkdir, readdir, readFile, rm, writeFile } from "node
 import path from "node:path";
 
 const root = process.cwd();
-const version =
-  process.argv[2] ?? JSON.parse(await readFile(path.join(root, "package.json"), "utf8")).version;
+const packageVersion = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")).version;
+const version = process.argv[2] ?? packageVersion;
 const output = path.resolve(root, process.argv[3] ?? "release");
 const work = path.join(root, ".release-work");
 const releaseRoot = path.join(work, `nextbuf-${version}`);
@@ -34,6 +34,61 @@ function run(command, args, options = {}) {
   });
 }
 
+function capture(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd: root, stdio: ["ignore", "pipe", "inherit"] });
+    let output = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      output += chunk;
+    });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (signal) reject(new Error(`${command} exited with ${signal}`));
+      else if (code !== 0) reject(new Error(`${command} exited with code ${code}`));
+      else resolve(output.trim());
+    });
+  });
+}
+
+function isRfc3339Timestamp(value) {
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/u.exec(
+      value,
+    );
+  if (!match) return false;
+
+  const [
+    ,
+    yearValue,
+    monthValue,
+    dayValue,
+    hourValue,
+    minuteValue,
+    secondValue,
+    offsetHourValue,
+    offsetMinuteValue,
+  ] = match;
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+  return (
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= (daysInMonth[month - 1] ?? 0) &&
+    Number(hourValue) <= 23 &&
+    Number(minuteValue) <= 59 &&
+    Number(secondValue) <= 59 &&
+    (offsetHourValue === undefined || Number(offsetHourValue) <= 23) &&
+    (offsetMinuteValue === undefined || Number(offsetMinuteValue) <= 59) &&
+    Number.isFinite(Date.parse(value))
+  );
+}
+
 async function assertBuilt() {
   for (const target of [
     ".next/standalone/server.js",
@@ -57,6 +112,30 @@ async function filesRecursively(directory, prefix = "") {
 }
 
 await assertBuilt();
+if (
+  !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:(?:0|[1-9]\d*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:(?:0|[1-9]\d*)|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?$/u.test(
+    version,
+  )
+) {
+  throw new Error("Release version must be an OCI-compatible exact SemVer");
+}
+if (version !== packageVersion) {
+  throw new Error(`Release version ${version} does not match package version ${packageVersion}`);
+}
+const builtVersion = await capture(process.execPath, ["dist/cli/index.mjs", "version"]);
+if (builtVersion !== version) {
+  throw new Error(
+    `Built application version ${builtVersion} does not match release version ${version}`,
+  );
+}
+const commit = process.env.NEXTBUF_COMMIT?.trim() || (await capture("git", ["rev-parse", "HEAD"]));
+const buildTime =
+  process.env.NEXTBUF_BUILD_TIME?.trim() ||
+  (await capture("git", ["show", "-s", "--format=%cI", commit]));
+if (!/^[0-9a-f]{40}$/u.test(commit)) throw new Error("Release commit must be a full Git SHA");
+if (!isRfc3339Timestamp(buildTime)) {
+  throw new Error("Release build time must be an RFC 3339 timestamp");
+}
 await rm(work, { recursive: true, force: true });
 await mkdir(runtimeRoot, { recursive: true });
 await cp(
@@ -74,6 +153,16 @@ await cp(
 await run("pnpm", ["--dir", runtimeRoot, "install", "--prod", "--frozen-lockfile"], { cwd: root });
 
 await cp(path.join(root, "package.json"), path.join(runtimeRoot, "package.json"));
+await writeFile(
+  path.join(runtimeRoot, ".nextbuf-build.env"),
+  [
+    `NEXTBUF_VERSION=${JSON.stringify(version)}`,
+    `NEXTBUF_COMMIT=${JSON.stringify(commit)}`,
+    `NEXTBUF_BUILD_TIME=${JSON.stringify(buildTime)}`,
+    "",
+  ].join("\n"),
+  { mode: 0o644 },
+);
 
 await mkdir(path.join(runtimeRoot, ".next"), { recursive: true });
 await mkdir(path.join(runtimeRoot, "scripts"), { recursive: true });

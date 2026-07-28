@@ -1,14 +1,14 @@
 import { interactionErrorResponse } from "@/app/api/interactions/interaction-response";
 import { recordTopicView } from "@/modules/interactions/interactions.server";
 import { getRequestSession } from "@/modules/identity/current-session.server";
+import { resolveClientIp } from "@/shared/http/client-ip.server";
 import { hasSameOrigin } from "@/shared/http/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function anonymousFingerprint(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const address = forwarded || request.headers.get("x-real-ip") || "unknown";
+  const address = resolveClientIp(request) ?? "unknown";
   const userAgent = request.headers.get("user-agent")?.slice(0, 500) || "unknown";
   return `${address}|${userAgent}`;
 }

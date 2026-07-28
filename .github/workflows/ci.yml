@@ -111,7 +111,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Audit production dependencies
-        run: pnpm audit:prod
+        run: |
+          pnpm audit:prod
+          pnpm audit:runtime
 
       - name: Verify immutable migration history
         run: pnpm migration:verify
@@ -130,6 +132,9 @@ jobs:
           sh -n deploy/bin/nextbuf-service
           sh -n tests/smoke/docker-smoke.sh
           sh -n tests/smoke/docker-upgrade-smoke.sh
+          sh -n tests/smoke/release-archive-smoke.sh
+          sh -n tests/smoke/nextbufctl-semver-smoke.sh
+          sh tests/smoke/nextbufctl-semver-smoke.sh
 
       - name: Check formatting
         run: pnpm format:check
@@ -218,6 +223,11 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve reproducible build time
+        id: build-metadata
+        shell: bash
+        run: echo "build-time=$(git show -s --format=%cI "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+
       - name: Resolve candidate image tag
         id: image
         shell: bash
@@ -248,7 +258,7 @@ jobs:
           build-args: |
             NEXTBUF_VERSION=${{ steps.version.outputs.version }}
             NEXTBUF_COMMIT=${{ github.sha }}
-            NEXTBUF_BUILD_TIME=${{ github.event.repository.updated_at }}
+            NEXTBUF_BUILD_TIME=${{ steps.build-metadata.outputs.build-time }}
           cache-from: type=gha,scope=image-${{ matrix.architecture }}
           cache-to: type=gha,mode=max,scope=image-${{ matrix.architecture }}
           provenance: ${{ startsWith(github.ref, 'refs/tags/v') && 'mode=max' || 'false' }}
@@ -265,6 +275,8 @@ jobs:
       - name: Run Compose, first-admin and recovery smoke tests
         env:
           NEXTBUF_SMOKE_VERSION: ${{ steps.version.outputs.version }}
+          NEXTBUF_SMOKE_COMMIT: ${{ github.sha }}
+          NEXTBUF_SMOKE_BUILD_TIME: ${{ steps.build-metadata.outputs.build-time }}
           RUN_RESTORE: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
           RUN_FAULTS: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
         run: |
@@ -284,6 +296,43 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://nextbuf:nextbuf_archive@127.0.0.1:5432/nextbuf_archive
+      REDIS_URL: redis://127.0.0.1:6379/0
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: "1025"
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: nextbuf_archive
+          POSTGRES_USER: nextbuf
+          POSTGRES_PASSWORD: nextbuf_archive
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nextbuf -d nextbuf_archive"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      mailpit:
+        image: axllent/mailpit:v1.30.4
+        ports:
+          - 1025:1025
+        options: >-
+          --health-cmd "/mailpit readyz"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -305,11 +354,16 @@ jobs:
       - name: Build and smoke-test release archive
         run: |
           version="${GITHUB_REF_NAME#v}"
-          pnpm release:archive "$version" release
+          commit="$GITHUB_SHA"
+          build_time=$(git show -s --format=%cI "$GITHUB_SHA")
+          NEXTBUF_COMMIT="$commit" NEXTBUF_BUILD_TIME="$build_time" \
+            pnpm release:archive "$version" release
+          (cd release && sha256sum --check "nextbuf-$version-linux-x64.tar.gz.sha256")
           tar -xzf "release/nextbuf-$version-linux-x64.tar.gz" -C release
-          test "$("release/nextbuf-$version/runtime/deploy/bin/nextbuf" version)" = "$version"
-          test -f "release/nextbuf-$version/deploy/systemd/nextbuf-web.service"
-          test -f "release/nextbuf-$version/deploy/pm2/ecosystem.config.cjs"
+          chmod +x tests/smoke/release-archive-smoke.sh
+          timeout --signal=TERM --kill-after=30s 5m \
+            tests/smoke/release-archive-smoke.sh \
+              "release/nextbuf-$version" "$version" "$commit" "$build_time"
 
       - name: Generate source SBOM
         uses: anchore/sbom-action@v0

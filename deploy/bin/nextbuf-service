@@ -3,15 +3,44 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$ROOT"
 
+deployment_env=${NEXTBUF_ENV_FILE:-}
+if [ -z "$deployment_env" ]; then
+  if [ -r /etc/nextbuf/nextbuf.env ]; then
+    deployment_env=/etc/nextbuf/nextbuf.env
+  elif [ -r .env ]; then
+    deployment_env=.env
+  fi
+fi
+
+node_with_env() {
+  if [ -n "$deployment_env" ]; then
+    node --env-file-if-exists=.nextbuf-build.env --env-file="$deployment_env" "$@"
+  else
+    node --env-file-if-exists=.nextbuf-build.env "$@"
+  fi
+}
+
+exec_node_with_env() {
+  if [ -n "$deployment_env" ]; then
+    exec node --env-file-if-exists=.nextbuf-build.env --env-file="$deployment_env" "$@"
+  else
+    exec node --env-file-if-exists=.nextbuf-build.env "$@"
+  fi
+}
+
 role=${1:-}
 case "$role" in
   web)
-    node dist/cli/index.mjs preflight web
-    exec node scripts/start-standalone.mjs
+    # Archive services sit behind a local reverse proxy. Keeping the Web
+    # listener on loopback prevents direct clients from forging proxy headers.
+    HOSTNAME=127.0.0.1
+    export HOSTNAME
+    node_with_env dist/cli/index.mjs preflight web
+    exec_node_with_env scripts/start-standalone.mjs
     ;;
   worker)
-    node dist/cli/index.mjs preflight worker
-    exec node dist/worker/index.mjs
+    node_with_env dist/cli/index.mjs preflight worker
+    exec_node_with_env dist/worker/index.mjs
     ;;
   *)
     printf 'Usage: nextbuf-service <web|worker>\n' >&2

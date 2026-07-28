@@ -15,9 +15,9 @@ Prisma Client 生成到 `src/generated/prisma`，不提交生成文件；安装�
 
 ## 验证依据
 
-- Prisma 7.8.0 的 Node engine 声明支持 Node.js 24。
+- Prisma 7.9.1 的 Node engine 声明支持 Node.js 24；该补丁同时将工具链的 Valibot 提升到已修复公告的 1.4.2。
 - Schema 与初始迁移通过 Prisma 7 校验和 Client 生成。
-- Next.js 16.2.10 standalone 构建通过。
+- Next.js 16.2.11 standalone 构建通过。
 - Worker 与 CLI 可由 tsup 构建为 Node.js 24 ESM 入口。
 - CI 使用真实 PostgreSQL 18 与 Redis 8 执行迁移和完整 Outbox/Worker 集成测试。
 

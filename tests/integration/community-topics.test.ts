@@ -13,6 +13,7 @@ import { processCommunityAttachment } from "@/modules/community/attachment-worke
 import {
   collectCommunityAttachment,
   createCommunityAttachment,
+  getAttachmentDelivery,
 } from "@/modules/community/attachments.server";
 import { pruneReplyEditorSessionTombstones } from "@/modules/community/editor-session-maintenance.server";
 import { findReplyEditorSessionTarget } from "@/modules/community/editor-session-recovery.server";
@@ -74,7 +75,9 @@ describe("community topics integration", () => {
     await prisma.communityTopic.deleteMany({ where: { authorId: { in: userIds } } });
     await prisma.communityAttachment.deleteMany({ where: { uploaderId: { in: userIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-    await prisma.communityNode.deleteMany({ where: { slug: "integration-created" } });
+    await prisma.communityNode.deleteMany({
+      where: { slug: { in: ["integration-created", "attachment-hidden"] } },
+    });
     await ensureCommunityNodeFixtures();
   });
 
@@ -1552,5 +1555,55 @@ describe("community topics integration", () => {
     await expect(
       readStoredAttachment(failed.storageDriver as "local" | "s3", failed.storageKey),
     ).resolves.toBeTruthy();
+  });
+
+  it("stops anonymous attachment delivery when its node becomes hidden", async () => {
+    const prisma = getPrismaClient();
+    const author = await createActor("Hidden Attachment Author");
+    await prisma.communityNode.create({
+      data: {
+        slug: "attachment-hidden",
+        name: "附件可见性测试",
+        description: "验证节点可见性同时约束附件交付",
+        color: "#475569",
+        icon: "paperclip",
+        sortOrder: 95,
+        visibility: "public",
+      },
+    });
+    const attachment = await createCommunityAttachment({
+      uploaderId: author.id,
+      bytes: new TextEncoder().encode("Hidden node attachment fixture"),
+      declaredType: "text/plain",
+      originalName: "hidden-node.txt",
+    });
+    await prisma.$transaction((transaction) =>
+      processCommunityAttachment(transaction, attachment.id),
+    );
+    await createTopic(
+      { userId: author.id },
+      {
+        nodeSlug: "attachment-hidden",
+        title: "隐藏节点附件交付权限验证主题",
+        body: `公开时可以读取这个附件。[hidden-node.txt](/api/media/attachments/${attachment.id})`,
+        action: "publish",
+      },
+    );
+
+    await expect(getAttachmentDelivery(attachment.id)).resolves.toMatchObject({
+      cacheable: true,
+      status: "ready",
+    });
+
+    await prisma.communityNode.update({
+      where: { slug: "attachment-hidden" },
+      data: { visibility: "hidden" },
+    });
+
+    await expect(getAttachmentDelivery(attachment.id)).resolves.toBeNull();
+    await expect(getAttachmentDelivery(attachment.id, author.id)).resolves.toMatchObject({
+      cacheable: false,
+      status: "ready",
+    });
   });
 });

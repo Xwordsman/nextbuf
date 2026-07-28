@@ -16,7 +16,7 @@ const current = (await readdir(migrationsRoot, { withFileTypes: true }))
   .map((entry) => entry.name)
   .sort();
 const baselineFiles = (await readdir(baselinesRoot))
-  .filter((name) => /^v\d+\.\d+\.\d+\.json$/u.test(name))
+  .filter((name) => /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\.json$/u.test(name))
   .sort();
 
 if (baselineFiles.length === 0) throw new Error("No migration baseline manifests were found");

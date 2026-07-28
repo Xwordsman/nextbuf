@@ -14,7 +14,10 @@ nextbuf-release/
 ├─ compose.baota.yml          宝塔单文件入口，不使用 .env
 ├─ .env.example
 ├─ nextbufctl
-├─ runtime/                    非 Docker Web/Worker/CLI/生产依赖
+├─ runtime/                    非 Docker Web/Worker/CLI/生产依赖；服务工作目录
+│  └─ deploy/bin/
+│     ├─ nextbuf              CLI 包装器
+│     └─ nextbuf-service      Web/Worker 服务包装器
 ├─ deploy/
 │  ├─ nginx/nextbuf.conf.example
 │  ├─ systemd/nextbuf-web.service
@@ -51,6 +54,7 @@ nextbuf-release/
 
 - 64 位 Linux，amd64 或 arm64。
 - Docker Engine 和 Compose v2。
+- util-linux `flock`（多数发行版默认安装），用于串行化启动、停止、备份、恢复和升级。
 - 一个解析到服务器的域名。
 - 可用的 80/443 端口或已有反向代理。
 - SMTP 服务；正式开放注册前必须验证邮件。
@@ -218,7 +222,7 @@ nextbuf-redis     Redis
 4. 转发 Host、真实协议和经过限制的客户端 IP 头。
 5. 配置请求体上限不低于 `max(AVATAR_MAX_UPLOAD_BYTES, ATTACHMENT_MAX_UPLOAD_BYTES)`，同时保留合理余量供 multipart 开销。
 
-应用只信任明确配置的宝塔/Nginx 代理地址，不能无条件接受任意 `X-Forwarded-For`。
+应用按 Better Auth 的 IP 解析规则处理 `X-Forwarded-For`：单一反代必须覆盖客户端传入的头；多级反代只有右侧代理全部命中 `AUTH_TRUSTED_PROXIES` 的 IP/CIDR 才会解析客户端地址。不要使用 `$proxy_add_x_forwarded_for` 直接把公网客户端提供的头转发给应用。
 
 ### 4.3 宝塔升级
 
@@ -286,8 +290,10 @@ Redis 不作为主要数据备份。Outbox 保证关键任务可以从 PostgreSQ
 
 ```bash
 ./nextbufctl backup
-# 输出 backups/nextbuf-<version>-<UTC timestamp>.tar.gz
+# 输出 backups/nextbuf-<version>-<UTC timestamp>-<process id>.tar.gz
 ```
+
+`nextbufctl` 使用发布目录中的 `.nextbufctl.lock` 获取非阻塞内核文件锁；另一个启动、停止、备份、恢复或升级仍在运行时，新操作会立即退出，不会与数据库转储或附件归档交错。锁随进程退出自动释放，锁文件本身保留是正常现象。
 
 备份工具必须：
 
@@ -425,12 +431,14 @@ PostgreSQL 和 Redis 不因每次应用补丁自动升级主版本。基础服�
 1. 安装 Node.js 24 LTS、PostgreSQL 18 客户端/服务、Redis 8 和反向代理。
 2. 验证发布包校验和。
 3. 解压到版本目录，设置 `nextbuf` 用户只读应用权限。
-4. 创建 `/etc/nextbuf/nextbuf.env` 并运行配置检查。
+4. 创建 `/etc/nextbuf/nextbuf.env`，权限设为 `600`，然后通过归档包装器运行配置检查。
 5. 进入 `runtime/`，执行 `deploy/bin/nextbuf migrate` 和 `deploy/bin/nextbuf setup`。
 6. 安装并启用 `nextbuf-web.service`、`nextbuf-worker.service`。
 7. 配置 Nginx/Caddy 和 HTTPS。
 
-复制发布包中的两个 systemd 单元到 `/etc/systemd/system/`，创建 `/var/lib/nextbuf/uploads` 与 `/var/lib/nextbuf/cache` 并归属 `nextbuf` 用户，然后执行 `systemctl daemon-reload && systemctl enable --now nextbuf-web nextbuf-worker`。PM2 用户使用 `pm2 start deploy/pm2/ecosystem.config.cjs`，仍然是两个独立 app。
+复制发布包中的两个 systemd 单元到 `/etc/systemd/system/`，创建 `/var/lib/nextbuf/uploads` 与 `/var/lib/nextbuf/cache` 并归属 `nextbuf` 用户，然后执行 `systemctl daemon-reload && systemctl enable --now nextbuf-web nextbuf-worker`。单元中的工作目录和入口应分别是 `/opt/nextbuf/current/runtime` 与 `/opt/nextbuf/current/runtime/deploy/bin/nextbuf-service`；若自定义安装根目录，必须同时替换二者，不能让模板指向发布根目录下并不存在的 `deploy/bin`。`deploy/bin/nextbuf` 和 `deploy/bin/nextbuf-service` 都会自动读取 `/etc/nextbuf/nextbuf.env`；自定义配置位置时显式导出绝对路径 `NEXTBUF_ENV_FILE`。Web 包装器始终把监听地址收紧到 `127.0.0.1`，即使配置文件仍保留容器使用的 `HOSTNAME=0.0.0.0`；不要把非 Docker Web 进程直接暴露到公网。
+
+PM2 用户从发布根目录执行 `pm2 start deploy/pm2/ecosystem.config.cjs`。配置文件位于发布根目录，但两个 app 的 `cwd` 均为 `/opt/nextbuf/current/runtime`，并从该目录执行 `deploy/bin/nextbuf-service`；包装器同样自动读取 `/etc/nextbuf/nextbuf.env`，Web 与 Worker 仍是两个独立 app。
 
 ### 11.3 非 Docker 升级
 

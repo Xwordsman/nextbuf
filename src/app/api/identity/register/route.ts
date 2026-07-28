@@ -12,6 +12,7 @@ import { isUsernameAvailable } from "@/modules/profiles/username.server";
 import { validateUsername } from "@/modules/profiles/username-policy";
 import { getSiteSettings } from "@/modules/settings/settings.server";
 import { isInstallationComplete } from "@/modules/installation/status.server";
+import { resolveClientIp } from "@/shared/http/client-ip.server";
 import { hasSameOrigin } from "@/shared/http/same-origin";
 
 export const runtime = "nodejs";
@@ -26,11 +27,7 @@ const registrationSchema = z.object({
 });
 
 function clientAddress(request: Request): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    request.headers.get("x-real-ip") ??
-    "unknown"
-  );
+  return resolveClientIp(request) ?? "unknown";
 }
 
 function errorResponse(code: string, status: number, retryAfter?: number): Response {

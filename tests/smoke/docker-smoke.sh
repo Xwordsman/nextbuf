@@ -9,6 +9,8 @@ RUN_RESTORE=${RUN_RESTORE:-0}
 RUN_FAULTS=${RUN_FAULTS:-0}
 SMOKE_TIMEOUT_SECONDS=${SMOKE_TIMEOUT_SECONDS:-1200}
 SMOKE_VERSION=${NEXTBUF_SMOKE_VERSION:-0.13.8}
+SMOKE_COMMIT=${NEXTBUF_SMOKE_COMMIT:-}
+SMOKE_BUILD_TIME=${NEXTBUF_SMOKE_BUILD_TIME:-}
 ENV_FILE=.env.smoke
 COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml -f deploy/compose/compose.smoke.yml"
 BASE_COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml"
@@ -204,6 +206,20 @@ until curl --fail --silent http://127.0.0.1:3100/health/ready >/dev/null 2>&1; d
   sleep 2
 done
 
+version_report=/tmp/nextbuf-version-$$.json
+curl --fail --silent http://127.0.0.1:3100/api/version >"$version_report"
+node - "$version_report" "$SMOKE_VERSION" "$SMOKE_COMMIT" "$SMOKE_BUILD_TIME" <<'NODE'
+const fs = require("node:fs");
+const [file, version, commit, buildTime] = process.argv.slice(2);
+const report = JSON.parse(fs.readFileSync(file, "utf8"));
+if (report.version !== version) throw new Error(`Expected version ${version}, received ${report.version}`);
+if (commit && report.commit !== commit) throw new Error(`Expected commit ${commit}, received ${report.commit}`);
+if (buildTime && report.buildTime !== buildTime) {
+  throw new Error(`Expected build time ${buildTime}, received ${report.buildTime}`);
+}
+NODE
+rm -f "$version_report"
+
 stage 'verify first visit redirect and generic empty node catalog'
 home_headers=/tmp/nextbuf-home-before-setup.headers
 home_status=$(curl --silent --dump-header "$home_headers" --output /dev/null \
@@ -318,6 +334,9 @@ if [ "$RUN_RESTORE" = 1 ]; then
   NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl backup
   backup=$(find backups -maxdepth 1 -name 'nextbuf-*.tar.gz' -print | sort | tail -n 1)
   [ -n "$backup" ]
+  tar -tzf "$backup" | grep -q 'database.list$'
+  tar -tzf "$backup" | grep -q 'uploads.list$'
+  tar -tzf "$backup" | grep -q 'uploads.SHA256SUMS$'
   NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE rm -sf mailpit
   NEXTBUFCTL_ASSUME_YES=1 NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml \
     ./nextbufctl restore "$backup" --empty-install --restore-config --yes
