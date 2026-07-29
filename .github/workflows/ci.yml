@@ -370,7 +370,7 @@ jobs:
 
   publish-main-image:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: image-smoke
+    needs: [image-smoke, archive-build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -423,7 +423,7 @@ jobs:
 
   publish-release-image:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: image-smoke
+    needs: [image-smoke, archive-build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
