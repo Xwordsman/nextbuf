@@ -30,6 +30,16 @@ checkpoint() {
   SMOKE_CHECKPOINT=$1
 }
 
+report_error() {
+  message=$1
+  printf '%s\n' "$message" >&2
+  if [ "${GITHUB_ACTIONS:-false}" = true ]; then
+    encoded=$(printf '%s' "$message" | tr '\r\n' '  ' | sed 's/%/%25/g')
+    printf '::error file=tests/smoke/docker-upgrade-smoke.sh,title=Upgrade smoke command failed::%s\n' \
+      "$encoded"
+  fi
+}
+
 wait_for_url() {
   url=$1
   timeout=${2:-180}
@@ -94,6 +104,7 @@ docker push "$UPGRADE_IMAGE:$MISMATCH_VERSION"
 stage 'configure and start the supported baseline'
 checkpoint 'render upgrade compose configuration'
 cp .env.example "$ENV_FILE"
+checkpoint 'rewrite upgrade environment values'
 sed -i \
   -e "s|^NEXTBUF_IMAGE=.*|NEXTBUF_IMAGE=$UPGRADE_IMAGE|" \
   -e "s|^NEXTBUF_VERSION=.*|NEXTBUF_VERSION=$BASELINE_VERSION|" \
@@ -109,12 +120,22 @@ sed -i \
   -e 's|^AUTH_REGISTRATION_MODE=.*|AUTH_REGISTRATION_MODE=invite|' \
   "$ENV_FILE"
 mkdir -p "$BACKUP_DIR"
+checkpoint 'render injected-failure compose file'
 sed '0,/^    command: \["setup"\]$/s||    command: ["sh", "-ec", "node dist/cli/index.mjs setup; echo NEXTBUF_INJECTED_SETUP_FAILURE >&2; exit 42"]|' \
   compose.yml >"$FAILURE_COMPOSE_FILE"
+checkpoint 'verify injected-failure command replacement'
 grep -Fq 'NEXTBUF_INJECTED_SETUP_FAILURE' "$FAILURE_COMPOSE_FILE"
-NEXTBUF_ENV_FILE="$ENV_FILE" docker compose --env-file "$ENV_FILE" \
-  -f "$FAILURE_COMPOSE_FILE" config --quiet
-NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE config --quiet
+checkpoint 'validate injected-failure compose file'
+if ! config_error=$(NEXTBUF_ENV_FILE="$ENV_FILE" docker compose --env-file "$ENV_FILE" \
+  -f "$FAILURE_COMPOSE_FILE" config --quiet 2>&1); then
+  report_error "$config_error"
+  exit 1
+fi
+checkpoint 'validate baseline smoke compose files'
+if ! config_error=$(NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE config --quiet 2>&1); then
+  report_error "$config_error"
+  exit 1
+fi
 checkpoint 'start baseline dependencies'
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d postgres redis mailpit
 checkpoint 'run baseline setup'
