@@ -28,6 +28,16 @@ redact_diagnostics() {
     -e 's#(AUTH_SECRET|MAIL_PAYLOAD_KEY|SETUP_TOKEN|SMTP_PASSWORD)=([^[:space:]]+)#\1=[REDACTED]#g'
 }
 
+emit_github_log_annotation() {
+  log=$1
+  if [ ! -s "$log" ]; then
+    return
+  fi
+  message=$(tail -n 30 "$log" | redact_diagnostics | tr '\r\n' '  ' | cut -c1-4000 | sed 's/%/%25/g')
+  printf '::error file=tests/smoke/release-archive-smoke.sh,title=%s::%s\n' \
+    "$(basename "$log")" "$message" >&2
+}
+
 cleanup() {
   status=$?
   trap - EXIT HUP INT TERM
@@ -49,6 +59,9 @@ cleanup() {
     if [ "${GITHUB_ACTIONS:-}" = true ]; then
       printf '::error file=tests/smoke/release-archive-smoke.sh,title=Release archive smoke failure::Stage %s failed with exit status %s\n' \
         "$CURRENT_STAGE" "$status" >&2
+      for log in "$SETUP_LOG" "$WEB_LOG" "$WORKER_LOG" "$DOCTOR_LOG"; do
+        emit_github_log_annotation "$log"
+      done
     fi
     for log in "$SETUP_LOG" "$WEB_LOG" "$WORKER_LOG" "$DOCTOR_LOG"; do
       if [ -s "$log" ]; then
@@ -190,7 +203,9 @@ WORKER_PID=$!
 
 stage 'wait for packaged Web readiness'
 wait_for_url http://127.0.0.1:3000/health/ready
+stage 'verify packaged Web loopback binding'
 tr '\0' '\n' <"/proc/$WEB_PID/environ" | grep -Fqx 'HOSTNAME=127.0.0.1'
+stage 'verify packaged Web live version'
 curl --fail --silent http://127.0.0.1:3000/health/live | grep -Fq "\"version\":\"$VERSION\""
 stage 'verify packaged runtime identity'
 version_report="$TMP_ROOT/version.json"
