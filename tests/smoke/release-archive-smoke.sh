@@ -15,6 +15,18 @@ SETUP_LOG="$TMP_ROOT/setup.log"
 DOCTOR_LOG="$TMP_ROOT/doctor.log"
 WEB_PID=
 WORKER_PID=
+CURRENT_STAGE=initialization
+
+stage() {
+  CURRENT_STAGE=$1
+  printf 'Archive smoke stage: %s\n' "$CURRENT_STAGE"
+}
+
+redact_diagnostics() {
+  sed -E \
+    -e 's#(postgresql|postgres|redis)://[^/@[:space:]]+(:[^/@[:space:]]*)?@#\1://[REDACTED]@#g' \
+    -e 's#(AUTH_SECRET|MAIL_PAYLOAD_KEY|SETUP_TOKEN|SMTP_PASSWORD)=([^[:space:]]+)#\1=[REDACTED]#g'
+}
 
 cleanup() {
   status=$?
@@ -34,12 +46,30 @@ cleanup() {
 
   rm -f "$RUNTIME_ROOT/.env"
   if [ "$status" -ne 0 ]; then
+    if [ "${GITHUB_ACTIONS:-}" = true ]; then
+      printf '::error file=tests/smoke/release-archive-smoke.sh,title=Release archive smoke failure::Stage %s failed with exit status %s\n' \
+        "$CURRENT_STAGE" "$status" >&2
+    fi
     for log in "$SETUP_LOG" "$WEB_LOG" "$WORKER_LOG" "$DOCTOR_LOG"; do
       if [ -s "$log" ]; then
         printf '\n--- %s ---\n' "$(basename "$log")" >&2
         cat "$log" >&2
       fi
     done
+    if [ -n "${NEXTBUF_ARCHIVE_SMOKE_DIAGNOSTICS_FILE:-}" ]; then
+      {
+        printf '### Release archive smoke failure\n\n'
+        printf -- '- Stage: `%s`\n' "$CURRENT_STAGE"
+        printf -- '- Exit status: `%s`\n' "$status"
+        for log in "$SETUP_LOG" "$WEB_LOG" "$WORKER_LOG" "$DOCTOR_LOG"; do
+          if [ -s "$log" ]; then
+            printf '\n#### `%s`\n\n```text\n' "$(basename "$log")"
+            tail -n 80 "$log" | redact_diagnostics
+            printf '\n```\n'
+          fi
+        done
+      } >>"$NEXTBUF_ARCHIVE_SMOKE_DIAGNOSTICS_FILE"
+    fi
   fi
   rm -rf "$TMP_ROOT"
   exit "$status"
@@ -67,6 +97,7 @@ wait_for_url() {
   done
 }
 
+stage 'verify archive layout and checksums'
 test -f "$RELEASE_ROOT/checksums.txt"
 test -x "$RUNTIME_ROOT/deploy/bin/nextbuf"
 test -x "$RUNTIME_ROOT/deploy/bin/nextbuf-service"
@@ -77,6 +108,7 @@ test -f "$RELEASE_ROOT/deploy/pm2/ecosystem.config.cjs"
 
 (cd "$RELEASE_ROOT" && sha256sum --check checksums.txt >/dev/null)
 
+stage 'verify systemd and PM2 contracts'
 for service in nextbuf-web nextbuf-worker; do
   unit="$RELEASE_ROOT/deploy/systemd/$service.service"
   grep -Fqx 'WorkingDirectory=/opt/nextbuf/current/runtime' "$unit"
@@ -136,11 +168,14 @@ chmod 600 "$RUNTIME_ROOT/.env"
 NEXTBUF_ENV_FILE="$RUNTIME_ROOT/.env"
 export NEXTBUF_ENV_FILE
 
+stage 'verify packaged version command'
 actual_version=$(cd "$RUNTIME_ROOT" && ./deploy/bin/nextbuf version)
 [ "$actual_version" = "$VERSION" ] || fail "Archive version $actual_version does not match $VERSION"
 
+stage 'run packaged setup and migrations'
 (cd "$RUNTIME_ROOT" && ./deploy/bin/nextbuf setup) >"$SETUP_LOG" 2>&1
 
+stage 'start packaged Web and Worker'
 (
   cd "$RUNTIME_ROOT"
   exec ./deploy/bin/nextbuf-service web
@@ -153,9 +188,11 @@ WEB_PID=$!
 ) >"$WORKER_LOG" 2>&1 &
 WORKER_PID=$!
 
+stage 'wait for packaged Web readiness'
 wait_for_url http://127.0.0.1:3000/health/ready
 tr '\0' '\n' <"/proc/$WEB_PID/environ" | grep -Fqx 'HOSTNAME=127.0.0.1'
 curl --fail --silent http://127.0.0.1:3000/health/live | grep -Fq "\"version\":\"$VERSION\""
+stage 'verify packaged runtime identity'
 version_report="$TMP_ROOT/version.json"
 curl --fail --silent http://127.0.0.1:3000/api/version >"$version_report"
 node - "$version_report" "$VERSION" "$EXPECTED_COMMIT" "$EXPECTED_BUILD_TIME" <<'NODE'
@@ -167,6 +204,7 @@ for (const [key, expected] of Object.entries({ version, commit, buildTime })) {
 }
 NODE
 
+stage 'create first administrator'
 setup_response=$(curl --fail-with-body --silent --show-error \
   -H 'origin: http://127.0.0.1:3000' \
   -H 'content-type: application/json' \
@@ -174,7 +212,9 @@ setup_response=$(curl --fail-with-body --silent --show-error \
   http://127.0.0.1:3000/api/setup)
 printf '%s' "$setup_response" | grep -Fq '"ok":true'
 
+stage 'wait for packaged Worker health'
 wait_for_url http://127.0.0.1:3000/health/worker
+stage 'run packaged doctor'
 (cd "$RUNTIME_ROOT" && ./deploy/bin/nextbuf doctor) >"$DOCTOR_LOG" 2>&1
 grep -Fq '"status": "ok"' "$DOCTOR_LOG"
 
