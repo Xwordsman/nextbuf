@@ -18,10 +18,16 @@ BACKUP_DIR="$ROOT/backups-upgrade-smoke"
 COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml -f deploy/compose/compose.smoke.yml"
 BASE_COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml"
 SMOKE_STAGE=bootstrap
+SMOKE_CHECKPOINT=initializing
 
 stage() {
   SMOKE_STAGE=$1
+  SMOKE_CHECKPOINT=starting
   printf '==> %s\n' "$SMOKE_STAGE"
+}
+
+checkpoint() {
+  SMOKE_CHECKPOINT=$1
 }
 
 wait_for_url() {
@@ -36,6 +42,11 @@ wait_for_url() {
 
 diagnose_failure() {
   printf 'Upgrade smoke stage: %s\n' "$SMOKE_STAGE" >&2
+  printf 'Upgrade smoke checkpoint: %s\n' "$SMOKE_CHECKPOINT" >&2
+  if [ "${GITHUB_ACTIONS:-false}" = true ]; then
+    printf '::error file=tests/smoke/docker-upgrade-smoke.sh,title=Upgrade smoke failed::Stage: %s; checkpoint: %s\n' \
+      "$SMOKE_STAGE" "$SMOKE_CHECKPOINT"
+  fi
   NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE ps -a >&2 2>&1 || true
   NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE logs --no-color --tail=100 \
     postgres redis mailpit setup web worker >&2 2>&1 || true
@@ -67,8 +78,10 @@ oldest=$(printf '%s\n%s\n' "$BASELINE_VERSION" "$TARGET_VERSION" | sort -V | hea
 }
 
 stage 'publish baseline and candidate images to a local registry'
+checkpoint 'start local registry'
 docker run -d --name "$REGISTRY_NAME" -p "$REGISTRY_ADDRESS:5000" registry:2.8.3 >/dev/null
 wait_for_url "http://$REGISTRY_ADDRESS/v2/" 120
+checkpoint 'pull and publish baseline and candidate images'
 docker pull "ghcr.io/xwordsman/nextbuf:$BASELINE_VERSION"
 docker image inspect "nextbuf-smoke:$TARGET_VERSION" >/dev/null
 docker tag "ghcr.io/xwordsman/nextbuf:$BASELINE_VERSION" "$UPGRADE_IMAGE:$BASELINE_VERSION"
@@ -79,6 +92,7 @@ docker push "$UPGRADE_IMAGE:$TARGET_VERSION"
 docker push "$UPGRADE_IMAGE:$MISMATCH_VERSION"
 
 stage 'configure and start the supported baseline'
+checkpoint 'render upgrade compose configuration'
 cp .env.example "$ENV_FILE"
 sed -i \
   -e "s|^NEXTBUF_IMAGE=.*|NEXTBUF_IMAGE=$UPGRADE_IMAGE|" \
@@ -101,20 +115,27 @@ grep -Fq 'NEXTBUF_INJECTED_SETUP_FAILURE' "$FAILURE_COMPOSE_FILE"
 NEXTBUF_ENV_FILE="$ENV_FILE" docker compose --env-file "$ENV_FILE" \
   -f "$FAILURE_COMPOSE_FILE" config --quiet
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE config --quiet
+checkpoint 'start baseline dependencies'
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d postgres redis mailpit
+checkpoint 'run baseline setup'
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE run --rm setup
+checkpoint 'start baseline web and worker'
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d --no-deps web worker
+checkpoint 'wait for baseline health'
 wait_for_url http://127.0.0.1:3200/health/ready 180
 wait_for_url http://127.0.0.1:3200/health/worker 180
 
 stage 'create durable baseline identity and attachment fixtures'
+checkpoint 'create baseline administrator'
 response=$(curl --fail-with-body --silent \
   -H 'origin: http://127.0.0.1:3200' \
   -H 'content-type: application/json' \
   -d '{"token":"nextbuf-upgrade-setup-token-at-least-32-characters","name":"Upgrade Admin","username":"upgrade_admin","email":"upgrade-admin@nextbuf.test","password":"upgrade-admin-password-12345"}' \
   http://127.0.0.1:3200/api/setup)
 printf '%s' "$response" | grep -q '"ok":true'
+checkpoint 'create baseline attachment file'
 printf 'upgrade-proof-%s\n' "$ARCH" | NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup -ec 'cat > /app/data/uploads/upgrade-proof.txt'
+checkpoint 'insert baseline database fixtures'
 NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
 INSERT INTO community_nodes (
@@ -198,6 +219,7 @@ INSERT INTO community_post_draft_attachments (draft_id, attachment_id) VALUES (
 SQL
 
 stage 'reject a mismatched image before backup or migration'
+checkpoint 'run mismatched-image upgrade'
 if NEXTBUFCTL_ASSUME_YES=1 \
   NEXTBUF_ENV_FILE="$ENV_FILE" \
   NEXTBUF_COMPOSE_FILE=compose.yml \
@@ -206,15 +228,18 @@ if NEXTBUFCTL_ASSUME_YES=1 \
   printf 'Upgrade unexpectedly accepted an image whose internal version did not match its tag\n' >&2
   exit 1
 fi
+checkpoint 'verify mismatched-image rejection state'
 grep -q "^NEXTBUF_VERSION=$BASELINE_VERSION$" "$ENV_FILE"
 if find "$BACKUP_DIR" -maxdepth 1 -name 'nextbuf-*.tar.gz' -print -quit | grep -q .; then
   printf 'Version-mismatch rejection created a backup even though migration was not allowed to start\n' >&2
   exit 1
 fi
+checkpoint 'verify baseline health after mismatch rejection'
 wait_for_url http://127.0.0.1:3200/health/ready 180
 wait_for_url http://127.0.0.1:3200/health/worker 180
 
 stage 'keep services stopped when target setup fails after migration starts'
+checkpoint 'run injected target setup failure'
 if NEXTBUFCTL_ASSUME_YES=1 \
   NEXTBUF_ENV_FILE="$ENV_FILE" \
   NEXTBUF_COMPOSE_FILE="$FAILURE_COMPOSE_FILE" \
@@ -223,6 +248,7 @@ if NEXTBUFCTL_ASSUME_YES=1 \
   printf 'Upgrade unexpectedly succeeded after the injected target setup failure\n' >&2
   exit 1
 fi
+checkpoint 'verify target failure state and backup'
 grep -q "^NEXTBUF_VERSION=$TARGET_VERSION$" "$ENV_FILE"
 [ -z "$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps -q web)" ]
 [ -z "$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps -q worker)" ]
@@ -232,22 +258,28 @@ failure_log=$(find "$BACKUP_DIR" -maxdepth 1 -name "upgrade-$BASELINE_VERSION-to
 grep -q 'NEXTBUF_INJECTED_SETUP_FAILURE' "$failure_log"
 
 stage 'retry the tested target after the injected setup failure'
+checkpoint 'retry target setup'
 NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm setup
+checkpoint 'restart target web and worker'
 NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE up -d --no-deps web worker
+checkpoint 'wait for target health after retry'
 wait_for_url http://127.0.0.1:3200/health/ready 180
 wait_for_url http://127.0.0.1:3200/health/worker 180
 
 stage "verify upgraded version, migrations and durable fixtures"
+checkpoint 'verify target HTTP identity and setup state'
 grep -q "^NEXTBUF_VERSION=$TARGET_VERSION$" "$ENV_FILE"
 curl --fail --silent http://127.0.0.1:3200/api/version | grep -q "\"version\":\"$TARGET_VERSION\""
 curl --fail --silent http://127.0.0.1:3200/api/setup | grep -q '"complete":true'
 NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup -ec 'cat /app/data/uploads/upgrade-proof.txt' | grep -q "upgrade-proof-$ARCH"
+checkpoint 'verify preserved administrator and runtime state'
 admin_count=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM users WHERE email = '\''upgrade-admin@nextbuf.test'\''"' | tr -d '\r')
 [ "$admin_count" = 1 ]
 runtime_version=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT value->>'\''version'\'' FROM system_state WHERE key = '\''runtime.initialized'\''"' | tr -d '\r')
 [ "$runtime_version" = "$TARGET_VERSION" ]
+checkpoint 'verify complete migration set'
 migration_count=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260717150000_beta_index_hardening'\'' AND finished_at IS NOT NULL"' | tr -d '\r')
 [ "$migration_count" = 1 ]
@@ -257,6 +289,7 @@ generic_node_migration=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T post
 editor_session_migration=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260720090000_editor_session_idempotency'\'' AND finished_at IS NOT NULL"' | tr -d '\r')
 [ "$editor_session_migration" = 1 ]
+checkpoint 'verify preserved community fixtures'
 preserved_fixture=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM community_topics AS topic JOIN community_posts AS post ON post.topic_id = topic.id AND post.position = 1 JOIN community_nodes AS node ON node.id = topic.node_id WHERE node.slug = '\''upgrade-proof'\'' AND topic.title = '\''Durable upgrade topic'\'' AND topic.editor_session_key IS NULL AND post.body_source = '\''Durable upgrade body'\'' AND post.editor_session_key IS NULL"' | tr -d '\r')
 [ "$preserved_fixture" = 1 ]
@@ -272,6 +305,7 @@ preserved_attachment=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgr
 session_table=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT to_regclass('\''community_reply_editor_sessions'\'') IS NOT NULL"' | tr -d '\r')
 [ "$session_table" = t ]
+checkpoint 'verify backup and final doctor'
 find "$BACKUP_DIR" -maxdepth 1 -name "nextbuf-$BASELINE_VERSION-*.tar.gz" -print -quit | grep -q .
 NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor
 
