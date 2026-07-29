@@ -11,6 +11,10 @@ const work = path.join(root, ".release-work");
 const releaseRoot = path.join(work, `nextbuf-${version}`);
 const runtimeRoot = path.join(releaseRoot, "runtime");
 
+if (process.platform !== "linux" || process.arch !== "x64") {
+  throw new Error("Release archives are currently supported only on Linux x64");
+}
+
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const usePnpmCli = command === "pnpm" && process.env.npm_execpath;
@@ -169,7 +173,8 @@ await mkdir(path.join(runtimeRoot, "scripts"), { recursive: true });
 await mkdir(path.join(runtimeRoot, "deploy"), { recursive: true });
 await cp(path.join(root, ".next", "standalone"), path.join(runtimeRoot, ".next", "standalone"), {
   recursive: true,
-  dereference: true,
+  dereference: false,
+  verbatimSymlinks: true,
 });
 await cp(path.join(root, "dist"), path.join(runtimeRoot, "dist"), { recursive: true });
 await cp(path.join(root, "prisma"), path.join(runtimeRoot, "prisma"), { recursive: true });

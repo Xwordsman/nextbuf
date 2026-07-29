@@ -121,6 +121,40 @@ test -f "$RELEASE_ROOT/deploy/pm2/ecosystem.config.cjs"
 
 (cd "$RELEASE_ROOT" && sha256sum --check checksums.txt >/dev/null)
 
+stage 'verify standalone dependency closure'
+node - "$RUNTIME_ROOT/.next/standalone" <<'NODE'
+const { createRequire } = require("node:module");
+const { lstatSync, readdirSync, realpathSync } = require("node:fs");
+const path = require("node:path");
+
+const standaloneRoot = realpathSync(process.argv[2]);
+const insideStandalone = (target) => {
+  const relative = path.relative(standaloneRoot, target);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
+};
+
+function verifySymlinks(directory) {
+  for (const entry of readdirSync(directory)) {
+    const entryPath = path.join(directory, entry);
+    const stat = lstatSync(entryPath);
+    if (stat.isSymbolicLink()) {
+      const target = realpathSync(entryPath);
+      if (!insideStandalone(target)) {
+        throw new Error(`Standalone symlink escapes the archive: ${entryPath}`);
+      }
+    } else if (stat.isDirectory()) {
+      verifySymlinks(entryPath);
+    }
+  }
+}
+
+verifySymlinks(standaloneRoot);
+const requireFromNext = createRequire(
+  path.join(standaloneRoot, "node_modules", "next", "dist", "shared", "lib", "constants.js"),
+);
+requireFromNext.resolve("@swc/helpers/_/_interop_require_default");
+NODE
+
 stage 'verify systemd and PM2 contracts'
 for service in nextbuf-web nextbuf-worker; do
   unit="$RELEASE_ROOT/deploy/systemd/$service.service"
