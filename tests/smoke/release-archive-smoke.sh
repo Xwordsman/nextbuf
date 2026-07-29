@@ -149,10 +149,8 @@ function verifySymlinks(directory) {
 }
 
 verifySymlinks(standaloneRoot);
-const requireFromNext = createRequire(
-  path.join(standaloneRoot, "node_modules", "next", "dist", "shared", "lib", "constants.js"),
-);
-requireFromNext.resolve("@swc/helpers/_/_interop_require_default");
+const requireFromStandalone = createRequire(path.join(standaloneRoot, "server.js"));
+requireFromStandalone("next/dist/shared/lib/constants.js");
 NODE
 
 stage 'verify systemd and PM2 contracts'
