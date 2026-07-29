@@ -121,7 +121,7 @@ sed -i \
   "$ENV_FILE"
 mkdir -p "$BACKUP_DIR"
 checkpoint 'render injected-failure compose file'
-sed '0,/^    command: \["setup"\]$/s||    command: ["sh", "-ec", "node dist/cli/index.mjs setup; echo NEXTBUF_INJECTED_SETUP_FAILURE >&2; exit 42"]|' \
+sed '0,/^    command: \["setup"\]$/s||    command: ["sh", "-ec", "node dist/cli/index.mjs setup; echo NEXTBUF_INJECTED_SETUP_FAILURE >\&2; exit 42"]|' \
   compose.yml >"$FAILURE_COMPOSE_FILE"
 checkpoint 'verify injected-failure command replacement'
 grep -Fq 'NEXTBUF_INJECTED_SETUP_FAILURE' "$FAILURE_COMPOSE_FILE"
