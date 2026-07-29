@@ -2,10 +2,11 @@
 
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
-- 最后更新：2026-07-29
-- 当前已发布版本：`v0.13.8` 公开 Beta 补丁
-- 当前候选版本：`v0.13.9` 最终 Beta 加固；随后进入已批准的 `v1.0.0` 稳定版准备
-- 下一动作：发布并验证 `v0.13.9`，将其设为正式升级基线，再关闭隐私注销、管理员锁死、支持政策、第三方通知和真实 `v0.13.9 -> v1.0.0` 升级/恢复门槛；不混入 `v1.1.0` 功能
+- 最后更新：2026-07-30
+- 当前已发布版本：`v0.13.8`，最后一个完整发布的公开 Beta 补丁
+- 当前候选版本：`v0.13.10` 替代最终 Beta 加固，尚未发布；随后进入已批准的 `v1.0.0` 稳定版准备
+- 发布例外：不可变 `v0.13.9` 标签的 Linux x64 standalone 归档因 pnpm 依赖链接被展平而无法启动，Release 资产未完成；它不是完整、受支持的发布，也不能设为升级基线
+- 下一动作：发布并完整验证 `v0.13.10`，包括精确 `v0.13.8 -> v0.13.10` 升级、空卷恢复、双架构镜像、归档和供应链资产；全部成功后才能提升升级基线，再关闭隐私注销、管理员锁死、支持政策、第三方通知和真实 `v0.13.10 -> v1.0.0` 升级/恢复门槛，不混入 `v1.1.0` 功能
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -170,7 +171,8 @@
 - 全站公开界面修订（`v0.13.7`）：官方 shadcn/ui `radix-nova` 原语已从历史 `components/admin/ui` 收敛到 `components/shadcn/ui`；节点、主题、账户、认证、安装、搜索、通知、状态与公共页头/页脚均按相同组件体系迁移。保留真实数据、URL、表单字段、Better Auth 旅程、草稿、附件、互动、举报、分页和无障碍入口；不再维护平行的 `components/ui` 原语目录。本补丁只替换展示层，不改变 PostgreSQL、Better Auth、授权、Worker、配置、部署或镜像拓扑合同。
 - 编辑器与草稿修订（`v0.13.8`）：主题/回复自动保存严格串行，显式发布取消 debounce、等待在途保存并阻止上传期间提交；15 秒写入超时不再误判服务端未提交。作者级 UUID/revision、history 恢复接口和回复 `active/cleared/published/superseded` 会话状态保证重复发布、清空草稿、迟到请求、刷新与响应丢失不会制造重复 Topic/楼层或复活草稿。后台主题、回复、仪表盘、用户/节点计数和社区审计排除活动草稿、删除自草稿及删除来源未知的私人谱系；数字编号写入口对非作者统一伪装为 404，未知删除来源只恢复为私人草稿。公开回复排除异常 draft，新引用只接受 published，历史 hidden/deleted 引用按权限显示正文或安全占位。追加迁移不回填旧数据、不修改 UID/Topic number/楼层，也不自动删除或合并既有草稿；决策见 [ADR-0019](./adr/0019-editor-autosave-idempotency-and-draft-privacy.md)。
 - 编辑会话资源与恢复边界（`v0.13.8`）：响应体无效的 2xx 与超时同属结果未知，必须保留原 key 恢复；恢复到 `superseded` 时清除旧 history 并重新加载规范 Topic 页面状态。每用户滚动一小时最多创建 60 个新回复编辑会话；`cleared`/`superseded` 墓碑保留 30 天，由 Worker 每批最多清理 500 条，`active`/`published` 不清理。Topic 关闭或账号受限后，作者仍可删除自己的既有回复草稿；站点 `repliesEnabled=false` 只阻止正式发布，仍允许保存和编辑草稿。
-- 最终 Beta 加固（`v0.13.9` 候选）：统一 Better Auth 客户端 IP/CIDR 解析并拒绝不一致代理配置；隐藏节点附件不再形成匿名公开旁路。Prisma 升至 `7.9.1`、PostCSS 固定到 `8.5.24`，根项目与非 Docker 运行时分别执行生产依赖审计。发布归档固化可复现版本/commit/构建时间并从解压产物启动真实 Web/Worker；非 Docker CLI、systemd 和 PM2 统一加载部署环境。`nextbufctl` 使用内核锁串行化运维，备份先确认 Web/Worker 停止并验证数据库/附件校验清单；升级在备份或迁移前核对目标镜像内部版本，迁移开始后的失败保持服务停止并要求显式恢复。
+- 最终 Beta 加固实现（`v0.13.9` 标签）：统一 Better Auth 客户端 IP/CIDR 解析并拒绝不一致代理配置；隐藏节点附件不再形成匿名公开旁路。Prisma 升至 `7.9.1`、PostCSS 固定到 `8.5.24`，根项目与非 Docker 运行时分别执行生产依赖审计。发布归档固化可复现版本/commit/构建时间并从解压产物启动真实 Web/Worker；非 Docker CLI、systemd 和 PM2 统一加载部署环境。`nextbufctl` 使用内核锁串行化运维，备份先确认 Web/Worker 停止并验证数据库/附件校验清单；升级在备份或迁移前核对目标镜像内部版本，迁移开始后的失败保持服务停止并要求显式恢复。标签流水线随后暴露出归档创建时展平 pnpm 依赖链接会破坏 Next.js standalone 运行依赖；该不可变标签未形成完整支持发布。
+- 最终 Beta 替代候选（`v0.13.10`，尚未发布）：不增加产品功能或迁移，原样保留 standalone 的 pnpm 符号链接，并在归档冒烟中拒绝悬空或逃出发布根目录的链接、从真实 `server.js` 加载 Next.js 关键模块并完整启动 Web/Worker。精确升级门槛为 `v0.13.8 -> v0.13.10`。
 - 滚动镜像通道修订（`main`）：完整检查及原生 amd64/arm64 基础镜像冒烟通过后自动更新宝塔使用的 `latest`，并保留 `sha-<提交>` 多架构 manifest；正式标签只发布不可变 SemVer、Release 和供应链资产，不再回写 `latest`。决策见 [ADR-0018](./adr/0018-validated-main-image-channel.md)。
 - 交付：公开 Beta 已知限制、2 vCPU/4 GiB/40 GiB 最低档位、性能报告、人工安装/旅程/升级/恢复验收模板见 [Beta 就绪记录](./16-public-beta-readiness.md)。
 
@@ -212,6 +214,8 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - `v0.13.6` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29643059227) 已通过完整检查、生产依赖审计、非 Docker x64 归档以及 amd64/arm64 空安装、首次管理员、恢复和 `v0.12.0` 升级，并发布 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.6)、SHA-256 与 SBOM 资产。不可变 GHCR `0.13.6` OCI index 为 `sha256:42daf6fe42ec027db7fb0844f22421b303da3e498d637d61bc0e2c6e1057652e`；两个平台镜像均固化版本 `0.13.6` 与提交 `e9e2eaa165ca3a43e917647cc38c65300cfd1d8d`。
 - `v0.13.7` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29673793861) 已通过完整检查、生产依赖审计、63 项单元测试、32 项 PostgreSQL/Redis/Mailpit 集成测试、12 项 Playwright、非 Docker x64 归档以及 amd64/arm64 空安装、首次管理员、恢复和 `v0.12.0` 升级，并发布 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.7)、SHA-256 与 SBOM 资产。不可变 GHCR `0.13.7` OCI index 为 `sha256:fad3486005f3f5787eeaefa6df7ee5aa7df42f6aa0f5d98a9b0d5218c330a9eb`，两个平台镜像均固化版本 `0.13.7` 与提交 `51c86568073fa3777e32ca0d74074a5f736287e5`。
 - `v0.13.8` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/29733660199) 已通过完整检查、生产依赖审计、72 项单元测试、46 项 PostgreSQL/Redis/Mailpit 集成测试、14 项 Playwright、非 Docker x64 归档以及 amd64/arm64 空安装、首次管理员、恢复和 `v0.13.7 -> v0.13.8` 升级，并发布 [GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.8)、SHA-256 与 SBOM 资产。不可变 GHCR `0.13.8` OCI index 为 `sha256:59558fa9e366343897f140da6c650299cf9516f6f660cc680eefdf4742fb528e`，两个平台镜像均固化版本 `0.13.8` 与提交 `d6349011f42f6f7378fcbe80dd2938810ec2be7b`；同一提交的滚动 `latest` 已在真实服务器拉取复验通过。
+- `v0.13.9` [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/30433134633) 已通过完整检查、amd64/arm64 镜像冒烟和不可变 SemVer manifest，但 Linux x64 standalone 归档因 pnpm 依赖链接被展平而无法启动，Release 资产被跳过。标签和已生成镜像不可移动；该运行不能作为完整发布证据，`v0.13.9` 不能成为升级基线。
+- `v0.13.10` 当前仅为替代候选。它必须重新通过完整检查、精确 `v0.13.8 -> v0.13.10` 升级、空卷恢复、故障注入、双架构镜像、Linux x64 归档完整启动、SBOM/provenance、校验和与 GitHub Release；成功证据尚待正式标签流水线产生。
 - 每次 Better Auth、Prisma、pg、BullMQ、ioredis、Nodemailer 或 Mailpit 升级都必须重新执行完整真实服务测试。
 
 ## 4. 当前真实数据边界
@@ -271,7 +275,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 入口：[公开 Beta 人工验收模板](./17-public-beta-acceptance-template.md)
 
-先在真实域名和目标服务器上完成最终 `v0.13.9` 安装、SMTP/存储、注册、发帖、举报、升级和空卷恢复验收；任何阻断问题继续以 `v0.13.x` 修复并重跑完整门槛。`v0.13.9` 标签、双架构镜像和 Release 全部通过后，正式版只做账号注销、管理员连续性、升级不变量、安全/支持/隐私文档、真实数据隔离演练和发布证据收口。
+先完整发布并在真实域名和目标服务器上验收 `v0.13.10` 的安装、SMTP/存储、注册、发帖、举报、精确 `v0.13.8 -> v0.13.10` 升级和空卷恢复；任何阻断问题继续以 `v0.13.x` 修复并重跑全部门槛。`v0.13.9` 保持不可变的不完整历史标签，不参与升级基线。只有 `v0.13.10` 标签、双架构镜像、Linux x64 归档、供应链资产和 Release 全部通过后，正式版才只做账号注销、管理员连续性、升级不变量、安全/支持/隐私文档、真实数据隔离演练和发布证据收口。
 
 `v1.0.0` 稳定化已经由用户明确批准；未经新的明确批准，不开始 `v1.1.0`、插件、交易、支付或开放 API。
 

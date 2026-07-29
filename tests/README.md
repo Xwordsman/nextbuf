@@ -4,7 +4,7 @@
 - PostgreSQL/Redis/Mailpit 集成测试位于 `tests/integration`，必须使用独立真实服务运行。
 - Playwright 端到端测试位于 `tests/e2e`，通过构建后的 CLI 执行 setup，并同时运行 Next.js standalone Web 与 Worker，覆盖多视口社区外壳和真实身份邮件旅程。
 
-当前 `v0.13.9` 候选声明 77 项单元测试、47 个真实服务集成 case 和 14 个 Playwright spec；容器冒烟由 GitHub Actions 单独执行，并验证宝塔单文件 Compose 不依赖 `.env`、只包含四个服务、使用通过验证的滚动 `latest` 通道且具有四个固定容器名。覆盖建立在 setup token、首次管理员、生产 Compose、amd64/arm64 镜像和空卷恢复之上；全新安装还会验证首位管理员的 UID 为 1。候选新增统一客户端 IP 解析、隐藏节点附件授权、真实发布归档、SemVer 升级和迁移后故障恢复门槛。
+当前 `v0.13.10` 替代候选声明 77 项单元测试、47 个真实服务集成 case 和 14 个 Playwright spec；容器冒烟由 GitHub Actions 单独执行，并验证宝塔单文件 Compose 不依赖 `.env`、只包含四个服务、使用通过验证的滚动 `latest` 通道且具有四个固定容器名。覆盖建立在 setup token、首次管理员、生产 Compose、amd64/arm64 镜像和空卷恢复之上；全新安装还会验证首位管理员的 UID 为 1。候选新增统一客户端 IP 解析、隐藏节点附件授权、真实发布归档、SemVer 升级和迁移后故障恢复门槛。`v0.13.8` 仍是最后一个完整发布版本；不可变 `v0.13.9` 标签因 Linux x64 standalone 归档依赖链接被展平而启动失败，不构成完整发布或升级基线。`v0.13.10` 尚未发布，必须通过精确 `v0.13.8 -> v0.13.10` 升级和全部归档/镜像门槛。
 
 Pull Request 只执行完整代码/真实服务/E2E 检查；主分支额外使用原生 amd64/arm64 构建、拉取和基础冒烟。主分支与正式标签只在 Linux x64 Runner 构建并解压冒烟 Linux x64 归档，校验 checksum、Next.js standalone 的 pnpm 链接不悬空或逃出归档、关键运行依赖可解析、systemd/PM2 路径合同，并在真实 PostgreSQL、Redis 和 Mailpit 上从归档执行 setup、启动独立 Web/Worker、创建首位管理员和运行 doctor；失败摘要会标明具体阶段并脱敏。只有双架构镜像和发布归档同时成功，主分支才合并 `sha-<提交>` 与滚动 `latest` GHCR manifest，正式标签才合并不可变 SemVer manifest，避免镜像先发布而 Release 资产失败的半发布状态。只要当前候选版本不同于最后公开升级基线，每个主分支候选都会在更新滚动镜像前额外执行 amd64 空卷恢复、故障注入和公开版本到候选的真实升级，即使两版迁移集合相同也不能跳过。每日定时、手动和 `v*` 标签运行的 amd64 同样执行这些门槛；只有标签运行生成供应链证明并发布非 Docker 资产。
 

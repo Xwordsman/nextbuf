@@ -22,6 +22,7 @@ assert_comparison() {
 }
 
 assert_comparison 0.13.8 0.13.9 -1
+assert_comparison 0.13.9 0.13.10 -1
 assert_comparison 1.0.0-rc.1 1.0.0 -1
 assert_comparison 1.0.0 1.0.0-rc.1 1
 assert_comparison 1.0.0-rc.1 1.0.0-rc.2 -1
