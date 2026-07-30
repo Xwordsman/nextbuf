@@ -170,7 +170,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
-      NEXTBUF_UPGRADE_BASELINE: 0.13.8
+      NEXTBUF_UPGRADE_BASELINE: 0.13.10
     permissions:
       contents: read
       packages: write
