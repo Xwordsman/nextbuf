@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+umask 077
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$ROOT"
@@ -12,6 +13,8 @@ SMOKE_VERSION=${NEXTBUF_SMOKE_VERSION:-1.0.0}
 SMOKE_COMMIT=${NEXTBUF_SMOKE_COMMIT:-}
 SMOKE_BUILD_TIME=${NEXTBUF_SMOKE_BUILD_TIME:-}
 ENV_FILE=.env.smoke
+TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/nextbuf-docker-smoke.XXXXXX")
+SMOKE_BACKUP_DIR="$TMP_ROOT/backups"
 COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml -f deploy/compose/compose.smoke.yml"
 BASE_COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml"
 STORAGE_BLOCKER=/app/data/uploads/.nextbuf-storage-blocker
@@ -59,7 +62,7 @@ wait_for_container_health() {
 
 expect_doctor_failure() {
   check=$1
-  report="/tmp/nextbuf-doctor-$check-$$.log"
+  report="$TMP_ROOT/doctor-$check.log"
   passed=0
   if [ "$check" = storage ]; then
     if NEXTBUF_ENV_FILE="$ENV_FILE" timeout --signal=TERM --kill-after=5s 60s \
@@ -92,7 +95,7 @@ expect_doctor_failure() {
 }
 
 expect_doctor_continuity_warning() {
-  report="/tmp/nextbuf-doctor-continuity-$$.log"
+  report="$TMP_ROOT/doctor-continuity.log"
   if ! NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml \
     timeout --signal=TERM --kill-after=5s 60s ./nextbufctl doctor >"$report" 2>&1; then
     cat "$report" >&2
@@ -138,7 +141,7 @@ cleanup() {
   fi
   NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true
   rm -f "$ENV_FILE"
-  rm -rf backups
+  rm -rf -- "$TMP_ROOT"
   exit "$status"
 }
 trap cleanup EXIT
@@ -168,7 +171,7 @@ sed -i \
   -e 's|^AUTH_REGISTRATION_MODE=.*|AUTH_REGISTRATION_MODE=invite|' \
   "$ENV_FILE"
 
-mkdir -p backups
+mkdir -p "$SMOKE_BACKUP_DIR"
 stage 'validate Compose and start dependencies'
 panel_services=$(docker compose -f compose.baota.yml config --services | sort)
 [ "$panel_services" = "nextbuf
@@ -198,7 +201,7 @@ NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE config --quiet
 NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d postgres redis mailpit
 
 stage 'verify failed bootstrap cannot start Web'
-bootstrap_report=/tmp/nextbuf-bootstrap-failure.log
+bootstrap_report="$TMP_ROOT/bootstrap-failure.log"
 if NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE run --rm --no-deps \
   -e AUTH_SECRET=too-short web >"$bootstrap_report" 2>&1; then
   echo 'Web bootstrap unexpectedly accepted an invalid production secret' >&2
@@ -225,7 +228,7 @@ until curl --fail --silent http://127.0.0.1:3100/health/ready >/dev/null 2>&1; d
   sleep 2
 done
 
-version_report=/tmp/nextbuf-version-$$.json
+version_report="$TMP_ROOT/version.json"
 curl --fail --silent http://127.0.0.1:3100/api/version >"$version_report"
 node - "$version_report" "$SMOKE_VERSION" "$SMOKE_COMMIT" "$SMOKE_BUILD_TIME" <<'NODE'
 const fs = require("node:fs");
@@ -240,7 +243,7 @@ NODE
 rm -f "$version_report"
 
 stage 'verify first visit redirect and generic empty node catalog'
-home_headers=/tmp/nextbuf-home-before-setup.headers
+home_headers="$TMP_ROOT/home-before-setup.headers"
 home_status=$(curl --silent --dump-header "$home_headers" --output /dev/null \
   --write-out '%{http_code}' http://127.0.0.1:3100/)
 [ "$home_status" = 307 ] || {
@@ -267,14 +270,14 @@ NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
 INSERT INTO users (id, username, name, email, email_verified, status, created_at, updated_at)
 VALUES ('"'"'10000000-0000-4000-8000-000000000001'"'"', '"'"'incomplete_admin'"'"', '"'"'Incomplete Admin'"'"', '"'"'incomplete-admin@nextbuf.test'"'"', FALSE, '"'"'pending'"'"', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 SQL'
-incomplete_status=$(curl --silent -o /tmp/nextbuf-setup-incomplete.json -w '%{http_code}' \
+incomplete_report="$TMP_ROOT/setup-incomplete.json"
+incomplete_status=$(curl --silent -o "$incomplete_report" -w '%{http_code}' \
   -H 'origin: http://127.0.0.1:3100' \
   -H 'content-type: application/json' \
   -d '{"token":"nextbuf-smoke-setup-token-at-least-32-characters","name":"Incomplete Admin","username":"incomplete_admin","email":"incomplete-admin@nextbuf.test","password":"incomplete-admin-password-12345"}' \
   http://127.0.0.1:3100/api/setup)
 [ "$incomplete_status" = 409 ]
-grep -q '"code":"initial_administrator_not_eligible"' /tmp/nextbuf-setup-incomplete.json
-rm -f /tmp/nextbuf-setup-incomplete.json
+grep -q '"code":"initial_administrator_not_eligible"' "$incomplete_report"
 incomplete_state=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM system_state WHERE key = '\''installation.completed'\''"' | tr -d '\r')
 [ "$incomplete_state" = 0 ]
@@ -303,14 +306,14 @@ VALUES (
 )
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 SQL'
-legacy_claim_status=$(curl --silent -o /tmp/nextbuf-setup-legacy-claim.json -w '%{http_code}' \
+legacy_claim_report="$TMP_ROOT/setup-legacy-claim.json"
+legacy_claim_status=$(curl --silent -o "$legacy_claim_report" -w '%{http_code}' \
   -H 'origin: http://127.0.0.1:3100' \
   -H 'content-type: application/json' \
   -d '{"token":"nextbuf-smoke-setup-token-at-least-32-characters","name":"Smoke Admin","username":"smoke_admin","email":"smoke-admin@nextbuf.test","password":"smoke-admin-password-12345"}' \
   http://127.0.0.1:3100/api/setup)
 [ "$legacy_claim_status" = 409 ]
-grep -q '"code":"setup_in_progress"' /tmp/nextbuf-setup-legacy-claim.json
-rm -f /tmp/nextbuf-setup-legacy-claim.json
+grep -q '"code":"setup_in_progress"' "$legacy_claim_report"
 NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
     "UPDATE system_state
@@ -318,14 +321,14 @@ NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
            updated_at = CURRENT_TIMESTAMP
      WHERE key = '"'"'installation.claim'"'"'"'
 
-legacy_other_status=$(curl --silent -o /tmp/nextbuf-setup-legacy-other.json -w '%{http_code}' \
+legacy_other_report="$TMP_ROOT/setup-legacy-other.json"
+legacy_other_status=$(curl --silent -o "$legacy_other_report" -w '%{http_code}' \
   -H 'origin: http://127.0.0.1:3100' \
   -H 'content-type: application/json' \
   -d '{"token":"nextbuf-smoke-setup-token-at-least-32-characters","name":"Other Admin","username":"other_admin","email":"other-admin@nextbuf.test","password":"other-admin-password-12345"}' \
   http://127.0.0.1:3100/api/setup)
 [ "$legacy_other_status" = 409 ]
-grep -q '"code":"existing_users_require_recovery"' /tmp/nextbuf-setup-legacy-other.json
-rm -f /tmp/nextbuf-setup-legacy-other.json
+grep -q '"code":"existing_users_require_recovery"' "$legacy_other_report"
 legacy_claim_owner=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT (value->>'\''email'\'') || '\''|'\'' || (value->>'\''username'\'') FROM system_state WHERE key = '\''installation.claim'\''"' | tr -d '\r')
 [ "$legacy_claim_owner" = 'smoke-admin@nextbuf.test|smoke_admin' ]
@@ -341,7 +344,8 @@ first_admin_uid=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT uid FROM users WHERE email = '\''smoke-admin@nextbuf.test'\''"' | tr -d '\r')
 [ "$first_admin_uid" = 1 ]
 
-repeat_status=$(curl --silent -o /tmp/nextbuf-setup-repeat.json -w '%{http_code}' \
+repeat_report="$TMP_ROOT/setup-repeat.json"
+repeat_status=$(curl --silent -o "$repeat_report" -w '%{http_code}' \
   -H 'origin: http://127.0.0.1:3100' \
   -H 'content-type: application/json' \
   -d '{"token":"nextbuf-smoke-setup-token-at-least-32-characters","name":"Other Admin","username":"other_admin","email":"other-admin@nextbuf.test","password":"other-admin-password-12345"}' \
@@ -424,28 +428,37 @@ printf 'attachment-smoke-%s\n' "$ARCH" | NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMP
 
 if [ "$RUN_RESTORE" = 1 ]; then
   stage 'create and restore an empty-install backup'
-  NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl backup
-  backup=$(find backups -maxdepth 1 -name 'nextbuf-*.tar.gz' -print | sort | tail -n 1)
+  NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml \
+    NEXTBUF_BACKUP_DIR="$SMOKE_BACKUP_DIR" ./nextbufctl backup
+  backup=$(find "$SMOKE_BACKUP_DIR" -maxdepth 1 -name 'nextbuf-*.tar.gz' -print | sort | tail -n 1)
   [ -n "$backup" ]
-  tar -tzf "$backup" | grep -q 'database.list$'
-  tar -tzf "$backup" | grep -q 'uploads.list$'
-  tar -tzf "$backup" | grep -q 'uploads.SHA256SUMS$'
+  backup_listing="$TMP_ROOT/backup.list"
+  tar -tzf "$backup" >"$backup_listing"
+  grep -Fxq './database.list' "$backup_listing"
+  grep -Fxq './uploads.list' "$backup_listing"
+  grep -Fxq './uploads.SHA256SUMS' "$backup_listing"
   mismatched_env="$TMP_ROOT/restore-mismatched-history.env"
   mismatch_log="$TMP_ROOT/restore-mismatched-history.log"
   cp "$ENV_FILE" "$mismatched_env"
+  chmod 600 "$mismatched_env"
   sed -i 's#^TOPIC_VIEW_PREVIOUS_AUTH_SECRETS=.*#TOPIC_VIEW_PREVIOUS_AUTH_SECRETS=["nextbuf-mismatched-previous-auth-secret-at-least-32-characters"]#' "$mismatched_env"
-  if NEXTBUFCTL_ASSUME_YES=1 NEXTBUF_ENV_FILE="$mismatched_env" NEXTBUF_COMPOSE_FILE=compose.yml \
+  if NEXTBUFCTL_ASSUME_YES=1 NEXTBUF_ENV_FILE="$mismatched_env" NEXTBUF_COMPOSE_FILE=compose.yml NEXTBUF_BACKUP_DIR="$SMOKE_BACKUP_DIR" \
     ./nextbufctl restore "$backup" --yes >"$mismatch_log" 2>&1; then
     printf 'Restore accepted a mismatched historical topic-view secret list.\n' >&2
     exit 1
   fi
   grep -F 'TOPIC_VIEW_PREVIOUS_AUTH_SECRETS differs from the backup' "$mismatch_log" >/dev/null
   NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE rm -sf mailpit
-  NEXTBUFCTL_ASSUME_YES=1 NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml \
+  NEXTBUFCTL_ASSUME_YES=1 NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml NEXTBUF_BACKUP_DIR="$SMOKE_BACKUP_DIR" \
     ./nextbufctl restore "$backup" --empty-install --restore-config --yes
   stage 'verify restored database and attachments'
-  NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup -ec 'cat /app/data/uploads/restore-proof.txt' | grep -q "attachment-smoke-$ARCH"
-  curl --fail --silent http://127.0.0.1:3100/api/setup | grep -q '"complete":true'
+  restore_proof="$TMP_ROOT/restore-proof.txt"
+  NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup \
+    -ec 'cat /app/data/uploads/restore-proof.txt' >"$restore_proof"
+  grep -Fxq "attachment-smoke-$ARCH" "$restore_proof"
+  restored_setup="$TMP_ROOT/restored-setup.json"
+  curl --fail --silent http://127.0.0.1:3100/api/setup >"$restored_setup"
+  grep -q '"complete":true' "$restored_setup"
 fi
 
 stage 'report final service state'
