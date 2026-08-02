@@ -264,8 +264,8 @@ node_count=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec 
 stage 'reject an incomplete initial administrator without a credential'
 NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" <<'"'"'SQL'"'"'
-INSERT INTO users (username, name, email, email_verified, status, created_at, updated_at)
-VALUES ('"'"'incomplete_admin'"'"', '"'"'Incomplete Admin'"'"', '"'"'incomplete-admin@nextbuf.test'"'"', FALSE, '"'"'pending'"'"', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+INSERT INTO users (id, username, name, email, email_verified, status, created_at, updated_at)
+VALUES ('"'"'10000000-0000-4000-8000-000000000001'"'"', '"'"'incomplete_admin'"'"', '"'"'Incomplete Admin'"'"', '"'"'incomplete-admin@nextbuf.test'"'"', FALSE, '"'"'pending'"'"', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
 SQL'
 incomplete_status=$(curl --silent -o /tmp/nextbuf-setup-incomplete.json -w '%{http_code}' \
   -H 'origin: http://127.0.0.1:3100' \
