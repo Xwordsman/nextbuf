@@ -4,6 +4,8 @@ name: nextbuf
 # beginning with "replace-", replace MAIL_PAYLOAD_KEY, and change APP_URL and
 # SMTP_FROM. Repeated PostgreSQL and Redis passwords must use the same value in
 # every occurrence. AUTH_SECRET, SETUP_TOKEN and MAIL_PAYLOAD_KEY must differ.
+# latest is the stable release channel. Validated main candidates use edge and
+# immutable sha-* tags; they do not replace this default image.
 
 x-nextbuf-app: &nextbuf-app
   image: ghcr.io/xwordsman/nextbuf:latest
@@ -13,6 +15,8 @@ x-nextbuf-app: &nextbuf-app
     TZ: Asia/Shanghai
     APP_URL: https://community.example.com
     AUTH_SECRET: replace-with-at-least-32-random-characters
+    # Keep [] until rotating AUTH_SECRET; then follow docs/13 before editing it.
+    TOPIC_VIEW_PREVIOUS_AUTH_SECRETS: "[]"
     SETUP_TOKEN: replace-with-at-least-32-random-characters
     AUTH_REGISTRATION_MODE: invite
     MAIL_PAYLOAD_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=

@@ -38,6 +38,7 @@ describe("environment configuration", () => {
     });
 
     expect(environment.REDIS_PREFIX).toBe("nextbuf_test");
+    expect(environment.OUTBOX_RECOVERY_AFTER_MS).toBe(300_000);
   });
 
   it("requires complete authentication, encryption and SMTP configuration", () => {
@@ -51,7 +52,65 @@ describe("environment configuration", () => {
     });
 
     expect(environment.AUTH_REGISTRATION_MODE).toBe("open");
+    expect(environment.TOPIC_VIEW_PREVIOUS_AUTH_SECRETS).toEqual([]);
     expect(environment.MAIL_PAYLOAD_KEY).toHaveLength(44);
+    expect(environment).toMatchObject({
+      SMTP_CONNECTION_TIMEOUT_MS: 15_000,
+      SMTP_GREETING_TIMEOUT_MS: 15_000,
+      SMTP_SOCKET_TIMEOUT_MS: 60_000,
+    });
+  });
+
+  it("validates previous authentication secrets used only for topic-view cleanup", () => {
+    const previousSecretWithWhitespaceAndComma =
+      " nextbuf,previous-auth-secret-one-at-least-32-characters ";
+    const input: NodeJS.ProcessEnv = {
+      NODE_ENV: "test",
+      DATABASE_URL: "postgresql://nextbuf:secret@localhost:5432/nextbuf",
+      REDIS_URL: "redis://localhost:6379/0",
+      AUTH_SECRET: "nextbuf-current-auth-secret-at-least-32-characters",
+      TOPIC_VIEW_PREVIOUS_AUTH_SECRETS: JSON.stringify([
+        previousSecretWithWhitespaceAndComma,
+        "nextbuf-previous-auth-secret-two-at-least-32-characters",
+      ]),
+      MAIL_PAYLOAD_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+      SMTP_HOST: "localhost",
+    };
+
+    expect(parseAuthEnvironment(input).TOPIC_VIEW_PREVIOUS_AUTH_SECRETS).toEqual([
+      previousSecretWithWhitespaceAndComma,
+      "nextbuf-previous-auth-secret-two-at-least-32-characters",
+    ]);
+    expect(() =>
+      parseAuthEnvironment({
+        ...input,
+        TOPIC_VIEW_PREVIOUS_AUTH_SECRETS: JSON.stringify(["too-short"]),
+      }),
+    ).toThrow("each secret must contain at least 32 characters");
+    expect(() =>
+      parseAuthEnvironment({ ...input, TOPIC_VIEW_PREVIOUS_AUTH_SECRETS: "not-json" }),
+    ).toThrow("must be a JSON array of secrets");
+    expect(() =>
+      parseAuthEnvironment({
+        ...input,
+        TOPIC_VIEW_PREVIOUS_AUTH_SECRETS: JSON.stringify(Array(9).fill(input.AUTH_SECRET)),
+      }),
+    ).toThrow("must contain at most 8 secrets");
+    expect(() =>
+      parseAuthEnvironment({
+        ...input,
+        TOPIC_VIEW_PREVIOUS_AUTH_SECRETS: JSON.stringify([
+          previousSecretWithWhitespaceAndComma,
+          previousSecretWithWhitespaceAndComma,
+        ]),
+      }),
+    ).toThrow("must not contain duplicate secrets");
+    expect(() =>
+      parseAuthEnvironment({
+        ...input,
+        TOPIC_VIEW_PREVIOUS_AUTH_SECRETS: JSON.stringify([input.AUTH_SECRET]),
+      }),
+    ).toThrow("must contain only previous AUTH_SECRET values");
   });
 
   it("accepts a strong optional one-time setup token", () => {

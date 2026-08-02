@@ -1,11 +1,13 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
+import { queueAfterTransactionHook } from "@better-auth/core/context";
 import { getPrismaClient } from "@/infrastructure/database/client";
 import { authRateLimitStorage } from "@/infrastructure/auth/rate-limit";
 import { securePrismaAdapter } from "@/infrastructure/auth/secure-prisma-adapter";
 import { recordIdentityAudit } from "@/modules/identity/audit.server";
 import { sendPasswordResetMessage, sendVerificationMessage } from "@/modules/identity/mail.server";
+import { isAccountTombstoneEmail } from "@/modules/identity/account-tombstone-policy";
 import { generateAvailableUsername } from "@/modules/profiles/username.server";
 import { validateUsername } from "@/modules/profiles/username-policy";
 import { getSiteSettings } from "@/modules/settings/settings.server";
@@ -58,7 +60,9 @@ function createAuthInstance() {
       autoSignIn: false,
       revokeSessionsOnPasswordReset: true,
       resetPasswordTokenExpiresIn: environment.AUTH_PASSWORD_RESET_EXPIRES_IN_SECONDS,
-      sendResetPassword: async ({ user, url }) => sendPasswordResetMessage(user.email, url),
+      sendResetPassword: async ({ user, url }) => {
+        await queueAfterTransactionHook(() => sendPasswordResetMessage(user.id, user.email, url));
+      },
       onPasswordReset: async ({ user }, request) =>
         recordIdentityAudit({ eventType: "identity.password.reset", userId: user.id, request }),
     },
@@ -67,7 +71,9 @@ function createAuthInstance() {
       sendOnSignUp: true,
       sendOnSignIn: true,
       autoSignInAfterVerification: false,
-      sendVerificationEmail: async ({ user, url }) => sendVerificationMessage(user.email, url),
+      sendVerificationEmail: async ({ user, url }) => {
+        await queueAfterTransactionHook(() => sendVerificationMessage(user.id, user.email, url));
+      },
       afterEmailVerification: async (user, request) => {
         await getPrismaClient().user.update({
           where: { id: user.id },
@@ -120,6 +126,24 @@ function createAuthInstance() {
     },
     hooks: {
       before: createAuthMiddleware(async (context) => {
+        if (context.path === "/update-user") {
+          throw new APIError("FORBIDDEN", {
+            code: "PROFILE_UPDATE_REQUIRES_NEXTBUF_ENDPOINT",
+            message: "Profile updates must use the NextBuf account endpoints",
+          });
+        }
+        if (
+          context.path === "/unlink-account" &&
+          context.body &&
+          typeof context.body === "object" &&
+          "providerId" in context.body &&
+          context.body.providerId === "credential"
+        ) {
+          throw new APIError("BAD_REQUEST", {
+            code: "CREDENTIAL_UNLINK_DISABLED",
+            message: "Password credentials cannot be unlinked",
+          });
+        }
         if (context.path !== "/sign-up/email") return;
         const expected = registrationHeader(environment.AUTH_SECRET);
         const actual =
@@ -137,6 +161,9 @@ function createAuthInstance() {
       user: {
         create: {
           before: async (user, context) => {
+            if (isAccountTombstoneEmail(user.email)) {
+              throw new APIError("BAD_REQUEST", { message: "reserved_email" });
+            }
             const internalRegistration = headerMatches(
               registrationHeader(environment.AUTH_SECRET),
               context?.headers?.get("x-nextbuf-registration") ??

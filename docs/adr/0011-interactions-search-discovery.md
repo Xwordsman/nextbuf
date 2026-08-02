@@ -25,11 +25,11 @@
 
 ### 2. 浏览计数使用限量事实和 Outbox 聚合
 
-主题页在浏览器挂载后向同源 POST 接口上报浏览。服务端将登录用户 ID，或匿名 IP/用户代理组合，使用 `AUTH_SECRET` 加领域前缀做 HMAC-SHA256；数据库只保存 64 位哈希，不保存原始 IP、用户代理或会话标识。
+主题页在浏览器挂载后向同源 POST 接口上报浏览。服务端将登录用户 ID，或匿名 IP/用户代理组合，使用当前 `AUTH_SECRET` 加领域前缀做 HMAC-SHA256；数据库只保存 64 位哈希，不保存原始 IP、用户代理或会话标识。轮换密钥后，新浏览只使用新值；旧值以无损 JSON 字符串数组保存在 `TOPIC_VIEW_PREVIOUS_AUTH_SECRETS`，最多 8 个，并且只供最终注销清理旧用户桶。它们不继续验证 Cookie、认证链接或新浏览。
 
 同一 Topic、访问者哈希和 30 分钟 UTC 时间桶只有一条 `interaction_topic_views` 记录。插入成功时在同一事务创建 `nextbuf.interactions.topic-view.aggregate@1` Outbox 事件。Worker 以 Outbox 事件 ID 幂等执行：仅未聚合记录可以把公开 Topic 的 `view_count` 增加一次，随后写入 `counted_at`。
 
-已聚合原始桶保留 30 天，Worker 每次处理时限量清理最多 500 条过期记录。清空 Redis 不会丢失未投递 Outbox 或已接受浏览事实；Worker 重试不会重复计数。反向代理必须覆盖客户端传入的转发 IP 头，不能原样信任公网 `X-Forwarded-For`。
+已聚合原始桶保留 30 天，`worker.maintenance` 每分钟独立限量清理最多 500 条过期记录，不依赖站点继续产生新浏览。未聚合桶在对应 Outbox 成功前不删除，避免丢失已经接受的计数事实；因此旧密钥必须从最后一个旧 Web 停止写入起至少保留 30 天，并继续保留到数据库中不再存在早于该停止时间的浏览桶。清空 Redis 不会丢失未投递 Outbox 或已接受浏览事实；Worker 重试不会重复计数。反向代理必须覆盖客户端传入的转发 IP 头，不能原样信任公网 `X-Forwarded-For`。
 
 ### 3. 热门算法 v1 是查询时派生结果
 

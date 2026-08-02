@@ -1,6 +1,8 @@
 services:
   mailpit:
     image: axllent/mailpit:v1.30.4
+    ports:
+      - "127.0.0.1:38025:8025"
     networks:
       - nextbuf
     healthcheck:

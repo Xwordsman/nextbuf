@@ -59,11 +59,12 @@
 | `WORKER_TASK_LOCK_TIMEOUT_MS` | 否 | `300000` | Worker | 否 | Worker 崩溃后其他实例接管调度租约的时间 |
 | `OUTBOX_POLL_INTERVAL_MS` | 否 | `1000` | Worker | 否 | Outbox Dispatcher 轮询间隔 |
 | `OUTBOX_BATCH_SIZE` | 否 | `50` | Worker | 否 | 单轮最多认领并投递的 Outbox 数量 |
-| `OUTBOX_LOCK_TIMEOUT_MS` | 否 | `60000` | Worker | 否 | Dispatcher 崩溃后允许其他实例重新认领的时间 |
+| `OUTBOX_LOCK_TIMEOUT_MS` | 否 | `60000` | Worker | 否 | Dispatcher/处理器租约失联后允许其他实例重新认领的时间 |
+| `OUTBOX_RECOVERY_AFTER_MS` | 否 | `300000` | Worker | 否 | 已发布但未完成事件进入 Redis 丢失恢复扫描前的保守等待时间 |
 | `JOB_REMOVE_COMPLETE_AFTER` | 否 | `1000` | Worker | 否 | 保留最近成功任务数量/策略 |
 | `JOB_REMOVE_FAILED_AFTER` | 否 | `5000` | Worker | 否 | 保留失败任务用于诊断 |
 
-Redis 服务必须兼容 BullMQ 所需命令。业务事实不能只存在 Redis；关键异步意图通过 PostgreSQL Outbox 恢复。
+Redis 服务必须兼容 BullMQ 所需命令。业务事实不能只存在 Redis；关键异步意图通过 PostgreSQL Outbox 恢复。每分钟维护任务会通过待恢复部分索引，分批检查超过 `OUTBOX_RECOVERY_AFTER_MS`、`processed_at` 为空且没有尚未执行管理员重放的未解决最终失败的已发布事件，以稳定 Job ID 重新确认入队；已经执行过重放的旧失败不阻止 Redis 再次丢失后的恢复，而重放产生的新最终失败会重新阻断扫描。处理成功会在 Handler、既有失败记录的解决状态、`ProcessedJob` 和 `processed_at` 的同一事务提交，因此已完成历史不会继续参与每轮恢复查询。正在执行的长任务会续租 PostgreSQL Outbox 锁，避免恢复扫描并发执行同一副作用。缩短恢复等待时间前，必须确认它仍大于部署中的正常队列抖动，并保留处理租约心跳余量。
 
 当前实现从 `REDIS_PREFIX` 派生三个空间：`${REDIS_PREFIX}:cache`、`${REDIS_PREFIX}:rate`、`${REDIS_PREFIX}:queue`。BullMQ 使用自己的 `prefix` 选项，不能给 BullMQ 连接设置 ioredis `keyPrefix`，否则 Lua 脚本和队列 key 会不一致。
 
@@ -72,6 +73,7 @@ Redis 服务必须兼容 BullMQ 所需命令。业务事实不能只存在 Redis
 | 变量 | 必需 | 默认值 | 适用进程 | 敏感 | 说明 |
 | --- | --- | --- | --- | --- | --- |
 | `AUTH_SECRET` | 是 | 无 | Web、Worker、setup | 是 | 至少 32 字节随机值，用于会话/认证签名 |
+| `TOPIC_VIEW_PREVIOUS_AUTH_SECRETS` | 轮换后临时保留 | `[]` | Web、Worker、setup、doctor | 是 | 旧 `AUTH_SECRET` 的 JSON 字符串数组，只用于注销时清理旧用户浏览桶；最多 8 个 |
 | `SETUP_TOKEN` | 首次安装 | 无 | Web | 是 | 至少 32 位随机一次性令牌，只允许 `/setup` 创建首位管理员；完成后删除 |
 | `AUTH_REGISTRATION_MODE` | 否 | `open` | Web | 否 | 首次迁移/尚未由后台保存设置时的 `open`、`invite` 或 `closed` 引导值；之后由 PostgreSQL 站点设置接管 |
 | `AUTH_SESSION_EXPIRES_IN_SECONDS` | 否 | `2592000` | Web | 否 | 会话绝对有效期，默认 30 天 |
@@ -93,7 +95,8 @@ openssl rand -base64 32
 
 - `AUTH_SECRET` 至少 32 个字符；示例第一条命令生成 64 位十六进制值。
 - `AUTH_SECRET` 和 `MAIL_PAYLOAD_KEY` 用途不同，不能复用。
-- 轮换 `AUTH_SECRET` 会使现有 Cookie 和尚未使用的验证/重置链接失效。
+- 轮换 `AUTH_SECRET` 会使现有 Cookie 和尚未使用的验证/重置链接失效。轮换前把被替换的值用 `JSON.stringify` 等等价方式无损加入 `TOPIC_VIEW_PREVIOUS_AUTH_SECRETS`，再同时重建全部 Web 与 Worker；这些旧值不参与 Cookie、认证链接或新浏览桶校验。官方 Compose 的应用配置由多个入口共享，因此 Web/setup/doctor 也会校验并持有该敏感变量，但只有注销 Worker 读取它计算历史用户哈希。
+- 已聚合浏览桶从最后一个旧 Web 停止写入起至少保留 30 天，并由每分钟维护任务每批清理最多 500 条；未聚合桶会保留到对应 Outbox 成功。旧值只有在 30 天已经过去且运行手册中的截止时间查询返回 0 后才能移除，不能只按日历时间假设已经清空。默认恢复会比较备份与当前历史密钥数组，避免恢复旧浏览事实时丢失清理密钥。
 - `MAIL_PAYLOAD_KEY` 丢失会导致待发送邮件正文无法恢复，必须与备份一起安全保存。
 - `SETUP_TOKEN` 不写入数据库，`installation.completed` 写入后即使环境仍残留令牌也不能再次创建管理员。
 
@@ -104,6 +107,9 @@ openssl rand -base64 32
 | `SMTP_HOST` | 是 | 无 | Web、Worker | 否 | SMTP 主机；Web 校验配置，Worker 实际连接 |
 | `SMTP_PORT` | 否 | `1025` | Web、Worker | 否 | SMTP 端口；生产常用 465 或 587 |
 | `SMTP_SECURE` | 否 | `false` | Web、Worker | 否 | 连接建立时是否直接 TLS，通常端口 465 为 true |
+| `SMTP_CONNECTION_TIMEOUT_MS` | 否 | `15000` | Worker | 否 | TCP/TLS 连接建立超时，必须为正整数毫秒 |
+| `SMTP_GREETING_TIMEOUT_MS` | 否 | `15000` | Worker | 否 | SMTP 服务端问候超时，必须为正整数毫秒 |
+| `SMTP_SOCKET_TIMEOUT_MS` | 否 | `60000` | Worker | 否 | 已建立连接的 Socket 空闲超时，必须为正整数毫秒 |
 | `SMTP_USER` | 视服务而定 | 无 | Worker | 是 | SMTP 用户名 |
 | `SMTP_PASSWORD` | 视服务而定 | 无 | Worker | 是 | SMTP 密码 |
 | `SMTP_FROM` | 否 | `NextBuf <noreply@localhost>` | Worker | 否 | 完整发件人，可同时包含名称和地址 |
@@ -111,6 +117,8 @@ openssl rand -base64 32
 `SMTP_USER` 与 `SMTP_PASSWORD` 必须同时设置或同时为空。开发 Compose 的 Mailpit 使用 `127.0.0.1:1025`，Web 界面为 `http://127.0.0.1:8025`；Mailpit 不用于生产。生产环境若没有可用邮件服务，不得开放邮箱注册。
 
 `Connection timeout` 表示 Worker 尚未连接到 SMTP 服务器，发生在账号密码认证之前。先核对 Provider 控制台给出的区域 SMTP 主机和服务器出口端口；465 通常配 `SMTP_SECURE=true`，587 或 Provider 明确支持的替代端口通常配 `false`。`SMTP_PASSWORD` 必须填写 SMTP 专用密码，不是云账号密码或 AccessKey。修改后必须重建 Web 与 Worker，使两个进程读取同一配置。
+
+Worker 只自动重试能够证明 SMTP 尚未接受邮件的临时故障，例如 4xx 响应、连接建立失败或连接/问候阶段超时。认证/地址等永久拒绝进入 `failed`；DATA 后断线、通用 Socket 超时、Worker 中断或 SMTP 成功后的本地完成失败进入 `outcome_unknown`。结果未知的投递只允许管理员在后台确认“可能重复投递”后重放。
 
 ## 7. 文件存储
 
@@ -202,7 +210,7 @@ SMTP、对象存储和 GitHub OAuth 的主机、Bucket、Client ID 等非秘密�
 
 Compose 应根据这些值构造应用 `DATABASE_URL` 和 `REDIS_URL`，用户不需要重复维护两套密码。
 
-`compose.baota.yml` 不读取 `.env`，也不需要 `NEXTBUF_IMAGE`、`NEXTBUF_VERSION` 或 `NEXTBUF_ENV_FILE`。它将镜像固定为通过完整 `main` 验证后更新的滚动 `latest` 通道，并把应用、PostgreSQL 和 Redis 所需值直接写在同一个 Compose。重复出现的数据库/Redis 密码必须保持一致；所有 `replace-` 值、示例域名和示例 `MAIL_PAYLOAD_KEY` 都必须在首次启动前替换。镜像内部的 `NEXTBUF_VERSION` 仍是源码 SemVer，滚动构建的精确身份由 `NEXTBUF_COMMIT` 与镜像 Digest 提供，不能在面板模板中覆盖。该单实例入口固定四个容器名，因此同一 Docker 主机不能同时启动两套未改名的宝塔模板；多实例部署使用受控 Compose。
+`compose.baota.yml` 不读取 `.env`，也不需要 `NEXTBUF_IMAGE`、`NEXTBUF_VERSION` 或 `NEXTBUF_ENV_FILE`。它将镜像固定为只随完整稳定 Release 更新的 `latest` 通道，并把应用、PostgreSQL 和 Redis 所需值直接写在同一个 Compose；`main` 候选使用 `edge`，不会覆盖该默认标签。`v1.0.0` 发布前的过渡期，既有 `latest` 可能仍是最后一个经验证的 `v0.13.x` Beta，不表示稳定版已发布。重复出现的数据库/Redis 密码必须保持一致；所有 `replace-` 值、示例域名和示例 `MAIL_PAYLOAD_KEY` 都必须在首次启动前替换。镜像内部的 `NEXTBUF_VERSION` 是源码 SemVer，精确身份由 `NEXTBUF_COMMIT` 与镜像 Digest 提供，不能在面板模板中覆盖。该单实例入口固定四个容器名，因此同一 Docker 主机不能同时启动两套未改名的宝塔模板；多实例部署使用受控 Compose。通道合同见 [ADR-0020](./adr/0020-stable-release-channels-and-lifecycle.md)。
 
 ## 13. 配置优先级
 
@@ -230,4 +238,4 @@ Docker/源码开发建议从低到高：
 
 `nextbuf doctor` 应执行相同 Schema 校验，并额外测试数据库、Redis、邮件和存储连通性，但输出必须脱敏。
 
-Web/Worker preflight 还要求：`NEXTBUF_VERSION` 与应用内源码 SemVer 一致、Release 中全部迁移已经成功应用、没有未知迁移、`runtime.initialized` 存在。本地存储会执行创建/删除探针，S3 会执行 `HeadBucket`。滚动 `latest` 不能只凭 SemVer 识别，部署记录还必须读取 `NEXTBUF_COMMIT` 和镜像 Digest；任一启动门槛失败都拒绝进入假健康状态。
+Web/Worker preflight 还要求：`NEXTBUF_VERSION` 与应用内源码 SemVer 一致、Release 中全部迁移已经成功应用、没有未知迁移、`runtime.initialized` 存在。本地存储会执行创建/删除探针，S3 会执行 `HeadBucket`。`latest`/`edge` 等可移动标签不能只凭名称或 SemVer 识别，部署记录还必须读取 `NEXTBUF_COMMIT` 和镜像 Digest；任一启动门槛失败都拒绝进入假健康状态。

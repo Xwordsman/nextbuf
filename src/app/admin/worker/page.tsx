@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { AlertTriangle, Mail, Send, ServerCog } from "lucide-react";
 import { AdminPage, AdminPageHeader } from "@/components/admin/admin-page-layout";
@@ -48,6 +49,7 @@ export default async function WorkerOperationsPage() {
     ["队列失败", summary.queue.available ? summary.queue.counts.failed : "-", AlertTriangle],
     ["Outbox 待发布", summary.outbox.pending, Send],
     ["邮件待发送", summary.mail.pending, Mail],
+    ["注销重试失败", summary.accountDeletions.failed, AlertTriangle],
   ] as const;
 
   return (
@@ -58,7 +60,7 @@ export default async function WorkerOperationsPage() {
         title="Worker 运维"
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {metrics.map(([label, value, Icon]) => (
           <Card key={label} className="gap-0 py-0">
             <CardHeader className="flex-row items-center justify-between border-b py-3">
@@ -75,6 +77,32 @@ export default async function WorkerOperationsPage() {
           <AlertTriangle aria-hidden="true" />
           <AlertTitle>Redis 队列不可用</AlertTitle>
           <AlertDescription>{summary.queue.error}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {summary.accountDeletions.failed > 0 ? (
+        <Alert variant="destructive">
+          <AlertTriangle aria-hidden="true" />
+          <AlertTitle>账号注销需要重试</AlertTitle>
+          <AlertDescription>
+            <p>
+              {summary.accountDeletions.failed} 个账号记录了最终化错误，当前共有
+              {summary.accountDeletions.pending} 个待处理申请。Worker 会按持久退避状态自动重试。
+            </p>
+            <ul className="mt-2 space-y-1">
+              {summary.accountDeletions.recentFailures.map((failure) => (
+                <li className="break-words" key={failure.uid}>
+                  <Link
+                    className="font-medium underline underline-offset-4"
+                    href={`/admin/users/${failure.uid}`}
+                  >
+                    UID {failure.uid} · @{failure.username}
+                  </Link>
+                  {` · 第 ${failure.deletionAttemptCount} 次 · ${failure.deletionLastError ?? "未知错误"} · 下次 ${date(failure.deletionNextAttemptAt)}`}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
         </Alert>
       ) : null}
 
@@ -123,7 +151,13 @@ export default async function WorkerOperationsPage() {
                       {failure.replayRequestedAt ? (
                         "已请求"
                       ) : (
-                        <WorkerReplayButton failureId={failure.id} />
+                        <WorkerReplayButton
+                          failureId={failure.id}
+                          requiresDuplicateRiskAcknowledgement={
+                            failure.emailDelivery?.status === "sending" ||
+                            failure.emailDelivery?.status === "outcome_unknown"
+                          }
+                        />
                       )}
                     </TableCell>
                   </TableRow>

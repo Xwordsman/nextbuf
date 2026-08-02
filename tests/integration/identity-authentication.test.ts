@@ -12,7 +12,9 @@ import { getAuth, getInternalRegistrationHeader } from "@/infrastructure/auth/be
 import { disconnectRedisClient, getRedisClient } from "@/infrastructure/cache/redis";
 import { disconnectPrismaClient, getPrismaClient } from "@/infrastructure/database/client";
 import { decryptMailPayload } from "@/infrastructure/mail/encryption";
+import { setMailProviderForTests } from "@/infrastructure/mail/smtp";
 import { dispatchOutboxBatch } from "@/infrastructure/outbox/dispatcher";
+import { SYSTEM_QUEUE_NAME } from "@/infrastructure/queue/contracts";
 import { closeSystemQueue } from "@/infrastructure/queue/system-queue";
 import {
   createRegistrationInvite,
@@ -184,6 +186,7 @@ describe("identity authentication integration", () => {
   });
 
   afterAll(async () => {
+    setMailProviderForTests(undefined);
     await closeSystemQueue();
     await disconnectRedisClient();
     await disconnectPrismaClient();
@@ -196,6 +199,26 @@ describe("identity authentication integration", () => {
     );
     expect(response.status).toBe(403);
     expect(await getPrismaClient().user.count({ where: { email } })).toBe(0);
+  });
+
+  it("reserves account tombstone identities from every Better Auth signup", async () => {
+    const email = "reserved-tombstone@deleted.invalid";
+    await expect(
+      getAuth().api.signUpEmail({
+        body: {
+          name: "Reserved Tombstone",
+          username: "ordinary_member",
+          email,
+          password: oldPassword,
+          callbackURL: "/auth/verified",
+        },
+        headers: new Headers({
+          origin: "http://127.0.0.1:3000",
+          "x-nextbuf-registration": getInternalRegistrationHeader(),
+        }),
+      }),
+    ).rejects.toBeDefined();
+    await expect(getPrismaClient().user.count({ where: { email } })).resolves.toBe(0);
   });
 
   it("registers, verifies and signs in with a stored scrypt credential", async () => {
@@ -220,6 +243,142 @@ describe("identity authentication integration", () => {
     expect(secondSignIn.status).toBe(200);
     expect(sessionCookie(firstSignIn)).toContain("nextbuf.session_token=");
     expect(await getPrismaClient().session.count({ where: { userId: user.id } })).toBe(2);
+  });
+
+  it("keeps password credentials linked while preserving OAuth unlink behavior", async () => {
+    const prisma = getPrismaClient();
+    const email = testEmail("credential-unlink");
+    const { user, delivery } = await registerPendingUser(email);
+    await verifyUser(email, delivery);
+    const signIn = await getAuth().handler(
+      request("/sign-in/email", { email, password: oldPassword }),
+    );
+    const cookie = sessionCookie(signIn);
+    await prisma.account.create({
+      data: {
+        userId: user.id,
+        providerId: "github",
+        accountId: "oauth-fixture",
+      },
+    });
+
+    const credentialUnlink = await getAuth().handler(
+      request("/unlink-account", { providerId: "credential" }, cookie),
+    );
+    expect(credentialUnlink.status).toBe(400);
+    await expect(credentialUnlink.json()).resolves.toMatchObject({
+      code: "CREDENTIAL_UNLINK_DISABLED",
+    });
+    await expect(
+      prisma.account.count({ where: { userId: user.id, providerId: "credential" } }),
+    ).resolves.toBe(1);
+
+    const oauthUnlink = await getAuth().handler(
+      request("/unlink-account", { providerId: "github", accountId: "oauth-fixture" }, cookie),
+    );
+    expect(oauthUnlink.status).toBe(200);
+    await expect(
+      prisma.account.count({ where: { userId: user.id, providerId: "github" } }),
+    ).resolves.toBe(0);
+  });
+
+  it("blocks Better Auth profile updates outside the NextBuf identity pipeline", async () => {
+    await redis.flushdb();
+    const prisma = getPrismaClient();
+    const email = testEmail("update-user-boundary");
+    const { user, delivery } = await registerPendingUser(email);
+    await verifyUser(email, delivery);
+    const signIn = await getAuth().handler(
+      request("/sign-in/email", { email, password: oldPassword }),
+    );
+    const cookie = sessionCookie(signIn);
+
+    const profileResponse = await updateProfile(
+      accountRequest(
+        "/api/account/profile",
+        "PATCH",
+        {
+          name: "Protected Profile",
+          bio: "Profile data owned by the NextBuf pipeline",
+          website: "https://example.com/protected",
+        },
+        cookie,
+      ),
+    );
+    expect(profileResponse.status).toBe(200);
+    const usernameResponse = await updateUsername(
+      accountRequest("/api/account/username", "PATCH", { username: "auth_update_guard" }, cookie),
+    );
+    expect(usernameResponse.status).toBe(200);
+    const avatarResponse = await updateAvatar(avatarRequest(cookie));
+    expect(avatarResponse.status).toBe(200);
+    const avatarUrl = String((await avatarResponse.json()).image);
+    const avatarKey = avatarUrl.split("/").at(-1);
+    if (!avatarKey) throw new Error("Avatar response did not contain a media key");
+
+    const userBefore = await prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      select: { name: true, image: true, username: true, usernameChangedAt: true },
+    });
+    const profileBefore = await prisma.profile.findUniqueOrThrow({ where: { userId: user.id } });
+    const aliasesBefore = await prisma.usernameAlias.findMany({
+      where: { userId: user.id },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    expect(userBefore).toMatchObject({
+      name: "Protected Profile",
+      image: avatarUrl,
+      username: "auth_update_guard",
+      usernameChangedAt: expect.any(Date),
+    });
+    expect(profileBefore).toMatchObject({
+      bio: "Profile data owned by the NextBuf pipeline",
+      website: "https://example.com/protected",
+    });
+    expect(aliasesBefore).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId: user.id, username: user.username }),
+      ]),
+    );
+
+    const bypassResponse = await getAuth().handler(
+      request(
+        "/update-user",
+        {
+          name: "Bypassed Profile",
+          image: "https://example.com/bypassed-avatar.webp",
+          username: "bypassed_identity",
+          bio: "Bypassed profile data",
+          website: "https://example.com/bypassed",
+        },
+        cookie,
+      ),
+    );
+
+    expect(bypassResponse.status).toBe(403);
+    await expect(bypassResponse.json()).resolves.toMatchObject({
+      code: "PROFILE_UPDATE_REQUIRES_NEXTBUF_ENDPOINT",
+    });
+    await expect(
+      prisma.user.findUniqueOrThrow({
+        where: { id: user.id },
+        select: { name: true, image: true, username: true, usernameChangedAt: true },
+      }),
+    ).resolves.toEqual(userBefore);
+    await expect(prisma.profile.findUniqueOrThrow({ where: { userId: user.id } })).resolves.toEqual(
+      profileBefore,
+    );
+    await expect(
+      prisma.usernameAlias.findMany({
+        where: { userId: user.id },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      }),
+    ).resolves.toEqual(aliasesBefore);
+    await expect(
+      readAvatar(new Request(`http://127.0.0.1:3000${avatarUrl}`), {
+        params: Promise.resolve({ key: avatarKey }),
+      }),
+    ).resolves.toMatchObject({ status: 200 });
   });
 
   it("does not disclose an existing account through the registration endpoint", async () => {
@@ -472,6 +631,54 @@ describe("identity authentication integration", () => {
         })}`,
       );
     } finally {
+      await closeWorker(worker);
+    }
+  });
+
+  it("commits a mail accepted after Prisma's default transaction deadline exactly once", async () => {
+    const prisma = getPrismaClient();
+    const email = testEmail("slow-worker");
+    const { delivery } = await registerPendingUser(email);
+    const event = await prisma.outboxEvent.findUniqueOrThrow({
+      where: { idempotencyKey: `identity-email:${delivery.id}` },
+    });
+    let sends = 0;
+    setMailProviderForTests({
+      async send() {
+        sends += 1;
+        await new Promise((resolve) => setTimeout(resolve, 6_000));
+      },
+    });
+    const worker = createOutboxWorker();
+
+    try {
+      await worker.worker.waitUntilReady();
+      await expect(dispatchOutboxBatch("slow-mail-integration-dispatcher")).resolves.toEqual({
+        dispatched: 1,
+        failed: 0,
+      });
+      await waitFor(async () => {
+        const current = await prisma.emailDelivery.findUnique({ where: { id: delivery.id } });
+        return current?.status === "sent";
+      });
+
+      expect(sends).toBe(1);
+      await expect(
+        prisma.emailDelivery.findUniqueOrThrow({ where: { id: delivery.id } }),
+      ).resolves.toMatchObject({ status: "sent", attempts: 1, sentAt: expect.any(Date) });
+      await expect(
+        prisma.processedJob.count({
+          where: { queueName: SYSTEM_QUEUE_NAME, idempotencyKey: `outbox-${event.id}` },
+        }),
+      ).resolves.toBe(1);
+      await expect(
+        prisma.outboxEvent.findUniqueOrThrow({ where: { id: event.id } }),
+      ).resolves.toMatchObject({ processedAt: expect.any(Date) });
+      await expect(
+        prisma.workerJobFailure.count({ where: { jobId: event.id, resolvedAt: null } }),
+      ).resolves.toBe(0);
+    } finally {
+      setMailProviderForTests(undefined);
       await closeWorker(worker);
     }
   });

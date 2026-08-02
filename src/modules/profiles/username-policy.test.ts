@@ -17,6 +17,11 @@ describe("username policy", () => {
     expect(validateUsername("alice__dev")).toMatchObject({ ok: false, code: "invalid_username" });
     expect(validateUsername("管理员")).toMatchObject({ ok: false, code: "invalid_username" });
     expect(validateUsername("admin")).toMatchObject({ ok: false, code: "reserved_username" });
+    expect(validateUsername("deleted-1")).toMatchObject({
+      ok: false,
+      code: "reserved_username",
+    });
+    expect(validateUsername("deleted_1")).toEqual({ ok: true, username: "deleted_1" });
   });
 
   it("uses a thirty day change cooldown", () => {

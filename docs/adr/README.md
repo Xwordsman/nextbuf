@@ -22,9 +22,11 @@ ADR 记录已经影响长期兼容性的技术决策。决策被替代时保留�
 | [0014-administration-settings-and-reauthentication.md](./0014-administration-settings-and-reauthentication.md) | Accepted | 管理后台、在线设置、Provider 诊断与 Session 绑定二次验证 |
 | [0015-production-packaging-setup-and-recovery.md](./0015-production-packaging-setup-and-recovery.md) | Accepted | 生产镜像、首次安装门禁、备份恢复和升级边界 |
 | [0016-panel-friendly-compose-bootstrap.md](./0016-panel-friendly-compose-bootstrap.md) | Accepted | 默认四容器启动协调，不保留停止的 setup 容器 |
-| [0017-single-file-panel-compose.md](./0017-single-file-panel-compose.md) | Accepted | 宝塔单文件 Compose 使用 latest 通道与固定容器名 |
-| [0018-validated-main-image-channel.md](./0018-validated-main-image-channel.md) | Accepted | 通过验证的 main 更新滚动 latest，正式版本标签保持不可变 |
+| [0017-single-file-panel-compose.md](./0017-single-file-panel-compose.md) | Accepted；通道语义由 ADR-0020 替代 | 宝塔单文件 Compose 与固定容器名 |
+| [0018-validated-main-image-channel.md](./0018-validated-main-image-channel.md) | Superseded by ADR-0020 | 公开 Beta 时通过验证的 main 滚动通道 |
 | [0019-editor-autosave-idempotency-and-draft-privacy.md](./0019-editor-autosave-idempotency-and-draft-privacy.md) | Accepted | 编辑写入幂等、刷新恢复、回复会话终态与私人草稿边界 |
+| [0020-stable-release-channels-and-lifecycle.md](./0020-stable-release-channels-and-lifecycle.md) | Accepted | `latest` 稳定通道、`edge` 主线通道与不可变发布生命周期 |
+| [0021-final-account-deletion-and-data-retention.md](./0021-final-account-deletion-and-data-retention.md) | Accepted | 到期账号墓碑化、公开内容与治理证据保留、私人数据清理、管理员连续性和 Worker 重试 |
 
 ## 模板
 

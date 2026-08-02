@@ -28,7 +28,11 @@ function actionEmail(input: {
   };
 }
 
-export async function sendVerificationMessage(email: string, url: string): Promise<void> {
+export async function sendVerificationMessage(
+  userId: string,
+  email: string,
+  url: string,
+): Promise<void> {
   const content = actionEmail({
     heading: "验证你的 NextBuf 邮箱",
     description: "完成邮箱验证后即可登录 NextBuf。验证链接将在规定时间后失效。",
@@ -36,6 +40,7 @@ export async function sendVerificationMessage(email: string, url: string): Promi
     url,
   });
   await queueIdentityEmail({
+    userId,
     kind: "email-verification",
     recipient: email,
     subject: "验证你的 NextBuf 邮箱",
@@ -43,7 +48,11 @@ export async function sendVerificationMessage(email: string, url: string): Promi
   });
 }
 
-export async function sendPasswordResetMessage(email: string, url: string): Promise<void> {
+export async function sendPasswordResetMessage(
+  userId: string,
+  email: string,
+  url: string,
+): Promise<void> {
   const content = actionEmail({
     heading: "重置你的 NextBuf 密码",
     description: "使用下面的链接设置新密码。重置成功后，其他登录会话将全部失效。",
@@ -51,6 +60,7 @@ export async function sendPasswordResetMessage(email: string, url: string): Prom
     url,
   });
   await queueIdentityEmail({
+    userId,
     kind: "password-reset",
     recipient: email,
     subject: "重置你的 NextBuf 密码",

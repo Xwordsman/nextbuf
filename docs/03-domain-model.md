@@ -19,9 +19,9 @@
 
 - UUID 是内部主键；`uid` 是从独立 PostgreSQL 序列分配的公开数字标识，从 1 起、不可修改、不可复用。早期 Beta 已分配 UID 保持不变。
 - `username` 是唯一规范化用户名；`name` 是可重复昵称；邮箱、邮箱验证和账号状态沿用 Better Auth 语义。
-- `usernameChangedAt` 记录 30 天修改冷却起点；`deletionRequestedAt` 与 `deletionScheduledAt` 记录 14 天可撤销注销申请。
+- `usernameChangedAt` 记录 30 天修改冷却起点；`deletionRequestedAt` 与 `deletionScheduledAt` 记录 14 天可撤销注销申请；`deletionFinalizedAt`、`deletionAttemptCount`、`deletionNextAttemptAt` 与 `deletionLastError` 保存最终化及可恢复 Worker 重试事实。
 - 账号状态：`pending`、`active`、`restricted`、`suspended`、`deleted`。
-- `v0.10.0` 起暂停/封禁会同步写入 `suspended`，撤销或到期后由受审计服务/周期维护恢复；最终匿名化/删除和最后活动仍属于后续版本。持久化信任状态位于独立 `TrustUserState`，不写入 User 角色字段。
+- 暂停/封禁会同步写入 `suspended`，撤销或到期后由受审计服务/周期维护恢复。`v1.0.0` 候选的到期最终化不删除 User 行：保留 UUID、UID、公开内容归属、修订和治理关系，将身份改为墓碑并使状态成为 `deleted`。持久化信任状态位于独立 `TrustUserState`，不写入 User 角色字段。
 
 ### Profile
 
@@ -31,14 +31,14 @@
 - 简介、HTTP/HTTPS 个人主页、资料公开开关和活动统计展示开关。
 - 头像 URL 当前保存在 `User.image` 以保持 Better Auth 兼容；文件由可替换的存储边界管理。
 
-用户名比较使用小写规范化值并建立唯一索引。`UsernameAlias` 永久归原用户所有；用户名变更后旧 `/u/<username>` 链接重定向到当前主页，其他用户不能抢注历史名称。只有 `active` 账号可通过公开用户页解析。
+用户名比较使用小写规范化值并建立唯一索引。`UsernameAlias` 永久归原用户所有；用户名变更后旧 `/u/<username>` 链接重定向到当前主页，其他用户不能抢注历史名称。`active` 账号解析完整公开资料；最终注销后的永久别名继续解析到仅显示墓碑名称、墓碑用户名和 UID 的最小公开页。
 
 ### UsernameAlias
 
 - 保存历史 `username`、所属用户和创建时间。
 - 历史名称与当前用户名在应用服务中共同做占用检查；数据库触发器使用事务级 advisory lock 串行化同名写入，并跨两张表拒绝不同用户的冲突，表内唯一索引继续负责最终兜底。
 - 用户切回自己的历史名称时，该名称从别名恢复为当前用户名，同时刚离开的名称进入别名表。
-- 后续最终注销流程必须先定义匿名化与法务保留策略，不能通过简单级联删除意外释放历史用户名。
+- 最终注销把当前用户名写入别名，再分配未占用的稳定 `deleted-<UID>` 墓碑用户名；连字符格式不属于普通用户名规则，避免与既有合法用户名或别名冲突；历史用户名永不释放，不能通过级联删除意外释放。
 
 ### Account、Session、Verification
 
@@ -47,7 +47,8 @@
 - `Verification` 统一承载邮箱验证和密码重置记录，identifier 经 HMAC-SHA256 后落库并设置短有效期。
 - `RegistrationInvite` 只保存邀请码 HMAC、最大次数、使用次数、有效期和禁用时间。
 - `IdentityAuditEvent` 保存身份安全事件、关联用户/会话和 HMAC 后的 IP。
-- `EmailDelivery` 保存收件人、主题、状态和 AES-256-GCM 加密正文；实际发送由 Outbox Worker 完成。
+- `EmailDelivery` 保存收件人、主题、状态、attempt token/generation 和 AES-256-GCM 加密正文；实际发送由 Outbox Worker 完成。`pending -> sending` 在短事务中领取，SMTP 在事务外执行，成功后再以短事务提交 `sent` 与 Outbox 完成事实。明确未接受的临时故障可回到 `pending` 自动重试；永久拒绝进入 `failed`；外部结果不确定时持久化为 `outcome_unknown`，只有管理员确认重复投递风险后才可 replay。claim、成功、失败和迟到回调都必须匹配 attempt fence，replay 还会拒绝有效 PostgreSQL 处理租约。邮件 `WorkerJobFailure` 以级联外键关联投递，安全错误不保存 SMTP 原始响应或身份字段。最终注销除清理发往旧邮箱的邮件外，也删除由墓碑用户作为 actor 渲染出的历史通知邮件；对应 NotificationDelivery 保留状态但清空邮件引用，失败记录随 EmailDelivery 删除，`sending` 或 `outcome_unknown` 结束前该用户的最终化会持久退避。
+- 最终注销删除该用户的全部 Account、Session 及精确指向该 UUID 的 Verification；数据库以相同 User 行锁顺序拒绝为 `deleted` 墓碑账号新增或改绑 Account、Session，以及值为该 User UUID 或合法 JSON `link.userId` 的 Verification。它只清理 Better Auth 持久事实，不替代 Better Auth 对正常账号的密码、会话、验证、OAuth 或 Cookie 语义。
 
 认证数据归 `identity` 模块所有，业务模块只通过用户 ID 和认证上下文引用。
 
@@ -161,7 +162,7 @@ V1 只实现单一“赞”，不建立多反应类型。`v0.8.0` 使用 `intera
 
 ### View
 
-浏览量是反滥用后的聚合结果，不等于每次 HTTP 请求。`v0.8.0` 对登录用户 ID 或匿名 IP/用户代理组合做领域分离 HMAC，仅保存哈希；同一 Topic/哈希/30 分钟桶只接受一次。Outbox Worker 幂等增加 `view_count`，已聚合桶保留 30 天并限量清理。详细决策见 [ADR-0011](./adr/0011-interactions-search-discovery.md)。
+浏览量是反滥用后的聚合结果，不等于每次 HTTP 请求。`v0.8.0` 对登录用户 ID 或匿名 IP/用户代理组合做领域分离 HMAC，仅保存哈希；同一 Topic/哈希/30 分钟桶只接受一次。Outbox Worker 幂等增加 `view_count`；`worker.maintenance` 每分钟独立清理最多 500 条已聚合且超过 30 天的桶，未聚合事实保留到 Outbox 成功。详细决策见 [ADR-0011](./adr/0011-interactions-search-discovery.md)。
 
 ## 6. 通知
 
@@ -182,7 +183,7 @@ V1 只实现单一“赞”，不建立多反应类型。`v0.8.0` 使用 `intera
 
 用户可分别控制站内、邮件和未来推送渠道。安全类邮件不能被普通偏好完全关闭。
 
-通知创建和渠道投递分开：业务事件生成站内通知及投递意图，Worker 再发送邮件。邮件失败不回滚已经发布的回复。
+通知创建和渠道投递分开：业务事件生成站内通知及投递意图，Worker 再发送邮件。邮件失败不回滚已经发布的回复；最终失败在锁定 EmailDelivery 的同一事务中更新邮件、通知渠道和 Worker 失败状态，已经删除的投递不会被迟到失败重新建立。
 
 缺少显式偏好时站内渠道默认开启、普通邮件默认关闭。偏好只影响之后产生的普通通知，不追溯投递历史；邮箱验证和密码重置属于安全邮件，不读取普通偏好。失败任务、重放请求和带租约的周期任务同样持久化在 PostgreSQL，具体语义见 [ADR-0012](./adr/0012-notifications-mail-worker-operations.md)。
 
@@ -197,6 +198,8 @@ V1 只实现单一“赞”，不建立多反应类型。`v0.8.0` 使用 `intera
 ### ModerationCase
 
 一次治理事件可以关联多个举报和多个动作。实际状态为：`open`、`in_review`、`resolved`、`dismissed`。同一 `active_target_key` 最多一个未结案件；案件优先级按独立举报权重累加，但不直接代表目标有罪。
+
+案件 `assignedToId` 只表示当前工作分配，不属于不可变证据。负责人最终注销时该字段清空，墓碑用户不能被重新指派；案件创建者、举报来源、处置操作者、制裁和信任历史继续引用墓碑 User。私人 draft Topic/Post 被最终注销删除时，治理记录保留稳定 target key、snapshot 和处置状态，但可空内容外键会被清空。
 
 ### ModerationAction
 
@@ -219,7 +222,7 @@ V1 只实现单一“赞”，不建立多反应类型。`v0.8.0` 使用 `intera
 
 ### RoleAssignment
 
-基础用户是隐式角色。`CommunityRoleAssignment` 显式保存 `admin`、`global_moderator` 和限定节点的 `node_moderator`，包含授予人、原因与作用域唯一键。角色变更只允许管理员，撤销最后一个管理员会被拒绝；角色不由 TL 自动产生。
+基础用户是隐式角色。`CommunityRoleAssignment` 显式保存 `admin`、`global_moderator` 和限定节点的 `node_moderator`，包含授予人、原因与作用域唯一键。角色变更只允许管理员，角色不由 TL 自动产生。站点管理员连续性只计入同时具备 `admin/site`、`active`、已验证邮箱、无注销申请/计划、无有效 suspend/ban 且存在非空 `credential` 密码凭据的账号；撤销、暂停、封禁、注销和凭据变更不得把可接管管理员从 1 降为 0。
 
 ### TrustRuleVersion、TrustUserState 与 TrustLevelHistory
 
@@ -278,7 +281,7 @@ erDiagram
 
 - 草稿可由用户删除，并按配置定期清理。
 - 已发布内容采用软删除，以保持回复关系、举报证据和审计一致性。
-- 用户注销先撤销会话和凭证，再按政策匿名化或延迟删除公开资料。
+- 用户注销先经历 14 天可撤销申请。到期后 Worker 在独立事务中保留 User 墓碑、公开内容、不可变修订和治理证据，删除凭证、会话、私人草稿、资料、互动、通知偏好、发往旧邮箱的邮件及由旧 actor 身份渲染出的通知邮件；清空当前治理案件指派，头像及不再被当前 Post、Revision 或 Draft 引用的附件经 Outbox 异步回收。管理员必须先完成角色交接。
 - 安全日志、审计日志、任务日志和浏览事件具有不同保留期。
 - 附件删除要经过引用检查和延迟回收，避免编辑或恢复内容后文件丢失。
 - 备份保留期与在线数据删除不是同一概念，隐私政策必须说明备份中的延迟清除。

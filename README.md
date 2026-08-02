@@ -54,7 +54,7 @@ cp .env.example .env
 
 ## Docker 部署
 
-宝塔面板用户可以直接粘贴 [`compose.baota.yml`](./compose.baota.yml)，首次替换其中的域名、密码、应用密钥和 SMTP 配置后启动。该模板使用通过验证的 `main` `latest` 通道和 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis` 四个固定容器名；后续升级只需在面板拉取新镜像并重建，不再编辑版本号。
+宝塔面板用户可以直接粘贴 [`compose.baota.yml`](./compose.baota.yml)，首次替换其中的域名、密码、应用密钥和 SMTP 配置后启动。该模板使用默认稳定 `latest` 通道和 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis` 四个固定容器名；后续升级只需先备份，再在面板拉取新镜像并重建，不再编辑版本号。`v1.0.0` 尚未发布，因此过渡期的 `latest` 仍停留在最后一个经验证的 Beta，主线候选改由 `edge` 提供；通道合同见 [ADR-0020](./docs/adr/0020-stable-release-channels-and-lifecycle.md)。
 
 需要 `nextbufctl` 精确升级、备份和恢复的用户使用正式 Release：
 
@@ -93,6 +93,8 @@ pnpm test:e2e
 5. [详细开发计划](./docs/09-detailed-development-plan.md)
 
 完整索引见 [docs/README.md](./docs/README.md)。
+
+版本支持范围见 [SUPPORT.md](./SUPPORT.md)；安全漏洞请按 [SECURITY.md](./SECURITY.md) 使用私密报告渠道。
 
 ## 贡献
 

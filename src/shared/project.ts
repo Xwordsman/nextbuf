@@ -1,5 +1,5 @@
 export const PROJECT = {
   name: "NextBuf",
-  version: "0.13.10",
+  version: "1.0.0",
   repositoryUrl: "https://github.com/Xwordsman/nextbuf",
 } as const;

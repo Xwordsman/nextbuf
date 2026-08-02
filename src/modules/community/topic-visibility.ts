@@ -19,6 +19,21 @@ export function isPrivateTopicDraftLineage(topic: {
   return !deletedPublicTopicStatuses.includes(topic.deletedFromStatus ?? "");
 }
 
+export function privateTopicDraftLineageWhere(): Prisma.CommunityTopicWhereInput {
+  return {
+    OR: [
+      { status: "draft" },
+      {
+        status: "deleted",
+        OR: [
+          { deletedFromStatus: null },
+          { deletedFromStatus: { notIn: [...deletedPublicTopicStatuses] } },
+        ],
+      },
+    ],
+  };
+}
+
 export function managedTopicWhere(requestedStatus?: string): Prisma.CommunityTopicWhereInput {
   if (managedTopicStatuses.includes(requestedStatus ?? "")) {
     return { status: requestedStatus };

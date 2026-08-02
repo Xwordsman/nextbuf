@@ -43,7 +43,7 @@ export async function getOperationalCapacity() {
         prisma.outboxEvent.count({ where: { publishedAt: null } }),
         prisma.outboxEvent.count({ where: { publishedAt: null, lastError: { not: null } } }),
         prisma.emailDelivery.count({ where: { status: { in: ["pending", "sending"] } } }),
-        prisma.emailDelivery.count({ where: { status: "failed" } }),
+        prisma.emailDelivery.count({ where: { status: { in: ["failed", "outcome_unknown"] } } }),
         prisma.workerJobFailure.count({ where: { resolvedAt: null } }),
       ]),
     ]);

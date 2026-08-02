@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Verify DCO sign-offs
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const commits = await github.paginate(github.rest.pulls.listCommits, {
@@ -96,13 +96,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
           cache: pnpm
@@ -130,11 +130,35 @@ jobs:
           sh -n deploy/docker/entrypoint.sh
           sh -n deploy/bin/nextbuf
           sh -n deploy/bin/nextbuf-service
+          sh -n scripts/assess-stable-image-channel.sh
+          sh -n scripts/delete-github-release-asset.sh
+          sh -n scripts/inspect-registry-manifest.sh
+          sh -n scripts/verify-github-release.sh
+          sh -n scripts/verify-github-tag-commit.sh
+          sh -n scripts/verify-oci-image-identity.sh
+          node --check scripts/release-receipt-metadata.mjs
+          node --check scripts/tested-image-identity.mjs
+          node --check scripts/oci-platform-members.mjs
           sh -n tests/smoke/docker-smoke.sh
           sh -n tests/smoke/docker-upgrade-smoke.sh
           sh -n tests/smoke/release-archive-smoke.sh
+          sh -n tests/smoke/release-asset-cleanup-smoke.sh
+          sh -n tests/smoke/release-receipt-smoke.sh
+          sh -n tests/smoke/registry-channel-state-smoke.sh
+          sh -n tests/smoke/assert-doctor-continuity-warning.sh
+          sh -n tests/smoke/verify-mailpit-user.sh
           sh -n tests/smoke/nextbufctl-semver-smoke.sh
+          sh -n tests/smoke/oci-image-identity-smoke.sh
+          sh -n tests/smoke/release-channel-policy-smoke.sh
+          sh -n tests/smoke/stable-image-channel-smoke.sh
           sh tests/smoke/nextbufctl-semver-smoke.sh
+          sh tests/smoke/oci-image-identity-smoke.sh
+          sh tests/smoke/release-asset-cleanup-smoke.sh
+          sh tests/smoke/release-receipt-smoke.sh
+          sh tests/smoke/registry-channel-state-smoke.sh
+          sh tests/smoke/release-channel-policy-smoke.sh
+          sh tests/smoke/stable-image-channel-smoke.sh
+          node tests/smoke/tested-image-identity-smoke.mjs
 
       - name: Check formatting
         run: pnpm format:check
@@ -188,7 +212,7 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Resolve application version
         id: version
@@ -210,23 +234,41 @@ jobs:
         id: image
         shell: bash
         run: |
-          candidate="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+          candidate="ci-${GITHUB_RUN_ID}-${GITHUB_SHA}"
           echo "candidate=$candidate" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Log in to GHCR
         if: github.event_name == 'push'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Reuse a candidate from an earlier workflow attempt
+        if: github.event_name == 'push'
+        id: candidate-image
+        shell: bash
+        run: |
+          image="ghcr.io/xwordsman/nextbuf:${{ steps.image.outputs.candidate }}-${{ matrix.architecture }}"
+          state=$(sh scripts/inspect-registry-manifest.sh "$image")
+          if [[ "$state" == present ]]; then
+            echo "Reusing candidate $image from an earlier attempt of this workflow."
+            echo "reuse=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$state" == absent ]]; then
+            echo "reuse=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Unexpected candidate manifest state: $state"
+            exit 1
+          fi
+
       - name: Build image once for this architecture
+        if: github.event_name != 'push' || steps.candidate-image.outputs.reuse != 'true'
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           platforms: ${{ matrix.platform }}
@@ -242,11 +284,34 @@ jobs:
           provenance: ${{ startsWith(github.ref, 'refs/tags/v') && 'mode=max' || 'false' }}
           sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}
 
+      - name: Resolve the tested architecture image identity
+        if: github.event_name == 'push'
+        id: candidate-identity
+        shell: bash
+        run: |
+          image="ghcr.io/xwordsman/nextbuf:${{ steps.image.outputs.candidate }}-${{ matrix.architecture }}"
+          source_digest=$(docker buildx imagetools inspect "$image" \
+            --format '{{.Manifest.Digest}}')
+          members=$(docker buildx imagetools inspect "$image" --raw \
+            | node scripts/oci-platform-members.mjs)
+          runtime_digest=$(printf '%s\n' "$members" | awk -F= \
+            -v platform="${{ matrix.platform }}" '$1 == platform { print $2; exit }')
+          if [[ -z "$runtime_digest" ]]; then
+            runtime_digest="$source_digest"
+          fi
+          if [[ ! "$runtime_digest" =~ ^sha256:[0-9a-f]{64}$ \
+            || ! "$source_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Candidate $image did not resolve to full runtime and source digests"
+            exit 1
+          fi
+          echo "runtime_digest=$runtime_digest" >> "$GITHUB_OUTPUT"
+          echo "source_digest=$source_digest" >> "$GITHUB_OUTPUT"
+
       - name: Load published architecture image for smoke tests
         if: github.event_name == 'push'
         shell: bash
         run: |
-          image="ghcr.io/xwordsman/nextbuf:${{ steps.image.outputs.candidate }}-${{ matrix.architecture }}"
+          image="ghcr.io/xwordsman/nextbuf@${{ steps.candidate-identity.outputs.runtime_digest }}"
           docker pull "$image"
           docker tag "$image" "nextbuf-smoke:${{ steps.version.outputs.version }}"
 
@@ -255,19 +320,40 @@ jobs:
           NEXTBUF_SMOKE_VERSION: ${{ steps.version.outputs.version }}
           NEXTBUF_SMOKE_COMMIT: ${{ github.sha }}
           NEXTBUF_SMOKE_BUILD_TIME: ${{ steps.build-metadata.outputs.build-time }}
-          RUN_RESTORE: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.version.outputs.version != env.NEXTBUF_UPGRADE_BASELINE)) && '1' || '0' }}
-          RUN_FAULTS: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.version.outputs.version != env.NEXTBUF_UPGRADE_BASELINE)) && '1' || '0' }}
+          RUN_RESTORE: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
+          RUN_FAULTS: ${{ matrix.architecture == 'amd64' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
         run: |
           chmod +x nextbufctl tests/smoke/docker-smoke.sh
           timeout --signal=TERM --kill-after=30s 20m tests/smoke/docker-smoke.sh "${{ matrix.architecture }}"
 
       - name: Upgrade the current public release to the candidate
-        if: matrix.architecture == 'amd64' && steps.version.outputs.version != env.NEXTBUF_UPGRADE_BASELINE && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+        if: matrix.architecture == 'amd64' && steps.version.outputs.version != env.NEXTBUF_UPGRADE_BASELINE && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           NEXTBUF_SMOKE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           chmod +x nextbufctl tests/smoke/docker-upgrade-smoke.sh
           timeout --signal=TERM --kill-after=30s 12m tests/smoke/docker-upgrade-smoke.sh "${{ matrix.architecture }}"
+
+      - name: Record the tested architecture image identity
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          node scripts/tested-image-identity.mjs write \
+            "tested-image-${{ matrix.architecture }}.json" \
+            ghcr.io/xwordsman/nextbuf "${{ matrix.platform }}" \
+            "${{ steps.candidate-identity.outputs.runtime_digest }}" \
+            "${{ steps.candidate-identity.outputs.source_digest }}" \
+            "$GITHUB_SHA" "${{ steps.version.outputs.version }}"
+
+      - name: Upload the tested architecture image identity
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nextbuf-tested-image-${{ github.run_id }}-${{ matrix.architecture }}
+          path: tested-image-${{ matrix.architecture }}.json
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
 
   archive-build:
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
@@ -306,6 +392,7 @@ jobs:
         image: axllent/mailpit:v1.30.4
         ports:
           - 1025:1025
+          - 8025:8025
         options: >-
           --health-cmd "/mailpit readyz"
           --health-interval 5s
@@ -313,13 +400,13 @@ jobs:
           --health-retries 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
           cache: pnpm
@@ -350,7 +437,7 @@ jobs:
 
       - name: Generate source SBOM
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: .
           format: spdx-json
@@ -358,7 +445,7 @@ jobs:
 
       - name: Upload verified release files
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: nextbuf-release-${{ github.ref_name }}
           path: |
@@ -367,6 +454,7 @@ jobs:
             release/*.spdx.json
           if-no-files-found: error
           retention-days: 1
+          overwrite: true
 
   publish-main-image:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -377,6 +465,9 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Checkout release policy scripts
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
       - name: Confirm this build is still the main branch head
         id: main-head
         env:
@@ -391,13 +482,21 @@ jobs:
           fi
           echo "publish=true" >> "$GITHUB_OUTPUT"
 
+      - name: Download tested architecture image identities
+        if: steps.main-head.outputs.publish == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: nextbuf-tested-image-${{ github.run_id }}-*
+          path: tested-images
+          merge-multiple: true
+
       - name: Set up Docker Buildx
         if: steps.main-head.outputs.publish == 'true'
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Log in to GHCR
         if: steps.main-head.outputs.publish == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -405,77 +504,575 @@ jobs:
 
       - name: Publish tested main manifest
         if: steps.main-head.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           image=ghcr.io/xwordsman/nextbuf
-          candidate="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+          version=$(node -p "require('./package.json').version")
           immutable_tag="sha-${GITHUB_SHA}"
-          if docker buildx imagetools inspect "$image:$immutable_tag" >/dev/null 2>&1; then
-            echo "Immutable main manifest $image:$immutable_tag already exists; refusing to overwrite it."
+          tested_identities=$(node scripts/tested-image-identity.mjs verify \
+            tested-images "$image" "$GITHUB_SHA" "$version")
+          amd64_digest=$(printf '%s\n' "$tested_identities" | awk -F= \
+            '$1 == "linux/amd64.runtime" { print $2 }')
+          arm64_digest=$(printf '%s\n' "$tested_identities" | awk -F= \
+            '$1 == "linux/arm64.runtime" { print $2 }')
+          amd64_source=$(printf '%s\n' "$tested_identities" | awk -F= \
+            '$1 == "linux/amd64.source" { print $2 }')
+          arm64_source=$(printf '%s\n' "$tested_identities" | awk -F= \
+            '$1 == "linux/arm64.source" { print $2 }')
+          expected_members=$(printf '%s\n' \
+            "linux/amd64=$amd64_digest" \
+            "linux/arm64=$arm64_digest" | sort)
+          platform_members() {
+            docker buildx imagetools inspect "$1" --raw \
+              | node scripts/oci-platform-members.mjs
+          }
+          source_descriptors() {
+            source_digest=$1
+            runtime_digest=$2
+            platform=$3
+            reference="$image@$source_digest"
+            members=$(platform_members "$reference")
+            if [[ -z "$members" ]]; then
+              if [[ "$source_digest" != "$runtime_digest" ]]; then
+                echo "::error::Candidate source $source_digest does not expose tested $platform content" >&2
+                return 1
+              fi
+              printf '%s\n' "$runtime_digest"
+              return
+            fi
+            if [[ "$members" != "$platform=$runtime_digest" ]]; then
+              echo "::error::Candidate source $source_digest does not contain only tested $platform content" >&2
+              return 1
+            fi
+            docker buildx imagetools inspect "$reference" --raw \
+              | node scripts/oci-platform-members.mjs --descriptors
+          }
+          expected_descriptors=$( \
+            source_descriptors "$amd64_source" "$amd64_digest" linux/amd64
+            source_descriptors "$arm64_source" "$arm64_digest" linux/arm64
+          )
+          expected_descriptors=$(printf '%s\n' "$expected_descriptors" | sort -u)
+          manifest_state=$(sh scripts/inspect-registry-manifest.sh "$image:$immutable_tag")
+          if [[ "$manifest_state" == present ]]; then
+            actual_members=$(platform_members "$image:$immutable_tag")
+            if [[ "$actual_members" != "$expected_members" ]]; then
+              echo "::error::Immutable main manifest $image:$immutable_tag exists with different platform content"
+              exit 1
+            fi
+            echo "Reusing existing immutable main manifest $image:$immutable_tag."
+          elif [[ "$manifest_state" == absent ]]; then
+            docker buildx imagetools create \
+              -t "$image:$immutable_tag" \
+              "$image@$amd64_source" \
+              "$image@$arm64_source"
+          else
+            echo "::error::Unexpected immutable manifest state: $manifest_state"
+            exit 1
+          fi
+          actual_members=$(platform_members "$image:$immutable_tag")
+          if [[ "$actual_members" != "$expected_members" ]]; then
+            echo "::error::Immutable main manifest $image:$immutable_tag did not preserve tested platform content"
+            exit 1
+          fi
+          actual_descriptors=$(docker buildx imagetools inspect "$image:$immutable_tag" --raw \
+            | node scripts/oci-platform-members.mjs --descriptors)
+          if [[ "$actual_descriptors" != "$expected_descriptors" ]]; then
+            echo "::error::Immutable main manifest $image:$immutable_tag did not preserve tested source descriptors"
+            exit 1
+          fi
+
+          head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
+            echo "Skipping edge update for stale main build $GITHUB_SHA; current head is $head_sha"
             exit 0
           fi
           docker buildx imagetools create \
-            -t "$image:$immutable_tag" \
-            -t "$image:latest" \
-            "$image:$candidate-amd64" \
-            "$image:$candidate-arm64"
-          docker buildx imagetools inspect "$image:$immutable_tag"
+            -t "$image:edge" \
+            "$image:$immutable_tag"
+          docker buildx imagetools inspect "$image:edge"
 
   publish-release-image:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [image-smoke, archive-build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      oci_index_digest: ${{ steps.release-image-identity.outputs.oci_index_digest }}
+      oci_amd64_digest: ${{ steps.release-image-identity.outputs.oci_amd64_digest }}
+      oci_arm64_digest: ${{ steps.release-image-identity.outputs.oci_arm64_digest }}
     permissions:
       contents: read
       packages: write
     steps:
+      - name: Checkout release policy scripts
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Download tested architecture image identities
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: nextbuf-tested-image-${{ github.run_id }}-*
+          path: tested-images
+          merge-multiple: true
+
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish tested immutable release manifest
+        id: release-image-identity
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
           image=ghcr.io/xwordsman/nextbuf
-          candidate="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
-          if docker buildx imagetools inspect "$image:$version" >/dev/null 2>&1; then
-            echo "::error::Immutable release manifest $image:$version already exists"
+          tested_identities=$(node scripts/tested-image-identity.mjs verify \
+            tested-images "$image" "$GITHUB_SHA" "$version")
+          amd64_digest=$(printf '%s\n' "$tested_identities" | awk -F= \
+            '$1 == "linux/amd64.runtime" { print $2 }')
+          arm64_digest=$(printf '%s\n' "$tested_identities" | awk -F= \
+            '$1 == "linux/arm64.runtime" { print $2 }')
+          amd64_source=$(printf '%s\n' "$tested_identities" | awk -F= \
+            '$1 == "linux/amd64.source" { print $2 }')
+          arm64_source=$(printf '%s\n' "$tested_identities" | awk -F= \
+            '$1 == "linux/arm64.source" { print $2 }')
+          expected_members=$(printf '%s\n' \
+            "linux/amd64=$amd64_digest" \
+            "linux/arm64=$arm64_digest" | sort)
+          platform_members() {
+            docker buildx imagetools inspect "$1" --raw \
+              | node scripts/oci-platform-members.mjs
+          }
+          source_descriptors() {
+            source_digest=$1
+            runtime_digest=$2
+            platform=$3
+            reference="$image@$source_digest"
+            members=$(platform_members "$reference")
+            if [[ "$members" != "$platform=$runtime_digest" ]]; then
+              echo "::error::Release source $source_digest does not contain only tested $platform content" >&2
+              return 1
+            fi
+            attestations=$(docker buildx imagetools inspect "$reference" --raw \
+              | node scripts/oci-platform-members.mjs --attestations)
+            if ! printf '%s\n' "$attestations" \
+              | grep -Eq "^${runtime_digest}=sha256:[0-9a-f]{64}$"; then
+              echo "::error::Release source $source_digest is missing the tested $platform attestation" >&2
+              return 1
+            fi
+            printf '%s\n' "$attestations" >> "$RUNNER_TEMP/nextbuf-expected-attestations"
+            docker buildx imagetools inspect "$reference" --raw \
+              | node scripts/oci-platform-members.mjs --descriptors
+          }
+          : > "$RUNNER_TEMP/nextbuf-expected-attestations"
+          expected_descriptors=$( \
+            source_descriptors "$amd64_source" "$amd64_digest" linux/amd64
+            source_descriptors "$arm64_source" "$arm64_digest" linux/arm64
+          )
+          expected_descriptors=$(printf '%s\n' "$expected_descriptors" | sort -u)
+          expected_attestations=$(sort -u "$RUNNER_TEMP/nextbuf-expected-attestations")
+          manifest_state=$(sh scripts/inspect-registry-manifest.sh "$image:$version")
+          if [[ "$manifest_state" == present ]]; then
+            echo "Reusing the matching immutable release manifest $image:$version."
+          elif [[ "$manifest_state" == absent ]]; then
+            docker buildx imagetools create \
+              -t "$image:$version" \
+              "$image@$amd64_source" \
+              "$image@$arm64_source"
+          else
+            echo "::error::Unexpected release manifest state: $manifest_state"
             exit 1
           fi
-          docker buildx imagetools create \
-            -t "$image:$version" \
-            "$image:$candidate-amd64" \
-            "$image:$candidate-arm64"
-          docker buildx imagetools inspect "$image:$version"
+          reference="$image:$version"
+          actual_members=$(platform_members "$reference")
+          if [[ "$actual_members" != "$expected_members" ]]; then
+            echo "::error::Immutable release manifest $reference has different platform content"
+            exit 1
+          fi
+          actual_descriptors=$(docker buildx imagetools inspect "$reference" --raw \
+            | node scripts/oci-platform-members.mjs --descriptors)
+          actual_attestations=$(docker buildx imagetools inspect "$reference" --raw \
+            | node scripts/oci-platform-members.mjs --attestations)
+          if [[ "$actual_descriptors" != "$expected_descriptors" \
+            || "$actual_attestations" != "$expected_attestations" ]]; then
+            echo "::error::Immutable release manifest $reference did not preserve candidate attestations"
+            exit 1
+          fi
+          index_digest=$(docker buildx imagetools inspect "$reference" \
+            --format '{{.Manifest.Digest}}')
+          amd64_digest=$(printf '%s\n' "$actual_members" | awk -F= \
+            '$1 == "linux/amd64" { print $2 }')
+          arm64_digest=$(printf '%s\n' "$actual_members" | awk -F= \
+            '$1 == "linux/arm64" { print $2 }')
+          sh scripts/verify-oci-image-identity.sh \
+            "$reference" "$index_digest" "$amd64_digest" "$arm64_digest"
+          echo "oci_index_digest=$index_digest" >> "$GITHUB_OUTPUT"
+          echo "oci_amd64_digest=$amd64_digest" >> "$GITHUB_OUTPUT"
+          echo "oci_arm64_digest=$arm64_digest" >> "$GITHUB_OUTPUT"
 
   release-assets:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [archive-build, publish-release-image]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      oci_index_digest: ${{ needs.publish-release-image.outputs.oci_index_digest }}
+      oci_amd64_digest: ${{ needs.publish-release-image.outputs.oci_amd64_digest }}
+      oci_arm64_digest: ${{ needs.publish-release-image.outputs.oci_arm64_digest }}
     permissions:
       contents: write
+      packages: read
     steps:
+      - name: Checkout release verification scripts
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
       - name: Download verified release files
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: nextbuf-release-${{ github.ref_name }}
           path: release
 
+      - name: Check for an existing completion receipt
+        id: existing-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          marker="nextbuf-${GITHUB_REF_NAME}-release-complete.txt"
+          error_file="$RUNNER_TEMP/nextbuf-release-api-error"
+          if release_json=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" \
+            2>"$error_file"); then
+            marker_count=$(jq -r --arg marker "$marker" \
+              '[.assets[] | select(.name == $marker)] | length' <<<"$release_json")
+            if [[ "$marker_count" == "1" ]]; then
+              echo "complete=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [[ "$marker_count" != "0" ]]; then
+              echo "::error::Release $GITHUB_REF_NAME contains duplicate completion receipts"
+              exit 1
+            fi
+          elif ! grep -q '(HTTP 404)' "$error_file"; then
+            cat "$error_file" >&2
+            exit 1
+          fi
+          echo "complete=false" >> "$GITHUB_OUTPUT"
+
+      - name: Classify release channel
+        id: release-channel
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "$version" =~ ^[1-9][0-9]*\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish GitHub Release assets
-        uses: softprops/action-gh-release@v2
+        if: steps.existing-release.outputs.complete != 'true'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           generate_release_notes: true
-          prerelease: ${{ startsWith(github.ref_name, 'v0.') }}
+          prerelease: ${{ steps.release-channel.outputs.prerelease }}
           files: |
             release/*.tar.gz
             release/*.sha256
             release/*.spdx.json
+
+  complete-release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: release-assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - name: Checkout release verification scripts
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Download this workflow's verified release files
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: nextbuf-release-${{ github.ref_name }}
+          path: release
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Inspect this Release completion receipt
+        id: current-receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          marker="nextbuf-${GITHUB_REF_NAME}-release-complete.txt"
+          release_json=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}")
+          marker_count=$(jq -r --arg marker "$marker" \
+            '[.assets[] | select(.name == $marker)] | length' <<<"$release_json")
+          if [[ "$marker_count" != "0" && "$marker_count" != "1" ]]; then
+            echo "::error::Release $GITHUB_REF_NAME contains duplicate completion receipts"
+            exit 1
+          fi
+          [[ "$marker_count" == "1" ]] && present=true || present=false
+          echo "present=$present" >> "$GITHUB_OUTPUT"
+
+      - name: Verify an existing completion receipt
+        if: steps.current-receipt.outputs.present == 'true'
+        id: existing-receipt-verification
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_IMAGE: ghcr.io/xwordsman/nextbuf
+          OCI_INDEX_DIGEST: ${{ needs.release-assets.outputs.oci_index_digest }}
+          OCI_AMD64_DIGEST: ${{ needs.release-assets.outputs.oci_amd64_digest }}
+          OCI_ARM64_DIGEST: ${{ needs.release-assets.outputs.oci_arm64_digest }}
+        shell: bash
+        run: |
+          sh scripts/verify-github-release.sh \
+            "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$GITHUB_SHA" \
+            "$RELEASE_IMAGE" "$OCI_INDEX_DIGEST" \
+            "$OCI_AMD64_DIGEST" "$OCI_ARM64_DIGEST"
+          sh scripts/verify-oci-image-identity.sh \
+            "$RELEASE_IMAGE:${GITHUB_REF_NAME#v}" "$OCI_INDEX_DIGEST" \
+            "$OCI_AMD64_DIGEST" "$OCI_ARM64_DIGEST"
+
+      - name: Remove an invalid existing completion receipt
+        if: steps.current-receipt.outputs.present == 'true' && steps.existing-receipt-verification.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          sh scripts/delete-github-release-asset.sh \
+            "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" \
+            "nextbuf-${GITHUB_REF_NAME}-release-complete.txt"
+
+      - name: Resolve this Release completion state
+        id: completion-state
+        env:
+          RECEIPT_PRESENT: ${{ steps.current-receipt.outputs.present }}
+          RECEIPT_VERIFICATION: ${{ steps.existing-receipt-verification.outcome }}
+        shell: bash
+        run: |
+          if [[ "$RECEIPT_PRESENT" == true && "$RECEIPT_VERIFICATION" == success ]]; then
+            echo "complete=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "complete=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish a fresh completion receipt
+        if: steps.completion-state.outputs.complete != 'true'
+        id: receipt-upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_IMAGE: ghcr.io/xwordsman/nextbuf
+          OCI_INDEX_DIGEST: ${{ needs.release-assets.outputs.oci_index_digest }}
+          OCI_AMD64_DIGEST: ${{ needs.release-assets.outputs.oci_amd64_digest }}
+          OCI_ARM64_DIGEST: ${{ needs.release-assets.outputs.oci_arm64_digest }}
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sh scripts/verify-oci-image-identity.sh \
+            "$RELEASE_IMAGE:$version" "$OCI_INDEX_DIGEST" \
+            "$OCI_AMD64_DIGEST" "$OCI_ARM64_DIGEST"
+          sh scripts/verify-github-tag-commit.sh \
+            "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$GITHUB_SHA"
+          archive="release/nextbuf-$version-linux-x64.tar.gz"
+          checksum="$archive.sha256"
+          sbom="release/nextbuf-${GITHUB_REF_NAME}-sbom.spdx.json"
+          receipt="release/nextbuf-${GITHUB_REF_NAME}-release-complete.txt"
+          gh release upload "$GITHUB_REF_NAME" \
+            "$archive" "$checksum" "$sbom" \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          {
+            printf 'version=%s\n' "$version"
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'oci_image=%s\n' "$RELEASE_IMAGE"
+            printf 'oci_index_digest=%s\n' "$OCI_INDEX_DIGEST"
+            printf 'oci_linux_amd64_digest=%s\n' "$OCI_AMD64_DIGEST"
+            printf 'oci_linux_arm64_digest=%s\n' "$OCI_ARM64_DIGEST"
+            (cd release && sha256sum -- \
+              "nextbuf-$version-linux-x64.tar.gz" \
+              "nextbuf-$version-linux-x64.tar.gz.sha256" \
+              "nextbuf-${GITHUB_REF_NAME}-sbom.spdx.json" | sort)
+          } > "$receipt"
+          gh release upload "$GITHUB_REF_NAME" "$receipt" \
+            --repo "$GITHUB_REPOSITORY"
+          echo "uploaded=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify this completed GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_IMAGE: ghcr.io/xwordsman/nextbuf
+          OCI_INDEX_DIGEST: ${{ needs.release-assets.outputs.oci_index_digest }}
+          OCI_AMD64_DIGEST: ${{ needs.release-assets.outputs.oci_amd64_digest }}
+          OCI_ARM64_DIGEST: ${{ needs.release-assets.outputs.oci_arm64_digest }}
+        shell: bash
+        run: |
+          sh scripts/verify-github-release.sh \
+            "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$GITHUB_SHA" \
+            "$RELEASE_IMAGE" "$OCI_INDEX_DIGEST" \
+            "$OCI_AMD64_DIGEST" "$OCI_ARM64_DIGEST"
+          sh scripts/verify-oci-image-identity.sh \
+            "$RELEASE_IMAGE:${GITHUB_REF_NAME#v}" "$OCI_INDEX_DIGEST" \
+            "$OCI_AMD64_DIGEST" "$OCI_ARM64_DIGEST"
+
+      - name: Remove an unverified fresh completion receipt
+        if: ${{ failure() && steps.receipt-upload.outputs.uploaded == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          sh scripts/delete-github-release-asset.sh \
+            "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" \
+            "nextbuf-${GITHUB_REF_NAME}-release-complete.txt"
+
+  reconcile-stable:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: complete-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: nextbuf-stable-latest
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout stable reconciliation scripts
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reconcile latest to the highest completed stable Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_IMAGE: ghcr.io/xwordsman/nextbuf
+        shell: bash
+        run: |
+          highest_stable() {
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq '.[]
+                | select(.draft == false and .prerelease == false)
+                | .tag_name as $tag
+                | ($tag | sub("^v"; "")) as $version
+                | [.assets[].name] as $assets
+                | select($tag | test("^v[1-9][0-9]*\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"))
+                | select(
+                    ($assets | index("nextbuf-\($version)-linux-x64.tar.gz")) != null
+                    and ($assets | index("nextbuf-\($version)-linux-x64.tar.gz.sha256")) != null
+                    and ($assets | index("nextbuf-\($tag)-sbom.spdx.json")) != null
+                    and ($assets | index("nextbuf-\($tag)-release-complete.txt")) != null
+                  )
+                | $tag' \
+              | sort -V \
+              | tail -n 1
+          }
+
+          stable_tag=$(highest_stable)
+          if [[ -z "$stable_tag" ]]; then
+            echo "No completed stable v1+ Release exists; latest remains unchanged."
+            exit 0
+          fi
+          version="${stable_tag#v}"
+          receipt_dir="$RUNNER_TEMP/nextbuf-stable-receipt"
+          mkdir -p "$receipt_dir"
+          marker="nextbuf-${stable_tag}-release-complete.txt"
+          gh release download "$stable_tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$marker" --dir "$receipt_dir"
+          metadata=$(node scripts/release-receipt-metadata.mjs "$receipt_dir/$marker")
+          commit=$(jq -r '.commit' <<<"$metadata")
+          image=$(jq -r '.oci_image' <<<"$metadata")
+          index_digest=$(jq -r '.oci_index_digest' <<<"$metadata")
+          amd64_digest=$(jq -r '.oci_linux_amd64_digest' <<<"$metadata")
+          arm64_digest=$(jq -r '.oci_linux_arm64_digest' <<<"$metadata")
+          recorded_version=$(jq -r '.version' <<<"$metadata")
+          if [[ "$image" != "$RELEASE_IMAGE" || "$recorded_version" != "$version" ]]; then
+            echo "::error::Highest stable completion receipt has an unexpected image or version"
+            exit 1
+          fi
+          sh scripts/verify-github-release.sh \
+            "$GITHUB_REPOSITORY" "$stable_tag" "$commit" \
+            "$image" "$index_digest" "$amd64_digest" "$arm64_digest"
+          sh scripts/verify-oci-image-identity.sh \
+            "$image:$version" "$index_digest" "$amd64_digest" "$arm64_digest"
+
+          channel_state=$(sh scripts/assess-stable-image-channel.sh "$image" "$version")
+          channel_decision=${channel_state%%:*}
+          if [[ "$channel_decision" == current ]]; then
+            sh scripts/verify-oci-image-identity.sh \
+              "$image:latest" "$index_digest" "$amd64_digest" "$arm64_digest"
+            echo "latest already matches highest completed stable Release $version."
+            exit 0
+          fi
+          if [[ "$channel_decision" == newer ]]; then
+            echo "latest already identifies newer stable version ${channel_state#*:}; refusing rollback."
+            exit 0
+          fi
+          if [[ "$channel_decision" != promote ]]; then
+            echo "::error::Unexpected stable channel decision: $channel_state"
+            exit 1
+          fi
+
+          latest_inventory=$(highest_stable)
+          if [[ "$latest_inventory" != "$stable_tag" ]]; then
+            echo "::error::Stable Release inventory changed inside the serialized reconciliation"
+            exit 1
+          fi
+          sh scripts/verify-github-release.sh \
+            "$GITHUB_REPOSITORY" "$stable_tag" "$commit" \
+            "$image" "$index_digest" "$amd64_digest" "$arm64_digest"
+          sh scripts/verify-oci-image-identity.sh \
+            "$image:$version" "$index_digest" "$amd64_digest" "$arm64_digest"
+
+          pre_promotion_state=$(sh scripts/assess-stable-image-channel.sh "$image" "$version")
+          pre_promotion_decision=${pre_promotion_state%%:*}
+          if [[ "$pre_promotion_decision" == current ]]; then
+            sh scripts/verify-oci-image-identity.sh \
+              "$image:latest" "$index_digest" "$amd64_digest" "$arm64_digest"
+            echo "latest converged on stable Release $version before promotion."
+            exit 0
+          fi
+          if [[ "$pre_promotion_decision" == newer ]]; then
+            echo "latest advanced to ${pre_promotion_state#*:} before promotion; refusing rollback."
+            exit 0
+          fi
+          if [[ "$pre_promotion_decision" != promote ]]; then
+            echo "::error::Unexpected pre-promotion channel decision: $pre_promotion_state"
+            exit 1
+          fi
+          docker buildx imagetools create \
+            -t "$image:latest" \
+            "$image@$index_digest"
+          sh scripts/verify-oci-image-identity.sh \
+            "$image:latest" "$index_digest" "$amd64_digest" "$arm64_digest"
+          final_state=$(sh scripts/assess-stable-image-channel.sh "$image" "$version")
+          if [[ "$final_state" != "current:$version" ]]; then
+            echo "::error::latest did not converge on highest completed stable Release $version"
+            exit 1
+          fi

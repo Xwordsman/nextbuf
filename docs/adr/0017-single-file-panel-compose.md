@@ -1,6 +1,6 @@
 # ADR-0017：单文件面板 Compose 与镜像版本通道
 
-- 状态：已接受；第 2 节由 ADR-0018 补充
+- 状态：已接受；第 2 节的稳定版通道语义由 ADR-0020 替代
 - 日期：2026-07-18
 - 适用版本：`v0.13.2` 起；`v0.13.3` 补充单实例固定容器名
 
@@ -28,6 +28,8 @@ New API 等项目使用单文件 Compose，把镜像标签、连接串和秘密�
 两个入口在每个已解析的镜像 Digest 上使用同一个应用镜像、相同数据库迁移和运行门禁，不形成第二套应用代码。
 
 ### 2. `latest` 只决定拉取通道
+
+> 本节保留 `v0.13.x` 公开 Beta 时的历史决策。`v1.0.0` 稳定化后的 `latest`、`edge` 与 `sha-*` 来源以 [ADR-0020](./0020-stable-release-channels-and-lifecycle.md) 为准。
 
 `latest` 的更新来源和构建身份策略由 [ADR-0018](./0018-validated-main-image-channel.md) 补充：它在通过完整检查和双架构基础 Compose 冒烟的 `main` 提交后更新，而不是等待正式版本标签。正式 `vX.Y.Z` 标签仍只发布不可变 SemVer 镜像和 Release 资产，不回写 `latest`。
 
@@ -79,5 +81,6 @@ Compose 中所有 `replace-` 占位值和示例域名必须在首次启动前替
 - [ADR-0015：生产打包、首次安装门禁与恢复边界](./0015-production-packaging-setup-and-recovery.md)
 - [ADR-0016：面板友好的 Compose 启动协调](./0016-panel-friendly-compose-bootstrap.md)
 - [ADR-0018：主分支验证镜像通道](./0018-validated-main-image-channel.md)
+- [ADR-0020：稳定版镜像通道与发布生命周期](./0020-stable-release-channels-and-lifecycle.md)
 - [部署与运维](../05-deployment-operations.md)
 - [安装与运维运行手册](../13-installation-operations-runbook.md)

@@ -2,11 +2,11 @@
 
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
-- 最后更新：2026-07-30
+- 最后更新：2026-08-01
 - 当前已发布版本：`v0.13.10`，最后一个完整发布的公开 Beta
 - 当前开发版本：已批准的 `v1.0.0` 稳定化；不增加 `v1.1.0` 产品功能
 - 发布例外：不可变 `v0.13.9` 标签的 Linux x64 standalone 归档因 pnpm 依赖链接被展平而无法启动，Release 资产未完成；它不是完整、受支持的发布，也不能设为升级基线
-- 下一动作：实现最终账号注销与管理员连续性，再关闭稳定版支持/安全/隐私政策、第三方 Provider 支持边界和真实 `v0.13.10 -> v1.0.0` 升级/恢复门槛；不混入 `v1.1.0` 功能
+- 下一动作：由 GitHub Actions 运行 87 项真实 PostgreSQL/Redis/Mailpit 集成、Docker 首装/升级/恢复和双架构门槛，再按正式版人工验收模板验证候选；最终注销隐私边界、治理证据、管理员连续性、首次安装 claim/密码栅栏、Outbox durable completion、SMTP attempt fencing 和 Redis/replay 丢失恢复已经进入候选，但 `v1.0.0` 仍不能记录为已发布；不混入 `v1.1.0` 功能
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -101,7 +101,7 @@
 - 主题页显示真实点赞、收藏和关注状态；用户页支持关注并显示真实关注者/正在关注计数；账号中心新增 `/account/bookmarks`、`/account/following` 和 `/account/activity`。
 - 登录主题流根据阅读时间与最后活动时间显示“有新内容”；最大已读楼层只前进不后退。
 - 主题浏览通过登录用户或匿名 IP/用户代理的领域分离 HMAC 去标识化；同一 Topic/访问者/30 分钟桶只接受一次，原始值不落库。
-- 接受浏览与 `nextbuf.interactions.topic-view.aggregate@1` Outbox 在同一事务写入；独立 Worker 幂等增加 `view_count`，并限量清理 30 天前已聚合桶。Redis 清空不丢互动或浏览事实。
+- 接受浏览与 `nextbuf.interactions.topic-view.aggregate@1` Outbox 在同一事务写入；独立 Worker 幂等增加 `view_count`，每分钟维护任务限量清理 30 天前已聚合桶，未聚合事实保留到 Outbox 成功。Redis 清空不丢互动或浏览事实；轮换 `AUTH_SECRET` 时历史值只供注销清理，并保留到 30 天及截止时间查询双重门槛满足。
 - 热门算法 v1 使用有上限的回复、独立参与者、点赞、收藏、去重浏览和 24 小时时间衰减；分数查询时计算，不存在管理员可写 `is_hot/hot_score`。
 - 迁移启用 `pg_trgm` 并为标题、Markdown 源正文、用户公开身份/简介和节点建立 FTS/Trigram GIN 索引。
 - `/search` 和页头搜索使用 `PostgresSearchProvider` 参数化查询；结果只包含 public Node、`published/closed` Topic、published Post 和 active 用户，私有简介不展示。
@@ -115,7 +115,7 @@
 - 主题管理动作向非本人作者生成管理通知；快照只保存稳定渲染所需的触发者公开身份、主题编号/标题、楼层和动作，不保存最终不可解释文案。
 - `/notifications` 提供真实未读计数、全部/未读列表、单条已读、全部已读和归档；`/account/notifications` 保存站内/邮件渠道偏好，页头铃铛显示真实未读数。
 - 普通通知邮件复用 AES-256-GCM EmailDelivery、独立邮件 Outbox、SMTP Provider 和稳定 Message-ID；新增 `pnpm nextbuf mail test --to <邮箱>` 和管理员本人测试邮件入口。
-- BullMQ 最终失败持久化到 PostgreSQL，邮件失败同步更新投递状态；手工重放先登记请求，再由 Worker 移除失败 Redis Job、重置原 Outbox 并留下审计。
+- BullMQ 最终失败持久化到 PostgreSQL，邮件失败在单一行锁事务同步更新投递与通知状态，并通过级联外键绑定 EmailDelivery；SMTP 原始响应、收件人、用户名、cause 和原始堆栈不进入队列、日志或失败表。手工重放先登记请求，再由 Worker 移除失败 Redis Job、重置原 Outbox 并留下审计；已经执行的旧重放记录不阻断 Redis 再次丢失后的自动恢复，新的最终失败会重新阻断。Handler 成功、失败记录解决、`ProcessedJob` 与 Outbox `processed_at` 在同一数据库事务提交。
 - PostgreSQL 保存周期任务计划、租约、次数和错误；多 Worker 通过条件更新竞争租约，超时可接管。停止信号会禁止新派发/调度并等待活动周期和 BullMQ 任务关闭。
 - `/admin/worker` 只允许站点 `admin` 查看 Redis 队列、Outbox、邮件、心跳、周期任务和失败摘要以及登记重放，不是通用后台 CRUD。
 - 决策、幂等、SMTP 限制、回退和后续 fan-out 边界见 [ADR-0012](./adr/0012-notifications-mail-worker-operations.md)。
@@ -149,9 +149,9 @@
 - 新增 Node.js 24 多阶段生产 `Dockerfile`：同一非 root 镜像提供 Web、Worker、setup、migrate、preflight、doctor、邀请和邮件入口；应用版本、迁移全集、依赖、存储和 `runtime.initialized` 任一不符都会拒绝 Web/Worker 启动。
 - 根 `compose.yml` 提供 Web、Worker、PostgreSQL 18、Redis 8 四个常驻服务；setup 为一次性成功退出任务，PostgreSQL/Redis/本地附件使用独立命名卷，Web 只绑定 `127.0.0.1`。
 - `nextbufctl` 实现 init/start/stop/status/logs/doctor/backup/restore/upgrade，并保留等价 Compose 命令；升级只接受更高精确版本，迁移成功后不承诺盲目切回旧代码。
-- `/setup` 使用环境中的至少 32 位 `SETUP_TOKEN` 创建首位管理员；账号、密码哈希和邮箱验证仍由 Better Auth 管理，NextBuf 在受锁流程中授予首个站点管理员并写治理审计/安装完成状态。完成前普通邮箱和 OAuth 新用户创建均被拒绝。
+- `/setup` 使用环境中的至少 32 位 `SETUP_TOKEN` 创建首位管理员；账号、密码哈希和邮箱验证仍由 Better Auth 管理，NextBuf 在受锁流程中授予首个站点管理员并写治理审计/安装完成状态。最终事务锁定 credential，并使用 Better Auth verifier 证明当前表单密码与已提交账号一致；该证明不创建 Session/Cookie，密码不一致时返回 `initial_administrator_password_mismatch`，不授予角色、不写完成状态也不覆盖密码哈希。完成前普通邮箱和 OAuth 新用户创建均被拒绝。
 - `nextbuf-backup-v1` 原子归档包含 PostgreSQL custom dump、本地附件、配置、Compose、版本/迁移清单和 SHA-256；恢复可显式覆盖配置或删除空安装卷，Redis 明确不是备份事实。S3 对象仍需 Provider 级版本/快照。
-- GitHub Actions 的日常主分支在完整检查后通过原生 amd64/arm64 Runner 验证 setup/首次管理员/Web/Worker 基础镜像冒烟；两个架构都通过后发布不可变 `sha-<提交>` 与滚动 `latest` GHCR manifest。定时、手动和标签运行的 amd64 执行空卷恢复、故障注入和跨版本升级。标签中每个架构只构建一次，通过后只合并精确 SemVer manifest，并发布非 Docker x64 归档、SBOM、provenance 和 Release 资产。
+- GitHub Actions 的日常主分支在完整检查后通过原生 amd64/arm64 Runner 验证 setup/首次管理员/Web/Worker 基础镜像冒烟；每个架构以短期 artifact 固定实际测试的运行时与候选顶层 Digest，两个架构都通过且提交仍是远程 HEAD 后才从内容地址发布不可变 `sha-<提交>` 与 `edge`，不写入 `latest`。定时、手动和标签运行的 amd64 执行空卷恢复、故障注入和跨版本升级。正式标签从两个候选顶层 Digest 合并精确 SemVer manifest，并核对 attestation，再发布非 Docker x64 归档、SBOM、provenance 和 Release 资产；最新完整稳定 Release 成功后才提升同一 manifest 为 `latest`。
 - 发布资产包含 Nginx、宝塔、systemd 和 PM2 两进程示例；部署、初始化、升级、回滚和恢复边界见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)。
 
 ### `v0.13.0` 公开 Beta 加固
@@ -163,7 +163,7 @@
 - 跨版本：`nextbufctl upgrade` 使用目标镜像幂等 setup；`v0.12.0 -> v0.13.0` 验证升级前备份、首位管理员、附件、迁移和运行时版本。
 - 面板部署修订：默认 Compose 只创建 Web、Worker、PostgreSQL、Redis；Web 启动前幂等执行 setup/preflight，Worker 等待 Web 健康，setup 工具 profile 不再留下导致宝塔误报项目停止的容器。决策见 [ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)。
 - 通用发行版修订（`v0.13.1`）：空数据库追加迁移后没有预置业务节点，管理员可在 `/admin/nodes` 创建稳定 slug 节点；已有站点升级保留节点。未完成首次管理员安装时，访问首页服务端 307 跳转 `/setup`。
-- 面板体验修订（`v0.13.2`）：新增无需 `.env` 的 `compose.baota.yml`，直接使用 `latest` 通道并内联首次配置；后续升级只需在面板拉取和重建。镜像内部仍保留源码 SemVer，滚动构建通过 commit 与 Digest 精确识别；受控 `compose.yml + nextbufctl` 入口继续承担原子备份、恢复和精确升级。决策见 [ADR-0017](./adr/0017-single-file-panel-compose.md) 与 [ADR-0018](./adr/0018-validated-main-image-channel.md)。
+- 面板体验修订（`v0.13.2`）：新增无需 `.env` 的 `compose.baota.yml`，直接使用 `latest` 通道并内联首次配置；后续升级只需在面板拉取和重建。镜像内部仍保留源码 SemVer，构建通过 commit 与 Digest 精确识别；受控 `compose.yml + nextbufctl` 入口继续承担原子备份、恢复和精确升级。Beta 时的来源见 ADR-0017/0018，稳定版通道由 [ADR-0020](./adr/0020-stable-release-channels-and-lifecycle.md) 替代。
 - 面板命名修订（`v0.13.3`）：宝塔单实例模板的主服务改为 `nextbuf`，并固定显示 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis`；标准 Compose 保留默认命名和扩容能力。
 - UID 与后台修订（`v0.13.4`）：追加式迁移仅在空的历史 UID 序列上将首个 UID 改为 1，绝不重写已有公开 UID；后台将内容与节点管理拆分为各自的列表、新建和编辑工作流。
 - 后台界面修订（`v0.13.5`）：`components/admin/ui` 使用官方 shadcn/ui `radix-nova` 原语，管理后台采用响应式 Sidebar、Card、Table、Dialog、Select、Switch 和 Alert；社区前台既有 `components/ui` 不被替换。该补丁不修改 PostgreSQL、环境变量、Better Auth、授权、部署或镜像拓扑合同；站点设置成功后以 API 返回 revision 更新客户端状态，避免连续保存产生冲突。
@@ -173,7 +173,7 @@
 - 编辑会话资源与恢复边界（`v0.13.8`）：响应体无效的 2xx 与超时同属结果未知，必须保留原 key 恢复；恢复到 `superseded` 时清除旧 history 并重新加载规范 Topic 页面状态。每用户滚动一小时最多创建 60 个新回复编辑会话；`cleared`/`superseded` 墓碑保留 30 天，由 Worker 每批最多清理 500 条，`active`/`published` 不清理。Topic 关闭或账号受限后，作者仍可删除自己的既有回复草稿；站点 `repliesEnabled=false` 只阻止正式发布，仍允许保存和编辑草稿。
 - 最终 Beta 加固实现（`v0.13.9` 标签）：统一 Better Auth 客户端 IP/CIDR 解析并拒绝不一致代理配置；隐藏节点附件不再形成匿名公开旁路。Prisma 升至 `7.9.1`、PostCSS 固定到 `8.5.24`，根项目与非 Docker 运行时分别执行生产依赖审计。发布归档固化可复现版本/commit/构建时间并从解压产物启动真实 Web/Worker；非 Docker CLI、systemd 和 PM2 统一加载部署环境。`nextbufctl` 使用内核锁串行化运维，备份先确认 Web/Worker 停止并验证数据库/附件校验清单；升级在备份或迁移前核对目标镜像内部版本，迁移开始后的失败保持服务停止并要求显式恢复。标签流水线随后暴露出归档创建时展平 pnpm 依赖链接会破坏 Next.js standalone 运行依赖；该不可变标签未形成完整支持发布。
 - 最终 Beta 替代发布（`v0.13.10`）：不增加产品功能或迁移，原样保留 standalone 的 pnpm 符号链接，并在归档冒烟中拒绝悬空或逃出发布根目录的链接、从真实 `server.js` 加载 Next.js 关键模块并完整启动 Web/Worker。主线与标签均通过精确 `v0.13.8 -> v0.13.10` 升级门槛。
-- 滚动镜像通道修订（`main`）：完整检查及原生 amd64/arm64 基础镜像冒烟通过后自动更新宝塔使用的 `latest`，并保留 `sha-<提交>` 多架构 manifest；正式标签只发布不可变 SemVer、Release 和供应链资产，不再回写 `latest`。决策见 [ADR-0018](./adr/0018-validated-main-image-channel.md)。
+- 稳定版镜像通道修订（`v1.0.0` 稳定化）：完整检查及原生 amd64/arm64 基础镜像冒烟通过后，主分支只从测试回执记录的内容 Digest 更新 `edge` 并保留不可变 `sha-<提交>`，写入 `edge` 前再次核对远程 HEAD；正式标签同时保留候选顶层 index 的证明描述符。Registry 查询不明确时不得创建或覆盖标签。`latest` 只在最新无后缀 `v1+` 稳定标签的 GitHub Release 完成回执、最终标签 commit、OCI index/平台 Digest、资产 SHA-256 与归档校验和经首次上传后及提升前重新验证时更新；每个标签在共享锁外独立完成并验证回执，只有后续全局最高稳定 Release 调和进入跨标签串行锁。提升使用回执绑定的 `image@sha256:...` 并在写入后复核，当前通道版本和平台成员继续阻止倒退。`v0.x`/预发布不更新。日常主线不重复只属于定时、手动和标签运行的空卷恢复、故障注入与跨版本升级。GitHub active Ruleset `20172767` 已保护 `refs/tags/v*` 的创建、更新和删除，并且只允许仓库所有者 `Xwordsman` bypass。决策见 [ADR-0020](./adr/0020-stable-release-channels-and-lifecycle.md)。
 - 交付：公开 Beta 已知限制、2 vCPU/4 GiB/40 GiB 最低档位、性能报告、人工安装/旅程/升级/恢复验收模板见 [Beta 就绪记录](./16-public-beta-readiness.md)。
 
 ## 2. 关键命令
@@ -202,8 +202,8 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 ## 3. 测试与验证边界
 
-- 当前版本本地已通过：Prisma generate、Prettier、ESLint、TypeScript、77 项单元测试、生产依赖零已知漏洞、13 条迁移清单和 Next.js/Worker/CLI 生产构建；本机无 Docker，真实服务与镜像以 Actions 为最终门槛。
-- 当前版本集成测试共 47 项，覆盖运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任、后台、容量、迁移索引、编辑会话并发、私人草稿防枚举、引用可见性和隐藏节点附件授权；周期任务竞争夹具隔离其他到期任务。
+- 当前 `v1.0.0` 候选本地已通过：Prisma generate、Prettier、ESLint、TypeScript、109 项单元测试、生产/归档运行时依赖零已知漏洞、16 条迁移清单和 Next.js/Worker/CLI 生产构建；本机无 Docker、PostgreSQL 与 Redis，真实服务与镜像以 Actions 为最终门槛。迁移预检要求所有成功记录是冻结 `v1.0.0` 清单的 checksum 精确连续前缀，已初始化实例至少完整匹配 `v0.13.10`，失败恢复同时核对 checksum、前缀位置和目标 schema marker。
+- 当前候选集成测试共 87 项，覆盖运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任、后台、容量、迁移索引、编辑会话并发、私人草稿防枚举、引用可见性、隐藏节点附件授权、最终注销、管理员连续性、首次安装 claim/密码栅栏、Better Auth 资料更新边界，以及 `processed_at` 回填、处理租约提交栅栏、`published -> Redis flush -> no ProcessedJob` 自动重入队、replay 后再次丢失 Redis 的恢复、replay 重置发布状态与终态 Redis Job 的普通 Dispatcher 竞态、新最终失败重新阻断、SMTP 明确未接受重试、结果未知确认和失租旧 attempt 栅栏；周期任务竞争夹具隔离其他到期任务。
 - Playwright 共 14 项，覆盖完整身份/社区旅程、编辑器网络屏障与响应丢失恢复、私人草稿 HTTP 防枚举、性能样本、三种视口布局，以及四个公开页面的 serious/critical axe、水平溢出、键盘和 reduced-motion。
 - 主分支 `0.13.0` 候选已由 CI #56/#57 完成 amd64 setup、首次管理员、故障注入、空卷恢复和 `v0.12.0` 升级；正式标签 CI #58 已重跑 amd64 并完成原生 arm64、manifest、SBOM/provenance、非 Docker x64 归档和 Release。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
@@ -234,6 +234,8 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - 规则版本、真实信任指标、当前/自动/人工 TL、降级宽限期、等级历史、预估/应用批次及 UID 游标。
 - 站点设置单例、设置修订/最后修改者和当前 Session 绑定的管理员二次验证状态。
 - 运行初始化、首次安装 claim/完成状态和首位管理员治理审计。
+- 最终注销的计划、最终化、尝试次数、下次尝试和失败原因；注销后保留的 User 墓碑、永久用户名别名、公开内容/修订/治理证据，以及可重试的头像和附件回收 Outbox。
+- 管理员连续性状态：符合 `admin/site`、active、已验证、未注销、未受有效 suspend/ban 且持有非空 credential 密码的可接管管理员计数。
 
 仍是明确占位：
 
@@ -241,10 +243,10 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 尚未实现：
 
-- 最终注销执行器和在线成员跟踪。
+- 在线成员跟踪。
 - OAuth-only 管理员的 TOTP/Passkey/WebAuthn step-up、外部远程备份 Provider 和非 Docker arm64 原生发布包；当前密码二次验证基础不应被绕过。
 
-不得为尚未实现的在线状态重新引入演示数据。不得在 `v0.13.0` 混入插件、交易或无关产品功能。
+不得为尚未实现的在线状态重新引入演示数据。不得在 `v1.0.0` 稳定化中混入插件、交易或无关产品功能。
 
 ## 5. 已确定且不得自行更改
 
@@ -258,24 +260,26 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 8. 管理角色、信任等级、专业声誉和交易信用分离。
 9. V1 使用 Topic + Post；只做单一点赞，不做用户标签和私信。
 10. AGPL-3.0-only + Section 7(b) 页脚链接；贡献采用 DCO。
-11. 每个完成阶段必须完整测试、更新文档、`git commit -s`、推送 `main` 并等待 CI 成功；通过门槛的主分支会更新滚动 `latest`。只有有意的正式 SemVer Release 才创建不可变注释标签。
-12. UID/用户名/别名/头像/注销语义遵循 ADR-0009；不得释放历史用户名。
+11. 每个完成阶段必须完整测试、更新文档、`git commit -s`、推送 `main` 并等待 CI 成功；通过门槛且仍是远程 HEAD 的主分支更新 `edge` 与不可变 `sha-*`，不更新稳定 `latest`。只有有意的正式 SemVer Release 才创建不可变注释标签。
+12. UID/用户名/别名/头像遵循 ADR-0009；不得释放历史用户名。
 13. 主题遵循 ADR-0005：统一 Post、position=1 首帖、数字公开编号和不可变修订。
 14. 回复、Markdown 与附件遵循 ADR-0010：楼层不复用，服务端安全渲染，当前/修订/草稿引用共同保护附件，Worker 保留原件并生成派生文件。
 15. 互动、浏览、热门与搜索遵循 ADR-0011：PostgreSQL 保存关系和接受桶，Worker 幂等聚合浏览，热门只计算，搜索遵守公开可见性。
-16. 通知、普通邮件与 Worker 恢复遵循 ADR-0012：结构化通知和失败/调度状态以 PostgreSQL 为事实，Redis 可清空，安全邮件不读取普通偏好。
+16. 通知、普通邮件与 Worker 恢复遵循 ADR-0012：结构化通知和失败/调度状态以 PostgreSQL 为事实，Redis 可清空，安全邮件不读取普通偏好；Handler、失败解决、`ProcessedJob` 和 Outbox `processed_at` 原子提交，部分索引只扫描已发布未完成事件，处理租约在提交前再次栅栏；replay 后 Redis 再次丢失仍可恢复，新最终失败重新阻断。邮件失败只保留安全错误码并与 EmailDelivery 同生命周期，注销后迟到失败不能恢复旧身份数据。
 17. 举报、角色、制裁和信任遵循 ADR-0013：有效制裁直接参与服务端授权，TL 不授予管理角色，规则必须先预估再分批应用。
 18. 后台、站点设置和管理员二次验证遵循 ADR-0014：在线运营设置与启动密钥分层，高风险操作绑定当前 Better Auth Session，Provider Secret 不进入浏览器。
-19. 生产打包、首次管理员、备份恢复与升级遵循 ADR-0015：一个镜像多入口、setup 门禁、Better Auth 首账号、可验证备份和迁移后保守回滚。
+19. 生产打包、首次管理员、备份恢复与升级遵循 ADR-0015：一个镜像多入口、setup 门禁、Better Auth 首账号、可验证备份和迁移后保守回滚；首次安装 claim 使用 PostgreSQL 时钟租约与随机所有权 ID，迟到请求不能提交首管或删除后继 claim，最终提交还必须以 Better Auth verifier 证明当前表单密码且不创建 Session/Cookie。
 20. 默认面板 Compose 启动遵循 ADR-0016：单机 Web 协调幂等 setup/preflight，Worker 等待 Web 健康，显式 setup 只作为临时工具运行。
-21. 宝塔单文件入口遵循 ADR-0017 与 ADR-0018：`latest` 只负责通过验证的滚动拉取通道，源码 SemVer、commit 与 Digest 共同标识镜像；高级运维继续使用 `.env + nextbufctl`。
+21. 宝塔单文件入口遵循 ADR-0017 与 ADR-0020：`latest` 只指向最新完整稳定补丁；候选验证使用 `edge`/`sha-*`，源码 SemVer、commit 与 Digest 共同标识镜像；高级运维继续使用 `.env + nextbufctl`。
 22. 编辑自动保存、发布幂等、刷新恢复和私人草稿遵循 ADR-0019：浏览器超时或无效 2xx 响应体不代表事务失败，回复清空/发布终态由 PostgreSQL 保存；新回复编辑会话限 60 个/用户/小时，`cleared`/`superseded` 墓碑保留 30 天并由 Worker 每批清理 500 条；管理员和版主不能读取作者私人草稿谱系，Topic 关闭或账号受限也不能阻止作者删除自己的既有回复草稿。
+23. 最终账号注销与数据保留遵循 ADR-0021：到期账号匿名化为 User 墓碑并保留公开内容、修订和治理证据，清理认证、私人数据、旧收件邮件及由旧 actor 渲染的通知邮件，并清空治理案件当前指派；邮件最终失败与注销统一遵循 `EmailDelivery -> WorkerJobFailure -> OutboxEvent` 锁序。管理员注销必须先完成角色交接，旧备份恢复后须在重新开放公网写入前清理到期注销积压。
+24. 升级前至少保留 1 位可接管管理员，优先 2 位：必须是 `admin/site`、active、邮箱已验证、未申请/计划注销、无有效 suspend/ban 且有非空 credential 密码。0 位连续性失败是升级阻断项；在线成员仍是明确未实现的空状态。
 
 ## 6. `v1.0.0` 稳定化边界
 
-入口：[公开 Beta 人工验收模板](./17-public-beta-acceptance-template.md)
+入口：[V1 正式版人工验收模板](./21-v1.0.0-manual-acceptance.md)
 
-`v0.13.10` 已完整发布并通过自动化安装、精确 `v0.13.8 -> v0.13.10` 升级、空卷恢复、双架构镜像、Linux x64 归档、供应链资产和 Release 门槛；真实域名上的 SMTP/存储、注册、发帖和举报继续按人工验收模板记录。`v0.13.9` 保持不可变的不完整历史标签，不参与升级基线。正式版当前只做账号注销、管理员连续性、升级不变量、安全/支持/隐私文档、真实数据隔离演练和发布证据收口。
+`v0.13.10` 是当前公开升级基线；`v0.13.9` 保持不可变的不完整历史标签，不参与升级基线。`v1.0.0` 候选已实现最终账号注销、治理证据保留、管理员连续性、首次安装 claim/密码栅栏和 Outbox durable completion：到期账号保留为不可登录墓碑并清理认证/私人数据及旧身份通知邮件，邮件清理使用统一锁序，案件当前指派与历史证据分离；管理员角色变更、制裁、注销和 credential 变更受连续性保护；迟到安装请求不能越过当前 claim 写入首管事实或用不同密码接管旧账号；已发布未处理 Outbox 在 Redis 或 replay 后再次丢失时可恢复，新最终失败仍等待人工重放。仍需以真实 `v0.13.10 -> v1.0.0` 升级、恢复、最终注销、连续性、安装竞态和 Redis/replay 演练收口，不能把候选实现或本地测试当作 `v1.0.0` Release 证据。
 
 `v1.0.0` 稳定化已经由用户明确批准；未经新的明确批准，不开始 `v1.1.0`、插件、交易、支付或开放 API。
 

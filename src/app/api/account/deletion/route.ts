@@ -1,6 +1,9 @@
 import { z } from "zod";
-import { Prisma } from "@/generated/prisma/client";
-import { getPrismaClient } from "@/infrastructure/database/client";
+import { AdministratorContinuityError } from "@/modules/admin/continuity.server";
+import {
+  AccountDeletionError,
+  updateAccountDeletionRequest,
+} from "@/modules/identity/account-deletion.server";
 import { recordIdentityAudit } from "@/modules/identity/audit.server";
 import { getRequestSession } from "@/modules/identity/current-session.server";
 import { hasSameOrigin } from "@/shared/http/same-origin";
@@ -14,31 +17,15 @@ export async function POST(request: Request) {
   const input = schema.safeParse(await request.json().catch(() => null));
   if (!input.success) return Response.json({ code: "invalid_action" }, { status: 400 });
 
-  const now = new Date();
-  const scheduledAt = await getPrismaClient().$transaction(async (transaction) => {
-    await transaction.$queryRaw(
-      Prisma.sql`SELECT "id" FROM "users" WHERE "id" = CAST(${session.user.id} AS uuid) FOR UPDATE`,
-    );
-    const user = await transaction.user.findUniqueOrThrow({
-      where: { id: session.user.id },
-      select: { deletionRequestedAt: true, deletionScheduledAt: true },
-    });
-    const nextScheduledAt =
-      input.data.action === "request"
-        ? (user.deletionScheduledAt ?? new Date(now.getTime() + 14 * 86_400_000))
-        : null;
-    await transaction.user.update({
-      where: { id: session.user.id },
-      data:
-        input.data.action === "request"
-          ? {
-              deletionRequestedAt: user.deletionRequestedAt ?? now,
-              deletionScheduledAt: nextScheduledAt,
-            }
-          : { deletionRequestedAt: null, deletionScheduledAt: null },
-    });
-    return nextScheduledAt;
-  });
+  let scheduledAt: Date | null;
+  try {
+    scheduledAt = await updateAccountDeletionRequest(session.user.id, input.data.action);
+  } catch (error) {
+    if (error instanceof AccountDeletionError || error instanceof AdministratorContinuityError) {
+      return Response.json({ code: error.code }, { status: error.status });
+    }
+    throw error;
+  }
   await recordIdentityAudit({
     eventType:
       input.data.action === "request"

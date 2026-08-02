@@ -28,7 +28,11 @@ NextBuf 已经有独立 Web/Worker、迁移、setup 和 doctor 入口，但开�
 
 全新数据库在 Web 可用后通过 `/setup` 创建首位管理员。请求必须携带至少 32 位随机 `SETUP_TOKEN`，服务端使用常量时间摘要比较；令牌不写入 PostgreSQL、不进入浏览器构建产物，也不在日志中回显。创建账号调用 Better Auth 的邮箱密码注册能力，保留其密码哈希、邮箱验证、Session 和 Cookie 语义；NextBuf 只在受锁事务中授予首个 `admin/site` 角色并写审计与 `installation.completed`。
 
-安装完成后端点永久拒绝再次创建管理员，即使环境中仍残留令牌。部署者仍必须删除 `SETUP_TOKEN` 并重启 Web，以缩小配置暴露面。升级既有站点时，setup 发现已有站点管理员会幂等回填完成状态。
+首次安装 claim 使用 PostgreSQL 时钟计算 10 分钟租约，并保存服务端随机生成的 `claimId`。Better Auth 调用位于 claim 事务之外，因此最终授予角色和写入完成状态前必须在相同锁顺序下重新校验 claim 所有权与租约；过期请求被后续请求接管后，即使旧 Better Auth 调用迟到成功也不得写入首管事实。成功提交和失败清理都以 `claimId` 条件删除，仅能释放本请求持有的 claim，不能删除后继请求的租约。升级前遗留的无 `claimId` claim 在原租约期内继续阻止并发请求，到期后只允许同一邮箱和用户名接管为新格式。
+
+最终事务还必须锁定该用户的密码凭据，并使用 Better Auth 配置中的密码 verifier 校验本次表单密码。该校验不调用登录端点，不创建 Session 或 Cookie；如果迟到的旧请求先创建了账号而后继 claim 使用了不同密码，后继请求以 `initial_administrator_password_mismatch` 结束，且不得授予角色、写入安装完成状态或覆盖现有密码哈希。
+
+安装完成后端点永久拒绝再次创建管理员，即使环境中仍残留令牌。部署者仍必须删除 `SETUP_TOKEN` 并重启 Web，以缩小配置暴露面。升级既有站点时，setup 只会在发现至少一位符合当前管理员连续性条件的 `admin/site` 后幂等回填完成状态；只有角色行但无密码凭据、未验证、受制裁或已进入注销流程的账号不能关闭首次安装门禁，必须先按 Doctor 诊断完成恢复。
 
 ### 3. 备份是带清单的原子归档
 

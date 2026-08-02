@@ -395,7 +395,7 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 - `compose.yml` 默认运行 Web、Worker、PostgreSQL 18、Redis 8 四个常驻服务；面板兼容修订由单机 Web 在启动前幂等执行 setup/preflight，Worker 等待 Web 健康，默认不保留停止的 setup 容器。PostgreSQL、Redis、附件使用独立命名卷，只有 Web 绑定宿主机 loopback。
 - `nextbufctl` 实现 init/start/stop/status/logs/doctor/backup/restore/upgrade，保留等价 Compose 命令。备份格式 `nextbuf-backup-v1` 包含 PostgreSQL custom dump、本地附件、配置、版本清单与 SHA-256；Redis 明确可重建。
 - `/setup` 使用环境中的一次性 `SETUP_TOKEN`，通过 Better Auth 创建首位邮箱密码账号，在受锁事务内授予唯一首个站点管理员并写治理审计/安装完成状态；普通邮箱/OAuth 注册在安装完成前被拒绝。
-- GitHub Actions 的主分支在完整检查后使用原生 amd64/arm64 Runner 分别执行 setup、首次管理员与 Web/Worker 基础冒烟；两个架构都通过后发布滚动 `latest` 及不可变 `sha-<提交>` GHCR manifest。定时、手动和标签运行的 amd64 额外执行删除卷后的空安装恢复、故障注入和跨版本升级。标签中每个架构只构建一次，通过后只合并精确 SemVer manifest，并发布 SBOM/provenance、非 Docker x64 tar.gz、SHA-256 和 GitHub Release 资产，不回写 `latest`。
+- GitHub Actions 的主分支在完整检查后使用原生 amd64/arm64 Runner 分别执行 setup、首次管理员与 Web/Worker 基础冒烟；`v0.12.0` 至公开 Beta 阶段两个架构都通过后曾发布滚动 `latest` 及不可变 `sha-<提交>` GHCR manifest。进入 `v1.0.0` 稳定化后，ADR-0020 将主线可移动通道改为 `edge`，保留不可变 `sha-*`，完整稳定 Release 成功后才更新 `latest`。定时、手动和标签运行的 amd64 额外执行删除卷后的空安装恢复、故障注入和跨版本升级。每个架构冒烟后用 artifact 固定运行时与候选顶层 Digest；标签从两个顶层内容地址合并精确 SemVer manifest，并验证 SBOM/provenance attestation 没有丢失，再发布非 Docker x64 tar.gz、SHA-256 和 GitHub Release 资产。
 - Release 包提供 Nginx、systemd、PM2、宝塔、HTTPS、精确版本升级和恢复说明；持久部署/回退合同记录于 ADR-0015。
 
 ### v0.13.0：公开 Beta 加固
@@ -451,7 +451,13 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 - 发布精确版本镜像、Compose、standalone 包、校验和和 SBOM。
 - 发布安装、升级、备份、恢复、安全和故障排查文档。
 - 建立漏洞报告渠道、支持版本政策和补丁发布流程。
+- 冻结发布通道：`main` 只更新 `edge` 与不可变 `sha-*`，完整稳定标签的 Release 资产成功后才更新 `latest`；`v0.x` 和预发布不更新稳定通道。
 - 完成 V1 发布说明、已知问题和 V1.1 之后的弃用规则。
+- 完成最终账号注销：14 天可撤销申请到期后由 Worker 以 User 墓碑保留公开内容、修订和治理证据，删除认证、私人资料/草稿/互动/通知与邮件数据，并经 Outbox 回收头像和无引用附件。
+- 完成管理员连续性：角色、制裁、注销和 credential 变更统一保护可接管 `admin/site` 管理员；0 位失败、1 位冗余警告、2 位及以上健康。
+- 完成首次安装竞态栅栏：PostgreSQL claim 所有权、Better Auth credential 当前密码证明和最终事务共同保证迟到请求不能授予首管、覆盖密码或删除后继 claim，证明过程不创建 Session/Cookie。
+- 完成 Outbox durable completion：Handler、失败解决、`ProcessedJob` 与 `processed_at` 原子提交，处理租约在提交前栅栏；已发布未处理事件可在 Redis 丢失及 replay 后再次丢失时恢复，新最终失败重新等待人工重放。
+- 完成 SMTP 外部副作用栅栏：每次投递持久化 attempt token/generation；只有明确未接受的临时故障自动重试，永久拒绝终结，结果未知持久化为独立状态并要求管理员确认重复风险；replay 同时检查 PostgreSQL 处理租约，失租旧 Worker 的迟到回调不得覆盖新 attempt。
 
 发布门槛：
 
@@ -459,6 +465,8 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 - Web/Worker 独立重启不导致已提交数据或关键任务丢失。
 - 从最后一个 Beta 到 v1.0.0 的升级和恢复演练通过。
 - 所有必需环境变量、卷、端口和 Provider 都与文档一致。
+- 升级前必须至少保留 1 位可接管管理员：`admin/site`、`active`、邮箱已验证、无注销申请或计划、无有效 suspend/ban，且有密码非空的 `credential` Account；生产实例优先准备 2 位或以上。Doctor 为 0 位连续性失败时不得继续升级。
+- 最终注销、管理员交接、SMTP attempt/结果未知重放、墓碑公开页、认证阻断、setup 密码竞态、Outbox `processed_at` 回填、Redis/replay 恢复及升级后的连续性诊断均须通过真实 PostgreSQL/Redis/Mailpit 验证。`v1.0.0` 在这些候选验证和 Release 资产完成前仍是候选版本，不记为已发布证据。
 
 ## 4. V1 稳定系列
 
@@ -505,7 +513,7 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 
 ### v1.4.0：数据与运维工具
 
-- 用户数据导出、注销和数据保留工具。
+- 用户数据导出与可配置保留策略工具；已稳定的最终注销合同不在此版本重新定义。
 - 社区内容导入框架及首个受支持导入器。
 - 后台任务诊断、重放、暂停和队列容量告警。
 - 备份计划、远程备份 Provider 和恢复校验。

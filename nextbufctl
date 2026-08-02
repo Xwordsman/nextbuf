@@ -385,9 +385,13 @@ do_restore() {
     die "--restore-config requires --empty-install so database service credentials cannot diverge from an existing volume"
   fi
   if [ "$restore_config" != 1 ]; then
-    for key in AUTH_SECRET MAIL_PAYLOAD_KEY STORAGE_DRIVER; do
+    for key in AUTH_SECRET TOPIC_VIEW_PREVIOUS_AUTH_SECRETS MAIL_PAYLOAD_KEY STORAGE_DRIVER; do
       current_value=$(env_get "$key")
       backup_value=$(sed -n "s/^$key=//p" "$temp/config.env" | tail -n 1)
+      if [ "$key" = TOPIC_VIEW_PREVIOUS_AUTH_SECRETS ]; then
+        [ -n "$current_value" ] || current_value='[]'
+        [ -n "$backup_value" ] || backup_value='[]'
+      fi
       [ "$current_value" = "$backup_value" ] || die "$key differs from the backup; use an empty install with --restore-config"
     done
     if [ "$(env_get STORAGE_DRIVER)" = s3 ]; then

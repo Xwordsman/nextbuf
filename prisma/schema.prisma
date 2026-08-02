@@ -20,6 +20,10 @@ model User {
   usernameChangedAt        DateTime?                     @map("username_changed_at") @db.Timestamptz(6)
   deletionRequestedAt      DateTime?                     @map("deletion_requested_at") @db.Timestamptz(6)
   deletionScheduledAt      DateTime?                     @map("deletion_scheduled_at") @db.Timestamptz(6)
+  deletionFinalizedAt      DateTime?                     @map("deletion_finalized_at") @db.Timestamptz(6)
+  deletionAttemptCount     Int                           @default(0) @map("deletion_attempt_count")
+  deletionNextAttemptAt    DateTime?                     @map("deletion_next_attempt_at") @db.Timestamptz(6)
+  deletionLastError        String?                       @map("deletion_last_error") @db.Text
   createdAt                DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(6)
   sessions                 Session[]
@@ -829,11 +833,14 @@ model EmailDelivery {
   authTag              String                @map("auth_tag") @db.VarChar(32)
   status               String                @default("pending") @db.VarChar(32)
   attempts             Int                   @default(0)
+  attemptToken         String                @default(uuid()) @map("attempt_token") @db.Uuid
+  attemptGeneration    Int                   @default(0) @map("attempt_generation")
   lastError            String?               @map("last_error") @db.Text
   sentAt               DateTime?             @map("sent_at") @db.Timestamptz(6)
   createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
   notificationDelivery NotificationDelivery?
+  workerFailures       WorkerJobFailure[]
 
   @@index([status, createdAt], map: "email_deliveries_status_created_idx")
   @@map("email_deliveries")
@@ -914,6 +921,7 @@ model OutboxEvent {
   occurredAt     DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
   availableAt    DateTime  @default(now()) @map("available_at") @db.Timestamptz(6)
   publishedAt    DateTime? @map("published_at") @db.Timestamptz(6)
+  processedAt    DateTime? @map("processed_at") @db.Timestamptz(6)
   lockedAt       DateTime? @map("locked_at") @db.Timestamptz(6)
   lockOwner      String?   @map("lock_owner") @db.VarChar(160)
   attempts       Int       @default(0)
@@ -953,27 +961,32 @@ model WorkerHeartbeat {
 }
 
 model WorkerJobFailure {
-  id                  String    @id @default(uuid()) @db.Uuid
-  queueName           String    @map("queue_name") @db.VarChar(120)
-  jobId               String    @map("job_id") @db.VarChar(255)
-  jobName             String    @map("job_name") @db.VarChar(160)
-  outboxEventId       String?   @map("outbox_event_id") @db.Uuid
-  attempts            Int       @default(0)
-  lastError           String    @map("last_error") @db.Text
-  failedAt            DateTime  @default(now()) @map("failed_at") @db.Timestamptz(6)
-  replayRequestedAt   DateTime? @map("replay_requested_at") @db.Timestamptz(6)
-  replayRequestedById String?   @map("replay_requested_by_id") @db.Uuid
-  replayedAt          DateTime? @map("replayed_at") @db.Timestamptz(6)
-  replayCount         Int       @default(0) @map("replay_count")
-  resolvedAt          DateTime? @map("resolved_at") @db.Timestamptz(6)
-  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  replayRequestedBy   User?     @relation("WorkerFailureReplayRequester", fields: [replayRequestedById], references: [id], onDelete: SetNull)
+  id                                String         @id @default(uuid()) @db.Uuid
+  queueName                         String         @map("queue_name") @db.VarChar(120)
+  jobId                             String         @map("job_id") @db.VarChar(255)
+  jobName                           String         @map("job_name") @db.VarChar(160)
+  outboxEventId                     String?        @map("outbox_event_id") @db.Uuid
+  emailDeliveryId                   String?        @map("email_delivery_id") @db.Uuid
+  attempts                          Int            @default(0)
+  lastError                         String         @map("last_error") @db.Text
+  failedAt                          DateTime       @default(now()) @map("failed_at") @db.Timestamptz(6)
+  replayRequestedAt                 DateTime?      @map("replay_requested_at") @db.Timestamptz(6)
+  replayRequestedById               String?        @map("replay_requested_by_id") @db.Uuid
+  replayDuplicateRiskAcknowledgedAt DateTime?      @map("replay_duplicate_risk_acknowledged_at") @db.Timestamptz(6)
+  replayedAt                        DateTime?      @map("replayed_at") @db.Timestamptz(6)
+  replayCount                       Int            @default(0) @map("replay_count")
+  resolvedAt                        DateTime?      @map("resolved_at") @db.Timestamptz(6)
+  createdAt                         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  replayRequestedBy                 User?          @relation("WorkerFailureReplayRequester", fields: [replayRequestedById], references: [id], onDelete: SetNull)
+  emailDelivery                     EmailDelivery? @relation(fields: [emailDeliveryId], references: [id], onDelete: Cascade)
 
   @@unique([queueName, jobId], map: "worker_job_failures_queue_job_key")
   @@index([resolvedAt, failedAt], map: "worker_job_failures_resolved_failed_idx")
   @@index([replayRequestedAt, replayedAt], map: "worker_job_failures_replay_idx")
   @@index([replayRequestedById], map: "worker_job_failures_replay_requested_by_idx")
+  @@index([outboxEventId], map: "worker_job_failures_outbox_event_id_idx")
+  @@index([emailDeliveryId], map: "worker_job_failures_email_delivery_id_idx")
   @@map("worker_job_failures")
 }
 

@@ -12,6 +12,17 @@ if (process.env.RUN_INTEGRATION_TESTS !== "true") {
   );
 }
 
+// Keep production defaults intact while making Redis-loss and lease-renewal coverage fast.
+process.env.OUTBOX_RECOVERY_AFTER_MS = "1000";
+process.env.OUTBOX_LOCK_TIMEOUT_MS = "1000";
+process.env.WORKER_TASK_LOCK_TIMEOUT_MS = "5000";
+if (!process.env.TOPIC_VIEW_PREVIOUS_AUTH_SECRETS?.trim()) {
+  process.env.TOPIC_VIEW_PREVIOUS_AUTH_SECRETS = JSON.stringify([
+    "nextbuf-integration-previous-auth-secret-one-at-least-32-characters",
+    "nextbuf-integration-previous-auth-secret-two-at-least-32-characters",
+  ]);
+}
+
 export default defineConfig({
   resolve: {
     alias: {

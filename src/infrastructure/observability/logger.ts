@@ -15,12 +15,14 @@ const redactedKeys =
 const connectionPassword = /\b((?:postgres(?:ql)?|redis(?:s)?):\/\/[^\s:/@]+:)[^\s/@]+@/giu;
 const bearerToken = /\b(Bearer)\s+[A-Za-z0-9._~+/=-]+/giu;
 const headerSecret = /\b(cookie|set-cookie|authorization)\s*[:=]\s*[^\r\n]+/giu;
+const emailAddress = /[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)+/giu;
 
 function redactString(value: string): string {
   return value
     .replace(connectionPassword, "$1[REDACTED]@")
     .replace(bearerToken, "$1 [REDACTED]")
-    .replace(headerSecret, "$1: [REDACTED]");
+    .replace(headerSecret, "$1: [REDACTED]")
+    .replace(emailAddress, "[REDACTED]");
 }
 
 function redactValue(value: unknown, seen: WeakSet<object>, depth: number): unknown {

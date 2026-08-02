@@ -19,7 +19,7 @@ async function main(): Promise<void> {
     }
     case "migrate": {
       const { migrate } = await import("@/cli/commands/migrate");
-      await migrate();
+      await migrate(process.argv.slice(3));
       return;
     }
     case "setup": {

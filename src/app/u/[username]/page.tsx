@@ -6,6 +6,7 @@ import {
   MessageSquareText,
   MessagesSquare,
   UserRoundCheck,
+  UserRoundX,
   UsersRound,
 } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
@@ -34,8 +35,39 @@ export default async function UserPage({ params }: UserPageProps) {
   if (!result) notFound();
   if (result.redirected) redirect(`/u/${result.user.username}`);
   const { user } = result;
-  const profile = user.profile;
   const initials = user.name.trim().slice(0, 1).toLocaleUpperCase("zh-CN") || "U";
+
+  if (user.status === "deleted") {
+    return (
+      <main className="mx-auto w-full max-w-[980px] px-4 py-8 sm:px-6 lg:py-10">
+        <Card className="mb-5">
+          <CardContent className="flex items-center gap-5">
+            <Avatar size="lg" className="size-20">
+              <AvatarFallback>{initials}</AvatarFallback>
+            </Avatar>
+            <div className="grid min-w-0 flex-1 gap-2">
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                <h1 className="min-w-0 break-words text-2xl font-semibold tracking-normal text-foreground">
+                  {user.name}
+                </h1>
+                <span className="text-sm text-muted-foreground">@{user.username}</span>
+              </div>
+              <Badge variant="secondary" className="w-fit rounded-md tabular-nums">
+                UID {user.uid}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+        <Alert>
+          <UserRoundX aria-hidden="true" />
+          <AlertTitle>账号已注销</AlertTitle>
+          <AlertDescription>公开内容仍以匿名身份保留，个人资料和账号操作已移除。</AlertDescription>
+        </Alert>
+      </main>
+    );
+  }
+
+  const profile = user.profile;
   const viewerId = await getCurrentUserId();
   const follow = await getUserFollowSummary(viewerId, user.id);
 

@@ -20,7 +20,10 @@ import {
   listFollowedUsers,
   listParticipatedTopics,
 } from "@/modules/interactions/queries.server";
-import { aggregateTopicView } from "@/modules/interactions/view-worker.server";
+import {
+  aggregateTopicView,
+  pruneCountedTopicViews,
+} from "@/modules/interactions/view-worker.server";
 
 const emailPrefix = "interactions-integration+";
 const emailDomain = "@nextbuf.test";
@@ -173,6 +176,24 @@ describe("interactions, search and discovery integration", () => {
         now: new Date(now.getTime() + 31 * 60_000),
       }),
     ).resolves.toMatchObject({ accepted: true });
+
+    const uncountedView = await prisma.interactionTopicView.findFirstOrThrow({
+      where: { topicId: topic.id, countedAt: null },
+    });
+    const expiredAt = new Date("2026-06-01T00:00:00.000Z");
+    await prisma.interactionTopicView.updateMany({
+      where: { id: { in: [String(viewId), uncountedView.id] } },
+      data: { createdAt: expiredAt },
+    });
+    await expect(
+      pruneCountedTopicViews(new Date("2026-08-01T00:00:00.000Z")),
+    ).resolves.toBeGreaterThanOrEqual(1);
+    await expect(
+      prisma.interactionTopicView.findUnique({ where: { id: String(viewId) } }),
+    ).resolves.toBeNull();
+    await expect(
+      prisma.interactionTopicView.findUnique({ where: { id: uncountedView.id } }),
+    ).resolves.not.toBeNull();
   });
 
   it("searches public content and excludes soft-deleted topics", async () => {

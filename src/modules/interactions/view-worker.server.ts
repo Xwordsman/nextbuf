@@ -1,6 +1,10 @@
 import "server-only";
 
 import type { Prisma } from "@/generated/prisma/client";
+import { getPrismaClient } from "@/infrastructure/database/client";
+
+export const TOPIC_VIEW_RETENTION_DAYS = 30;
+const topicViewRetentionMs = TOPIC_VIEW_RETENTION_DAYS * 86_400_000;
 
 export async function aggregateTopicView(transaction: Prisma.TransactionClient, viewId: string) {
   const view = await transaction.interactionTopicView.findUnique({ where: { id: viewId } });
@@ -25,16 +29,24 @@ export async function aggregateTopicView(transaction: Prisma.TransactionClient, 
     data: { countedAt: new Date() },
   });
 
-  await transaction.$executeRaw`
-    DELETE FROM "interaction_topic_views"
-    WHERE "id" IN (
+  return { viewId, counted: Boolean(topic) };
+}
+
+export async function pruneCountedTopicViews(now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - topicViewRetentionMs);
+  const deleted = await getPrismaClient().$queryRaw<Array<{ id: string }>>`
+    WITH expired AS MATERIALIZED (
       SELECT "id"
       FROM "interaction_topic_views"
       WHERE "counted_at" IS NOT NULL
-        AND "created_at" < CURRENT_TIMESTAMP - INTERVAL '30 days'
-      ORDER BY "created_at" ASC
+        AND "created_at" < ${cutoff}
+      ORDER BY "created_at" ASC, "id" ASC
       LIMIT 500
     )
+    DELETE FROM "interaction_topic_views" AS target
+    USING expired
+    WHERE target."id" = expired."id"
+    RETURNING target."id"
   `;
-  return { viewId, counted: Boolean(topic) };
+  return deleted.length;
 }

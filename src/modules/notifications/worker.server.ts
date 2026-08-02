@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { createQueuedEmailDelivery } from "@/infrastructure/mail/queue";
 import {
   NOTIFICATION_TYPES,
@@ -37,6 +37,21 @@ function addRecipient(
   if (!recipientId || recipientId === actorId) return;
   const current = recipients.get(recipientId);
   if (!current || priority > current.priority) recipients.set(recipientId, { type, priority });
+}
+
+async function lockNotificationUsers(
+  transaction: Prisma.TransactionClient,
+  userIds: string[],
+): Promise<Map<string, string>> {
+  const ids = [...new Set(userIds)].sort();
+  if (ids.length === 0) return new Map();
+  const users = await transaction.$queryRaw<Array<{ id: string; status: string }>>(
+    Prisma.sql`SELECT "id", "status" FROM "users"
+      WHERE "id" = ANY(ARRAY[${Prisma.join(ids)}]::uuid[])
+      ORDER BY "id" ASC
+      FOR UPDATE`,
+  );
+  return new Map(users.map(({ id, status }) => [id, status]));
 }
 
 async function createNotification(
@@ -126,7 +141,7 @@ async function processReply(
   const post = await transaction.communityPost.findUnique({
     where: { id: postId },
     include: {
-      author: { select: { id: true, name: true, username: true } },
+      author: { select: { id: true, name: true, username: true, status: true } },
       topic: {
         select: {
           id: true,
@@ -142,6 +157,7 @@ async function processReply(
     },
   });
   if (!post || post.position <= 1 || post.status !== "published") return { skipped: true };
+  if (post.author.status === "deleted") return { skipped: true };
   if (!["published", "closed"].includes(post.topic.status)) return { skipped: true };
 
   const recipients = new Map<string, RecipientReason>();
@@ -153,6 +169,8 @@ async function processReply(
   for (const follow of post.topic.interactionFollows) {
     addRecipient(recipients, post.authorId, follow.userId, "followed_topic_reply", 1);
   }
+  const users = await lockNotificationUsers(transaction, [post.authorId, ...recipients.keys()]);
+  if (users.get(post.authorId) === "deleted") return { skipped: true };
 
   const snapshot: NotificationSnapshot = {
     actorName: post.author.name,
@@ -182,14 +200,23 @@ async function processManagement(
   const [audit, topic] = await Promise.all([
     transaction.communityAuditEvent.findUnique({
       where: { id: input.auditEventId },
-      include: { actor: { select: { id: true, name: true, username: true } } },
+      include: { actor: { select: { id: true, name: true, username: true, status: true } } },
     }),
     transaction.communityTopic.findUnique({
       where: { id: input.topicId },
       select: { id: true, number: true, title: true, authorId: true },
     }),
   ]);
-  if (!audit?.actor || !topic || audit.actor.id === topic.authorId) return { skipped: true };
+  if (
+    !audit?.actor ||
+    audit.actor.status === "deleted" ||
+    !topic ||
+    audit.actor.id === topic.authorId
+  ) {
+    return { skipped: true };
+  }
+  const users = await lockNotificationUsers(transaction, [audit.actor.id, topic.authorId]);
+  if (users.get(audit.actor.id) === "deleted") return { skipped: true };
   const snapshot: NotificationSnapshot = {
     actorName: audit.actor.name,
     actorUsername: audit.actor.username,

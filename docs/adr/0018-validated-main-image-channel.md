@@ -1,10 +1,12 @@
 # ADR-0018：主分支验证镜像通道
 
-- 状态：Accepted
+- 状态：Superseded by ADR-0020（`latest` 来源被替代；双架构门槛、远程 HEAD 检查和不可变 `sha-*` 继续有效）
 - 日期：2026-07-19
 - 补充：ADR-0017 第 2 节的 `latest` 更新来源
 
 ## 背景
+
+> 本 ADR 记录 `v0.13.x` 公开 Beta 的滚动通道。`v1.0.0` 稳定化把主线通道改为 `edge`，并把 `latest` 保留给完整稳定 Release，见 [ADR-0020](./0020-stable-release-channels-and-lifecycle.md)。
 
 宝塔单文件 Compose 固定拉取 `ghcr.io/xwordsman/nextbuf:latest`。此前只有推送 `vX.Y.Z` 标签才会构建并更新这个标签，日常 `main` 提交只完成 CI 和本地镜像冒烟。部署者因此必须额外推送版本标签，服务器才能拉到已经验证的代码；这不符合项目在公开 Beta 阶段“每次完成阶段即可在服务器验证”的工作流。
 
@@ -71,5 +73,6 @@
 
 - [ADR-0015：生产打包、首次安装门禁与恢复边界](./0015-production-packaging-setup-and-recovery.md)
 - [ADR-0017：单文件面板 Compose 与镜像版本通道](./0017-single-file-panel-compose.md)
+- [ADR-0020：稳定版镜像通道与发布生命周期](./0020-stable-release-channels-and-lifecycle.md)
 - [部署与运维](../05-deployment-operations.md)
 - [安装与运维运行手册](../13-installation-operations-runbook.md)

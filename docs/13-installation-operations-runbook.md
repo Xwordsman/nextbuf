@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 面向部署者的目标操作流程，包括 Docker Compose、宝塔、非 Docker、升级、备份、恢复和故障排查。
 
-> 当前实现状态：已发布 `v0.13.10` 最终 Beta 交付生产镜像、四容器 Compose、无需 `.env` 且固定容器名的宝塔单文件入口、通用空节点安装、首位用户 UID 1、官方 shadcn/ui 管理后台与全站公开前台、编辑会话恢复、`nextbufctl`、首次管理员、可验证备份恢复、跨 Beta 升级和真实非 Docker 归档烟测。容器/恢复验收由 GitHub Actions 在 Linux amd64/arm64 上执行；Mailpit 只出现在测试覆盖中，不进入生产拓扑。长期决策见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)、[ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)、[ADR-0017](./adr/0017-single-file-panel-compose.md)、[ADR-0018](./adr/0018-validated-main-image-channel.md) 和 [ADR-0019](./adr/0019-editor-autosave-idempotency-and-draft-privacy.md)。
+> 当前实现状态：已发布 `v0.13.10` 最终 Beta 交付生产镜像、四容器 Compose、无需 `.env` 且固定容器名的宝塔单文件入口、通用空节点安装、首位用户 UID 1、官方 shadcn/ui 管理后台与全站公开前台、编辑会话恢复、`nextbufctl`、首次管理员、可验证备份恢复、跨 Beta 升级和真实非 Docker 归档烟测。`v1.0.0` 仍在稳定化，未发布。容器/恢复验收由 GitHub Actions 在 Linux amd64/arm64 上执行；Mailpit 只出现在测试覆盖中，不进入生产拓扑。长期决策见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)、[ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)、[ADR-0017](./adr/0017-single-file-panel-compose.md)、[ADR-0019](./adr/0019-editor-autosave-idempotency-and-draft-privacy.md) 和 [ADR-0020](./adr/0020-stable-release-channels-and-lifecycle.md)。
 
 ## 1. 发布包合同
 
@@ -73,7 +73,7 @@ NEXTBUF_IMAGE=<正式发布时确定的镜像地址>
 NEXTBUF_VERSION=1.0.0
 ```
 
-宝塔单文件入口是明确例外：它使用通过完整主分支验证和双架构基础烟测后更新的滚动 `latest`，不使用未验证候选或第三方镜像。精确 SemVer 仍属于正式 Release 和受控部署；该入口的升级和回滚边界见第 4 节与 ADR-0018。
+宝塔单文件入口是明确例外：它使用只随最新完整稳定 Release 更新的 `latest`，不需要在每个补丁中手工改版本号。通过完整主分支门槛的候选发布到 `edge` 与不可变 `sha-*`，不会进入默认稳定通道。精确 SemVer 仍属于可复现 Release 和受控部署；该入口的升级和回滚边界见第 4 节与 ADR-0020。`v1.0.0` 发布前，历史 `latest` 可能继续指向最后一个经验证的 Beta，这不表示稳定版已经发布。
 
 ### 3.2 初始化配置
 
@@ -108,12 +108,16 @@ chmod 600 .env
 ```dotenv
 APP_URL=https://community.example.com
 AUTH_SECRET=<至少 32 个字符的随机值>
+TOPIC_VIEW_PREVIOUS_AUTH_SECRETS=[]
 SETUP_TOKEN=<至少 32 位的一次性随机令牌>
 AUTH_REGISTRATION_MODE=invite
 MAIL_PAYLOAD_KEY=<Base64 编码的 32 字节随机值>
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_SECURE=false
+SMTP_CONNECTION_TIMEOUT_MS=15000
+SMTP_GREETING_TIMEOUT_MS=15000
+SMTP_SOCKET_TIMEOUT_MS=60000
 SMTP_USER=<smtp-user>
 SMTP_PASSWORD=<smtp-password>
 SMTP_FROM=NextBuf <noreply@example.com>
@@ -123,6 +127,16 @@ AVATAR_MAX_UPLOAD_BYTES=1048576
 ATTACHMENT_MAX_UPLOAD_BYTES=20971520
 ATTACHMENT_MAX_IMAGE_PIXELS=40000000
 ATTACHMENT_ORPHAN_GRACE_HOURS=24
+```
+
+全新安装把 `TOPIC_VIEW_PREVIOUS_AUTH_SECRETS` 保持为 `[]`。轮换 `AUTH_SECRET` 时，先把即将替换的旧值作为 JSON 字符串加入该数组，再写入新的 `AUTH_SECRET`，然后同时重建全部 Web 与 Worker。JSON 编码必须保留密钥中的空白、逗号和其他字符，不能手工改成逗号分隔文本。旧值只用于注销时计算并清理历史用户浏览桶，不会继续验证 Cookie、验证/重置链接或新浏览；因此轮换仍会立即注销旧会话并使未使用链接失效。
+
+记录最后一个旧 Web 停止写入的 UTC 时间。旧值至少保留到该时间 30 天之后，并且下面的查询返回 `0` 后才能从数组移除；未聚合浏览事实会一直保留到对应 Outbox 成功，因此只经过 30 天并不构成移除证据。Worker 每分钟最多清理 500 条已聚合且超过 30 天的桶，积压时继续保留旧值并先修复 Worker/Outbox。数组最多 8 个且不能包含当前 `AUTH_SECRET`；修改后再次同时重建 Web 与 Worker。
+
+```sql
+SELECT count(*)
+FROM interaction_topic_views
+WHERE created_at <= TIMESTAMPTZ '<最后一个旧 Web 停止写入的 UTC 时间>';
 ```
 
 官方 Compose 把 `/app/data/uploads` 挂载为 `nextbuf_uploads` 命名卷，并由备份工具从应用容器读取。非 Docker 环境改为 `/var/lib/nextbuf/uploads`。S3 模式设置 `S3_REGION`、`S3_BUCKET`、`S3_ACCESS_KEY_ID` 和 `S3_SECRET_ACCESS_KEY`；兼容服务再设置 `S3_ENDPOINT`/`S3_FORCE_PATH_STYLE`。Bucket 保持私有，Web 与 Worker必须使用同一配置。切换前先迁移已有头像和附件对象。
@@ -226,9 +240,9 @@ nextbuf-redis     Redis
 
 ### 4.3 宝塔升级
 
-`compose.baota.yml` 已固定为通过验证的 `main` `latest` 通道，后续无需修改版本号。升级时先通过宝塔或外部备份方案备份 PostgreSQL 和附件卷，然后在面板拉取 `ghcr.io/xwordsman/nextbuf:latest` 并重建 Web/Worker；Web 会在进入健康状态前执行幂等迁移和 preflight。
+`compose.baota.yml` 固定使用默认稳定 `latest` 通道，后续无需修改版本号。升级前先确认 GitHub Release 已完整发布、阅读目标版本的迁移与回退说明，并通过宝塔或外部备份方案备份 PostgreSQL 和附件卷；然后在面板拉取 `ghcr.io/xwordsman/nextbuf:latest` 并重建 Web/Worker，Web 会在进入健康状态前执行幂等迁移和 preflight。
 
-`latest` 只在主分支完整检查及双架构基础烟测成功后更新，不会让已经运行的容器自行变化。每次宝塔升级后记录镜像 Digest 与 `/api/version` 返回的 commit；若需要精确回滚点、原子备份和恢复校验，改用 `compose.yml + .env + nextbufctl` 受控入口，或临时固定为已记录的 `sha-<提交>`/正式 SemVer。数据库迁移成功后不能仅拉取旧镜像回滚，仍遵守第 7 节恢复边界。
+`latest` 只在最新稳定标签的不可变 SemVer 镜像和 GitHub Release 资产全部成功后更新，不会让已经运行的容器自行变化；`v0.x` 与带后缀的预发布标签不会移动它。每次宝塔升级后记录精确 SemVer、镜像 Digest 与 `/api/version` 返回的 commit；若需要精确回滚点、原子备份和恢复校验，改用 `compose.yml + .env + nextbufctl` 受控入口，或临时固定为已记录的正式 SemVer/`sha-<提交>`。数据库迁移成功后不能仅拉取旧镜像回滚，仍遵守第 7 节恢复边界。
 
 ## 5. 反向代理合同
 
@@ -284,7 +298,7 @@ docker compose restart worker
 - Compose、应用版本和迁移版本信息。
 - 备份元数据和校验和。
 
-Redis 不作为主要数据备份。Outbox 保证关键任务可以从 PostgreSQL 恢复投递。
+Redis 不作为主要数据备份。Outbox 保证关键任务可以从 PostgreSQL 恢复投递：已发布、`processed_at` 为空且没有未重放最终失败的事件在默认 5 分钟等待窗口后，由每分钟 Worker 维护任务以稳定 Job ID 自动重新确认入队；已完成历史不再参与扫描，已执行旧重放记录不阻断后续 Redis 丢失恢复，新最终失败则重新阻断。恢复 Redis 或清空队列后无需手工修改 `published_at`，应保持 Worker 运行并观察 Outbox、Queue 和失败任务积压下降。
 
 ### 7.2 执行
 
@@ -336,7 +350,7 @@ Redis 不作为主要数据备份。Outbox 保证关键任务可以从 PostgreSQ
 ./nextbufctl restore /path/to/backup.tar.gz --empty-install --restore-config
 ```
 
-该命令必须人工输入 `YES`；自动化测试只可在隔离项目中使用 `NEXTBUFCTL_ASSUME_YES=1`。默认不覆盖当前 `.env`，并要求 `AUTH_SECRET`、`MAIL_PAYLOAD_KEY`、存储 driver（以及 S3 Bucket）与备份一致；只有与 `--empty-install` 同时使用的 `--restore-config` 才恢复全部配置和密钥，避免现有 PostgreSQL 卷密码与环境文件分叉。标准恢复流程：
+该命令必须人工输入 `YES`；自动化测试只可在隔离项目中使用 `NEXTBUFCTL_ASSUME_YES=1`。默认不覆盖当前 `.env`，并要求 `AUTH_SECRET`、`TOPIC_VIEW_PREVIOUS_AUTH_SECRETS`、`MAIL_PAYLOAD_KEY`、存储 driver（以及 S3 Bucket）与备份一致；旧备份缺少历史列表时按 `[]` 解释。只有与 `--empty-install` 同时使用的 `--restore-config` 才恢复全部配置和密钥，避免现有 PostgreSQL 卷密码与环境文件分叉。标准恢复流程：
 
 1. 在隔离或维护状态停止 Web 和 Worker。
 2. 备份当前残留状态，以便误操作回退。
@@ -463,6 +477,34 @@ PM2 用户从发布根目录执行 `pm2 start deploy/pm2/ecosystem.config.cjs`�
 
 这是保护行为。查看 Web 日志，通常是数据库/Redis 不可达、迁移失败、密钥无效、存储不可写或已有不兼容 Schema。不要删除迁移表或 `runtime.initialized` 强行启动。人工运行 `docker compose run --rm setup` 可以获得一次性的完整错误输出，命令结束后不会留下容器。
 
+`v1.0.0` 的迁移入口先把所有成功记录按名称和 checksum 与冻结的 16 条清单比较，只接受精确连续前缀。没有 `runtime.initialized` 的未完成首装可以从真实连续前缀继续；已初始化实例必须至少完整匹配 13 条 `v0.13.10` 基线，缺失、跳号、额外记录或任一 checksum 漂移都会在候选 DDL 前停止。连接串带 `?schema=` 时，迁移表、业务冲突和 marker 检查均使用与 Prisma 相同的安全限定 PostgreSQL schema。
+
+通过历史门槛后，入口还会在 Prisma 写入迁移记录前检查保留的 `deleted-*` / `@deleted.invalid` 身份命名空间和注销申请/计划是否成对；发现冲突时先按错误提示修复数据，再重试，迁移尚未开始。三条新增迁移本身也由显式 PostgreSQL 事务包裹，后续约束失败不会留下部分列、函数或数据清理。
+
+如果日志已经明确报告 Prisma `P3009`，并且失败名称精确为以下三项之一，先停止 Web/Worker、完成数据库与附件备份并确认失败原因已经修复：
+
+- `20260730120000_account_deletion_finalization`
+- `20260731120000_outbox_processed_status`
+- `20260731180000_email_delivery_attempt_fencing`
+
+这些候选迁移的事务确认已经回滚后，只把日志中那一项标记为 rolled back，再重新执行 setup：
+
+```bash
+# compose.yml
+docker compose --profile tools run --rm migrate migrate \
+  --resolve-rolled-back 20260730120000_account_deletion_finalization
+
+# compose.baota.yml 的等价一次性容器
+docker compose -f compose.baota.yml run --rm nextbuf migrate \
+  --resolve-rolled-back 20260730120000_account_deletion_finalization
+
+# Linux x64 standalone，在 runtime/ 目录
+deploy/bin/nextbuf migrate \
+  --resolve-rolled-back 20260730120000_account_deletion_finalization
+```
+
+命令只接受上面三个尚未公开的候选迁移名，并要求数据库只有一条对应的未解决失败记录：名称和 checksum 必须匹配冻结清单，成功历史必须恰好停在该迁移之前，当前 schema 中该事务的首个 marker 列必须不存在。不要对其他迁移照搬，不要删除或手工伪造 `_prisma_migrations`，也不要在未确认事务回滚时把失败项标成 rolled back；状态不明确时从升级前备份恢复。
+
 ### Web 正常但 Worker 不健康
 
 检查 Redis、数据库、Worker 配置、任务注册和停止锁。Web 可以继续提供只读或部分功能，但后台必须显示通知/邮件可能延迟。
@@ -481,17 +523,25 @@ PM2 用户从发布根目录执行 `pm2 start deploy/pm2/ecosystem.config.cjs`�
 
 ### 邮件积压
 
-检查 Worker、SMTP、`email_deliveries`、Outbox 和失败任务。确认 `MAIL_PAYLOAD_KEY` 与创建邮件时一致；密钥错误不能靠重试恢复。修复后重放幂等任务，不直接在数据库把所有任务标成成功。
+检查 Worker、SMTP、`email_deliveries`、Outbox 和失败任务。确认 `MAIL_PAYLOAD_KEY` 与创建邮件时一致；密钥错误需先恢复正确密钥。明确未接受的临时 SMTP 故障会在五次总尝试内自动重试，永久拒绝进入 `failed`。`outcome_unknown` 表示 Provider 可能已经接受邮件，后台会显示“确认风险后重放”；先核对 Provider 投递记录和稳定 Message-ID，再由管理员确认可能重复投递。不要直接修改数据库状态或批量标成成功。
 
 Worker 日志中的 `Connection timeout` 表示 TCP/TLS 连接尚未建立，不是 SMTP 用户名或密码被拒绝。核对邮件 Provider 控制台提供的 SMTP 主机和区域，确认服务器允许访问对应出口端口；465 通常必须配 `SMTP_SECURE=true`，587 或 Provider 明确支持的替代端口通常配 `false`。阿里云等服务还要求 SMTP 专用密码，不能填写 AccessKey 或控制台登录密码。修改宝塔 Compose 后重建 Web 和 Worker，再从检查邮件页重发；不要绕过 Better Auth 邮箱验证。
+
+`SMTP_CONNECTION_TIMEOUT_MS`、`SMTP_GREETING_TIMEOUT_MS` 和 `SMTP_SOCKET_TIMEOUT_MS` 默认分别为 15000、15000、60000 毫秒。通用 Socket 超时或连接在消息提交阶段断开时，Nodemailer 的 `command=CONN` 也不足以证明邮件未被接受，因此系统会保守记录 `EOUTCOMEUNKNOWN`，而不是自动再次发送。
 
 ### 验证或重置链接全部失效
 
 检查是否轮换了 `AUTH_SECRET`、修改了 `APP_URL`，或验证记录已过期。`AUTH_SECRET` 同时参与 Cookie 签名和验证标识 HMAC，轮换会按设计使旧会话与未使用链接失效。
 
+### 首次安装提示请求已过期或被接管
+
+首次安装 claim 的租约为 10 分钟。注册或邮件 Provider 长时间阻塞后，后续同身份请求可以接管；旧请求会以 `setup_claim_lost` 结束，且不会删除新请求的 claim。确认 PostgreSQL、SMTP 和 Web 日志没有持续故障后，使用相同邮箱和用户名重新提交安装表单；不要直接编辑 `installation.claim` 或手工插入管理员角色。
+
+如果迟到的旧请求已经创建账号，而当前接管请求填写了不同密码，当前请求会以 `initial_administrator_password_mismatch` 结束。此时不会产生管理员角色、`installation.completed`、登录 Session 或 Cookie，也不会覆盖数据库中的 Better Auth 密码哈希。使用此前真正创建该账号时填写的密码重新提交；如果该密码已经遗失，先按管理员连续性恢复流程处理凭据。`initial_administrator_not_eligible` 表示现有账号没有可用密码凭据、已进入注销流程或存在其他连续性阻断，同样需要先完成恢复。
+
 ## 14. 上线检查清单
 
-- 受控 Compose 与非 Docker 部署使用精确应用版本；宝塔 `latest` 部署记录已验证镜像 Digest 和 Git commit。
+- 受控 Compose 与非 Docker 部署使用精确应用版本；宝塔 `latest` 部署记录已验证目标稳定 Release、镜像 Digest 和 Git commit。
 - PostgreSQL、Redis 不暴露公网。
 - HTTPS、`APP_URL` 和可信代理正确。
 - 默认密码和示例密钥已替换。
@@ -503,7 +553,7 @@ Worker 日志中的 `Connection timeout` 表示 TCP/TLS 连接尚未建立，不
 - 日志脱敏、轮转和磁盘告警有效。
 - Web/Worker readiness 和队列积压可观察。
 - 已阅读当前版本已知问题和回滚限制。
-- 已按[公开 Beta 人工验收模板](./17-public-beta-acceptance-template.md)保存安装、核心旅程、升级和恢复证据。
+- Beta 部署按[公开 Beta 人工验收模板](./17-public-beta-acceptance-template.md)留证；`v1.0.0` 候选按[正式版人工验收模板](./21-v1.0.0-manual-acceptance.md)保存安装、核心旅程、升级和恢复证据。
 
 ## 15. 文档实现责任
 
@@ -517,7 +567,7 @@ Worker 日志中的 `Connection timeout` 表示 TCP/TLS 连接尚未建立，不
 - 备份/恢复和升级/回滚工具。
 - 本文中的全部核心命令。
 
-CI 在主分支、定时、手动和正式标签运行中使用原生 amd64/arm64 Runner 验证空数据库通过默认 Compose 自动 setup、Web/Worker 健康、四个生产容器且无停止的 setup 记录，以及一次性管理员流程；通过门槛的主分支会发布滚动 `latest`。只要源码版本不同于当前公开升级基线，每个主分支候选都会在更新 `latest` 前额外执行 amd64 空卷恢复、依赖故障注入和当前公开版本到候选的真实备份/升级，即使两版迁移集合相同也不能跳过；定时、手动和正式标签重复这些门槛。正式标签另发布不可变 SemVer、非 Docker x64 包和供应链资产。生产部署者仍应在自己的域名、SMTP、对象存储和备份目标上完成上线清单，因为 CI 不能替代实例级凭据和灾难恢复演练。
+CI 在主分支、定时、手动和正式标签运行中使用原生 amd64/arm64 Runner 验证空数据库通过默认 Compose 自动 setup、Web/Worker 健康、四个生产容器且无停止的 setup 记录，以及一次性管理员流程；通过门槛且仍是远程 HEAD 的主分支发布 `edge` 与不可变 `sha-<提交>`，不写入 `latest`。日常主分支对两个架构执行基础镜像冒烟；耗时较长的 amd64 空卷恢复、依赖故障注入和当前公开版本到候选的真实备份/升级由每日定时、手动和正式标签运行执行。正式标签另发布不可变 SemVer、非 Docker x64 包和供应链资产；最新完整稳定 Release 成功后才提升同一 manifest 为 `latest`。生产部署者仍应在自己的域名、SMTP、对象存储和备份目标上完成上线清单，因为 CI 不能替代实例级凭据和灾难恢复演练。
 
 正式迁移版本的标签、镜像和 Release 全部通过后，下一次开发提交才把 `.github/workflows/ci.yml` 的 `NEXTBUF_UPGRADE_BASELINE` 提升到该已发布版本；不能在标签验证前提前提升，否则会跳过真正需要证明的旧版升级。`v0.13.10` 标签验证已经通过，当前公开升级基线为 `0.13.10`。
 

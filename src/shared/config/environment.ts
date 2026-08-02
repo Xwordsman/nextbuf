@@ -10,6 +10,43 @@ const optionalSecret = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
   z.string().min(32).optional(),
 );
+const previousAuthSecrets = z
+  .string()
+  .default("[]")
+  .transform((value, context) => {
+    if (value.trim() === "") return [];
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      context.addIssue({ code: "custom", message: "must be a JSON array of secrets" });
+      return [];
+    }
+    if (!Array.isArray(parsed) || !parsed.every((secret) => typeof secret === "string")) {
+      context.addIssue({ code: "custom", message: "must be a JSON array of secrets" });
+      return [];
+    }
+    const secrets = parsed as string[];
+
+    if (secrets.length > 8) {
+      context.addIssue({
+        code: "custom",
+        message: "must contain at most 8 secrets",
+      });
+    }
+    if (new Set(secrets).size !== secrets.length) {
+      context.addIssue({ code: "custom", message: "must not contain duplicate secrets" });
+    }
+    if (secrets.some((secret) => secret.length < 32)) {
+      context.addIssue({
+        code: "custom",
+        message: "each secret must contain at least 32 characters",
+      });
+    }
+
+    return secrets;
+  });
 const exampleAuthSecret = "replace-with-at-least-32-random-characters";
 const exampleMailPayloadKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 const exampleSetupToken = "replace-with-at-least-32-random-characters";
@@ -53,7 +90,7 @@ const environmentSchema = z.object({
   TZ: z.string().min(1).default("Asia/Shanghai"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   LOG_FORMAT: z.enum(["pretty", "json"]).default("pretty"),
-  NEXTBUF_VERSION: z.string().min(1).default("0.13.10"),
+  NEXTBUF_VERSION: z.string().min(1).default("1.0.0"),
   NEXTBUF_COMMIT: z.string().min(1).default("development"),
   NEXTBUF_BUILD_TIME: z.string().default(""),
   DATABASE_URL: optionalUrl,
@@ -74,9 +111,11 @@ const environmentSchema = z.object({
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(100).default(1_000),
   OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(50),
   OUTBOX_LOCK_TIMEOUT_MS: z.coerce.number().int().min(1_000).default(60_000),
+  OUTBOX_RECOVERY_AFTER_MS: z.coerce.number().int().min(1_000).default(300_000),
   JOB_REMOVE_COMPLETE_AFTER: z.coerce.number().int().min(1).default(1_000),
   JOB_REMOVE_FAILED_AFTER: z.coerce.number().int().min(1).default(5_000),
   AUTH_SECRET: optionalString,
+  TOPIC_VIEW_PREVIOUS_AUTH_SECRETS: previousAuthSecrets,
   SETUP_TOKEN: optionalSecret,
   AUTH_REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
   AUTH_SESSION_EXPIRES_IN_SECONDS: z.coerce.number().int().min(3_600).default(2_592_000),
@@ -95,6 +134,9 @@ const environmentSchema = z.object({
   SMTP_USER: optionalString,
   SMTP_PASSWORD: optionalString,
   SMTP_FROM: z.string().min(3).default("NextBuf <noreply@localhost>"),
+  SMTP_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(1_000).default(15_000),
+  SMTP_GREETING_TIMEOUT_MS: z.coerce.number().int().min(1_000).default(15_000),
+  SMTP_SOCKET_TIMEOUT_MS: z.coerce.number().int().min(1_000).default(60_000),
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   STORAGE_LOCAL_PATH: z.string().min(1).default("data/uploads"),
   AVATAR_MAX_UPLOAD_BYTES: z.coerce.number().int().min(65_536).max(5_242_880).default(1_048_576),
@@ -162,6 +204,14 @@ const authEnvironmentSchema = serviceEnvironmentSchema
         code: "custom",
         path: ["GITHUB_CLIENT_ID"],
         message: "GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET must be configured together",
+      });
+    }
+
+    if (environment.TOPIC_VIEW_PREVIOUS_AUTH_SECRETS.includes(environment.AUTH_SECRET)) {
+      context.addIssue({
+        code: "custom",
+        path: ["TOPIC_VIEW_PREVIOUS_AUTH_SECRETS"],
+        message: "must contain only previous AUTH_SECRET values",
       });
     }
 

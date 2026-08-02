@@ -7,6 +7,7 @@ import { checkRedisHealth } from "@/infrastructure/cache/health";
 import { logger } from "@/infrastructure/observability/logger";
 import { dispatchOutboxBatch } from "@/infrastructure/outbox/dispatcher";
 import { closeSystemQueue } from "@/infrastructure/queue/system-queue";
+import { ensureMailQueuePrivacyMigration } from "@/infrastructure/queue/mail-privacy-migration";
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
 import { getErrorMessage } from "@/shared/errors/error-message";
 import { createOutboxWorker } from "@/worker/processors/outbox";
@@ -26,6 +27,16 @@ export async function startWorker(): Promise<void> {
   const prisma = getPrismaClient();
   const workerId = `${hostname()}-${process.pid}-${randomUUID().slice(0, 8)}`;
   const startedAt = new Date();
+  try {
+    await ensureMailQueuePrivacyMigration(workerId);
+  } catch (error) {
+    await Promise.allSettled([
+      closeSystemQueue(),
+      disconnectRedisClient(),
+      disconnectPrismaClient(),
+    ]);
+    throw error;
+  }
   const { worker, connection } = createOutboxWorker();
   let dispatching = false;
   let scheduling = false;

@@ -1,3 +1,5 @@
+import { isAccountTombstoneUsername } from "@/modules/identity/account-tombstone-policy";
+
 const reservedUsernames = new Set([
   "account",
   "admin",
@@ -41,6 +43,7 @@ export function validateUsername(
   value: string,
 ): { ok: true; username: string } | { ok: false; code: "invalid_username" | "reserved_username" } {
   const username = normalizeUsername(value);
+  if (isAccountTombstoneUsername(username)) return { ok: false, code: "reserved_username" };
   if (!usernamePattern.test(username)) return { ok: false, code: "invalid_username" };
   if (reservedUsernames.has(username)) return { ok: false, code: "reserved_username" };
   return { ok: true, username };

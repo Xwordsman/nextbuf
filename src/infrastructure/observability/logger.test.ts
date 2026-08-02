@@ -33,6 +33,26 @@ describe("structured log redaction", () => {
     );
   });
 
+  it("redacts email addresses nested inside arbitrary strings and errors", () => {
+    const result = redactLogContext({
+      diagnostic: {
+        list: [
+          "SMTP rejected member+private@example.com",
+          new Error("recipient OTHER.Member@sub.example.co.uk was rejected"),
+        ],
+      },
+    });
+
+    expect(result).toEqual({
+      diagnostic: {
+        list: [
+          "SMTP rejected [REDACTED]",
+          { name: "Error", message: "recipient [REDACTED] was rejected" },
+        ],
+      },
+    });
+  });
+
   it("handles cyclic diagnostic objects without throwing", () => {
     const cyclic: Record<string, unknown> = { safe: true };
     cyclic.self = cyclic;

@@ -6,6 +6,10 @@ import { encryptMailPayload } from "@/infrastructure/mail/encryption";
 export const IDENTITY_EMAIL_TOPIC = "nextbuf.identity.email.send";
 export const MAIL_DELIVERY_TOPIC = "nextbuf.mail.delivery.send";
 
+export function isMailDeliveryTopic(topic: string): boolean {
+  return topic === IDENTITY_EMAIL_TOPIC || topic === MAIL_DELIVERY_TOPIC;
+}
+
 export type QueueEmailInput = {
   kind: string;
   recipient: string;
@@ -38,6 +42,7 @@ export async function createQueuedEmailDelivery(
 }
 
 type QueueIdentityEmailInput = {
+  userId: string;
   kind: "email-verification" | "password-reset";
   recipient: string;
   subject: string;
@@ -47,6 +52,19 @@ type QueueIdentityEmailInput = {
 
 export async function queueIdentityEmail(input: QueueIdentityEmailInput): Promise<void> {
   await getPrismaClient().$transaction(async (transaction) => {
+    const users = await transaction.$queryRaw<Array<{ email: string; status: string }>>`
+      SELECT "email", "status" FROM "users"
+      WHERE "id" = ${input.userId}::uuid
+      FOR UPDATE
+    `;
+    const user = users[0];
+    if (
+      !user ||
+      user.status === "deleted" ||
+      user.email.toLowerCase() !== input.recipient.toLowerCase()
+    ) {
+      return;
+    }
     await createQueuedEmailDelivery(transaction, input, {
       topic: IDENTITY_EMAIL_TOPIC,
       idempotencyPrefix: "identity-email",

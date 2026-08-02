@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 
+SCRIPT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 RELEASE_ROOT=${1:?Usage: release-archive-smoke.sh <extracted-release-root> <version>}
 VERSION=${2:?Usage: release-archive-smoke.sh <extracted-release-root> <version>}
 EXPECTED_COMMIT=${3:?Usage: release-archive-smoke.sh <extracted-release-root> <version> <commit> <build-time>}
@@ -25,8 +26,16 @@ stage() {
 redact_diagnostics() {
   sed -E \
     -e 's#(postgresql|postgres|redis)://[^/@[:space:]]+(:[^/@[:space:]]*)?@#\1://[REDACTED]@#g' \
+    -e 's#TOPIC_VIEW_PREVIOUS_AUTH_SECRETS=\[[^[:cntrl:]]*\]#TOPIC_VIEW_PREVIOUS_AUTH_SECRETS=[REDACTED]#g' \
     -e 's#(AUTH_SECRET|MAIL_PAYLOAD_KEY|SETUP_TOKEN|SMTP_PASSWORD)=([^[:space:]]+)#\1=[REDACTED]#g'
 }
+
+redaction_probe=$(printf '%s\n' 'TOPIC_VIEW_PREVIOUS_AUTH_SECRETS=[" archive,old]auth-secret-at-least-32-characters "]' | redact_diagnostics)
+printf '%s\n' "$redaction_probe" | grep -F 'TOPIC_VIEW_PREVIOUS_AUTH_SECRETS=[REDACTED]' >/dev/null
+if printf '%s\n' "$redaction_probe" | grep -F 'archive,old]auth-secret' >/dev/null; then
+  printf 'Historical topic-view secret was not redacted from diagnostics.\n' >&2
+  exit 1
+fi
 
 emit_github_log_annotation() {
   log=$1
@@ -187,6 +196,7 @@ DATABASE_URL=${DATABASE_URL:-postgresql://nextbuf:nextbuf_archive@127.0.0.1:5432
 REDIS_URL=${REDIS_URL:-redis://127.0.0.1:6379/0}
 SMTP_HOST=${SMTP_HOST:-127.0.0.1}
 SMTP_PORT=${SMTP_PORT:-1025}
+MAILPIT_API_URL=${MAILPIT_API_URL:-http://127.0.0.1:8025}
 SETUP_TOKEN=nextbuf-archive-setup-token-at-least-32-characters
 
 mkdir -p "$RUNTIME_ROOT/data/uploads"
@@ -259,10 +269,14 @@ setup_response=$(curl --fail-with-body --silent --show-error \
   http://127.0.0.1:3000/api/setup)
 printf '%s' "$setup_response" | grep -Fq '"ok":true'
 
+stage 'verify first administrator email through Mailpit'
+sh "$SCRIPT_ROOT/verify-mailpit-user.sh" \
+  "$MAILPIT_API_URL" archive-admin@nextbuf.test http://127.0.0.1:3000
+
 stage 'wait for packaged Worker health'
 wait_for_url http://127.0.0.1:3000/health/worker
 stage 'run packaged doctor'
 (cd "$RUNTIME_ROOT" && ./deploy/bin/nextbuf doctor) >"$DOCTOR_LOG" 2>&1
-grep -Fq '"status": "ok"' "$DOCTOR_LOG"
+sh "$SCRIPT_ROOT/assert-doctor-continuity-warning.sh" "$DOCTOR_LOG"
 
 printf 'Release archive %s started Web and Worker successfully.\n' "$VERSION"

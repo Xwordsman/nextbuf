@@ -42,6 +42,10 @@ export function SetupForm() {
         already_complete: "站点已经完成首次安装。",
         setup_disabled: "服务器未配置 SETUP_TOKEN。",
         setup_in_progress: "另一项安装请求正在执行，请稍后重试。",
+        setup_claim_lost: "本次安装请求已过期或被接管，请重新提交。",
+        initial_administrator_not_eligible: "现有管理员账号缺少可用的密码凭据，请按运行手册恢复。",
+        initial_administrator_password_mismatch:
+          "本次填写的密码与已创建账号不一致，请输入此前使用的密码或按运行手册恢复。",
         existing_users_require_recovery: "数据库中已有不兼容的用户数据，请按运行手册恢复。",
         invalid_username: "用户名格式不正确。",
         reserved_username: "该用户名为系统保留名称。",

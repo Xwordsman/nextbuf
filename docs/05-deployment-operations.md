@@ -2,7 +2,7 @@
 
 本文件定义部署架构和运维原则。逐步安装、升级、备份、恢复和故障排查见 [安装与运维运行手册](./13-installation-operations-runbook.md)。
 
-> 当前实现状态：`v0.13.10` 是最后一个完整发布的公开 Beta。`v0.13.9` 标签流水线因 Linux x64 standalone 归档中的 pnpm 依赖链接被展平而无法启动 Web；该标签与已生成镜像保持不可变，但不构成完整、受支持的发布，也未成为公开升级基线。`v0.13.10` 不新增迁移或产品功能，原样保留 pnpm 符号链接并验证链接不悬空、不逃出归档及解压产物完整启动；它已通过精确 `v0.13.8 -> v0.13.10` 升级、恢复、双架构镜像和归档门槛，当前公开升级基线已提升到 `0.13.10`。生产与恢复合同见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)，面板启动协调见 [ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)，单文件面板入口见 [ADR-0017](./adr/0017-single-file-panel-compose.md)。Mailpit 只用于开发、测试和 CI，不是第五个生产容器。
+> 当前实现状态：`v0.13.10` 是最后一个完整发布的公开 Beta。`v0.13.9` 标签流水线因 Linux x64 standalone 归档中的 pnpm 依赖链接被展平而无法启动 Web；该标签与已生成镜像保持不可变，但不构成完整、受支持的发布，也未成为公开升级基线。`v0.13.10` 不新增迁移或产品功能，原样保留 pnpm 符号链接并验证链接不悬空、不逃出归档及解压产物完整启动；它已通过精确 `v0.13.8 -> v0.13.10` 升级、恢复、双架构镜像和归档门槛，当前公开升级基线已提升到 `0.13.10`。`v1.0.0` 仍在稳定化，默认稳定通道与主线通道的分离见 [ADR-0020](./adr/0020-stable-release-channels-and-lifecycle.md)。生产与恢复合同见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)，面板启动协调见 [ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)，单文件面板入口见 [ADR-0017](./adr/0017-single-file-panel-compose.md)。Mailpit 只用于开发、测试和 CI，不是第五个生产容器。
 
 ## 1. 部署目标
 
@@ -130,7 +130,7 @@ services:
 
 `NEXTBUF_IMAGE` 默认是 `ghcr.io/xwordsman/nextbuf`，受控入口的 `NEXTBUF_VERSION` 必须是精确版本。私有镜像镜像站可以覆盖地址，但不得让 Web 与 Worker 使用不同版本。
 
-根目录 [`compose.baota.yml`](../compose.baota.yml) 是单实例面板入口：它把首次必须填写的域名、密码、应用密钥和 SMTP 配置直接放入 Compose，使用 `ghcr.io/xwordsman/nextbuf:latest`，不读取 `.env`。`latest` 是通过完整 `main` 验证后的滚动 Beta 拉取通道；镜像内部仍保存源码 SemVer，并通过提交 SHA 和镜像 Digest 精确识别构建，参与 preflight、迁移和诊断。该入口保留相同四服务、健康检查、命名卷和 Web/Worker 隔离，容器固定显示为 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis`，不包含 `nextbufctl` 的原子备份/恢复便利能力。固定名称意味着同一 Docker 主机只能运行一套该模板；多实例或横向扩容必须使用受控 Compose。
+根目录 [`compose.baota.yml`](../compose.baota.yml) 是单实例面板入口：它把首次必须填写的域名、密码、应用密钥和 SMTP 配置直接放入 Compose，使用 `ghcr.io/xwordsman/nextbuf:latest`，不读取 `.env`。`latest` 只在最新且完整的稳定 Release 成功后更新；`main` 通过全部门槛后发布 `edge` 与不可变 `sha-<提交>`，不会覆盖默认稳定通道。`v1.0.0` 发布前，既有 `latest` 可能仍指向最后一个经验证的 `v0.13.x` Beta，这不表示稳定版已经发布。镜像内部保存源码 SemVer、提交 SHA，并由 Digest 精确识别构建，参与 preflight、迁移和诊断。该入口保留相同四服务、健康检查、命名卷和 Web/Worker 隔离，容器固定显示为 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis`，不包含 `nextbufctl` 的原子备份/恢复便利能力。固定名称意味着同一 Docker 主机只能运行一套该模板；多实例或横向扩容必须使用受控 Compose。
 
 PostgreSQL 18 官方镜像使用版本化的 `PGDATA` 布局，命名卷应挂载到 `/var/lib/postgresql`。如果以后显式覆盖 `PGDATA`，卷挂载点必须与之匹配，并通过重建容器后的数据持久化测试验证，不能沿用旧版本路径后假定数据已经进入命名卷。
 
@@ -146,6 +146,7 @@ PostgreSQL 18 官方镜像使用版本化的 `PGDATA` 布局，命名卷应挂�
 - `DATABASE_URL`：PostgreSQL 连接串。
 - `REDIS_URL`：Redis 连接串。
 - `AUTH_SECRET`：会话签名密钥。
+- `TOPIC_VIEW_PREVIOUS_AUTH_SECRETS`：只在轮换 `AUTH_SECRET` 后按运行手册保留的历史值 JSON 数组；属于敏感配置，并随备份配置副本一起恢复。
 - `SETUP_TOKEN`：仅首次管理员流程需要的至少 32 位随机令牌；完成后删除并重启 Web。
 - `MAIL_PAYLOAD_KEY`：待发送身份邮件的 AES-256-GCM 密钥。
 - `SMTP_HOST`、`SMTP_FROM`：邮箱验证与密码重置所需邮件配置。
@@ -193,11 +194,12 @@ PostgreSQL 18 官方镜像使用版本化的 `PGDATA` 布局，命名卷应挂�
 - `0.13.8`：追加编辑会话幂等迁移、私人草稿过滤和有界会话维护；每用户每小时最多创建 60 个新回复编辑会话，`cleared`/`superseded` 墓碑保留 30 天并由 Worker 每批最多清理 500 条。升级前必须备份，迁移后不直接切回 `0.13.7`，恢复边界见 ADR-0015/0019。
 - `0.13.9`：不可变历史标签。双架构镜像门槛已通过，但 Linux x64 standalone 归档因 pnpm 依赖链接被展平而无法启动，Release 资产未完成；不得把它视为完整支持版本或公开升级基线。
 - `0.13.10`：已发布的最终 Beta，迁移和产品功能与 `0.13.9` 相同；归档原样保留 pnpm 符号链接并拒绝悬空或越界链接，已从解压产物完整启动 Web/Worker，并通过精确 `0.13.8 -> 0.13.10` 升级与全部交付门槛。
-- `ci-<运行>-<尝试>-<提交>-<架构>`：主分支和正式标签流水线内部使用的唯一单架构候选；它们只在对应架构冒烟后进入 manifest 合并，允许 GHCR 保留策略回收。
+- `ci-<运行>-<提交>-<架构>`：主分支和正式标签流水线内部使用的唯一单架构候选；同一工作流重跑复用该身份，使失败架构可以与另一架构已通过的候选重新汇合。它们只在对应架构冒烟后进入 manifest 合并，允许 GHCR 保留策略回收。
 - `sha-<提交>`：主分支流水线发布的不可变多架构构建身份；只有两种架构的基础 Compose 冒烟都通过后才创建。
-- `latest`：最近一次通过完整主分支验证及双架构基础镜像冒烟的滚动 Beta manifest，供宝塔单文件入口拉取；不是正式 SemVer 版本，也不能作为回滚点。
-- `<版本>`：仅由匹配 `package.json` 的 `v<版本>` 标签发布的不可变 SemVer manifest；Release、归档、SBOM 与 provenance 都绑定这一类标签。标签发布不会改写 `latest`。
-- 受控升级、备份恢复和专业部署继续使用精确 SemVer 或记录过的 `sha-<提交>`/Digest，不把 `latest` 当作回滚点。
+- `edge`：最近一次通过完整主分支门槛且仍是远程 HEAD 的可移动多架构 manifest；供预发布验证，不属于稳定支持通道。
+- `latest`：最新完整稳定 `MAJOR.MINOR.PATCH` 的可移动 manifest；只在 SemVer 镜像和 GitHub Release 资产全部成功后更新。`v0.x` 和带后缀的预发布版本不更新它。
+- `<版本>`：仅由匹配 `package.json` 的 `v<版本>` 标签发布的不可变 SemVer manifest；Release、归档、SBOM 与 provenance 都绑定这一身份。
+- 受控升级、备份恢复和专业部署继续使用精确 SemVer 或记录过的 `sha-<提交>`/Digest，不把任何可移动标签当作回滚点。
 
 发布时由 Buildx 生成 SBOM 与 provenance，并发布非 Docker 包校验和。应用镜像使用 Node.js 24 Debian 基线；Compose 固定 PostgreSQL 18 Alpine、Redis 8 Alpine 和精确应用版本。
 
@@ -206,13 +208,13 @@ PostgreSQL 18 官方镜像使用版本化的 `PGDATA` 布局，命名卷应挂�
 `.github/workflows/ci.yml` 已实现：
 
 1. Pull Request 执行格式、Lint、类型、单元测试、真实服务集成测试、生产构建和 E2E，不接触发布权限。
-2. 主分支在上述检查通过后，使用原生 amd64/arm64 Runner 并行构建、拉取并执行基础 Compose 冒烟；两者成功后才原子发布 `sha-<提交>` 与宝塔使用的 `latest` manifest。
+2. 主分支在上述检查通过后，使用原生 amd64/arm64 Runner 并行构建、拉取并执行基础 Compose 冒烟；两者成功且提交仍是远程 HEAD 后才发布 `sha-<提交>` 与 `edge` manifest，绝不写入 `latest`。
 3. 每日定时和手动运行同样使用两种原生架构；amd64 额外执行删除卷后的备份恢复、故障注入和跨版本升级。
-4. `v*` 标签中每个架构只构建一次，并生成对应 SBOM/provenance；候选镜像通过完整 Compose 冒烟后才合并为 GHCR 精确 SemVer manifest，且不会改写 `latest`。
+4. `v*` 标签中每个架构只构建一次，并生成对应 SBOM/provenance；候选镜像通过完整 Compose 冒烟后，把运行时平台 Digest 与候选顶层 Digest 一起作为短期 artifact 固定。精确 SemVer manifest 只从两个顶层内容地址合并，并验证运行时成员、全部描述符和 attestation 关联未变化。Registry 只有明确报告 manifest 不存在时才允许创建标签，其他查询错误直接终止。GitHub Release 资产成功后，每个标签先在共享锁外完成回执：上传前后解析标签最终 commit，并重新下载回执、归档、旁路 SHA-256 和 SBOM，核对版本、commit、OCI index/amd64/arm64 Digest、全部资产 SHA-256 与归档校验和；远端验证失败会删除回执。只有后续稳定通道调和进入跨标签串行锁，并在锁内重新选择全局最高完整稳定 Release；提升源使用内容寻址的 `image@sha256:...`，写入后再次核对 `latest` Digest 和平台成员。`v0.x` 与其他预发布不提升。
 5. 非 Docker x64 归档只允许在 Linux x64 构建，并在每个主分支和标签流水线中与镜像并行构建、解压冒烟；打包必须保留 Next.js standalone 的 pnpm 符号链接拓扑，解压后拒绝悬空、逃出归档根目录或不能解析关键运行依赖的链接。只有标签运行发布归档、旁路 SHA-256 和 SPDX JSON SBOM。冒烟失败必须记录具体阶段和脱敏日志摘要，不能等到正式标签后才发现路径或运行时缺陷。
-6. 镜像与归档门槛全部通过后才合并滚动或不可变发布 manifest；正式标签随后创建 GitHub Release。任何单项失败都不得留下新的 SemVer 镜像却缺少对应 Release 资产的半发布状态。
+6. 镜像与归档门槛全部通过后才合并滚动或不可变发布 manifest；正式标签随后创建 GitHub Release。SemVer manifest 先于 Release 资产形成，因此下游失败时可能保留“已有精确镜像、Release 尚未完成”的可恢复中间状态；没有完成回执的 Release 不参与 `latest` 选择，重跑只能复用平台内容完全一致的 SemVer manifest。
 
-arm64 不通过 QEMU 模拟构建。日常提交会更新滚动 `latest`，但只在双架构基础门槛都通过后进行；恢复、故障注入、精确 SemVer 发布和供应链资产仍由定时/手动或标签运行覆盖。
+arm64 不通过 QEMU 模拟构建。日常提交只在双架构基础门槛通过后更新 `edge` 与不可变 `sha-*`；恢复、故障注入、精确 SemVer 发布、稳定 `latest` 提升和供应链资产仍由定时/手动或标签运行覆盖。
 
 来自外部贡献者的 Pull Request 不接触发布密钥。Actions 权限使用最小范围并固定第三方 Action 的提交版本。
 
@@ -226,7 +228,7 @@ arm64 不通过 QEMU 模拟构建。日常提交会更新滚动 `latest`，但�
 4. 在宝塔网站中添加反向代理到 NextBuf Web 端口并申请 HTTPS。
 5. 首次访问根域名自动进入安装向导，创建管理员后在后台创建当前社区自己的节点。
 6. 在后台完成站点设置，并执行邮件、队列、上传和定时任务自检。
-7. 后续升级先备份，再在面板拉取 `latest` 并重建 Web/Worker，不修改版本变量。
+7. 后续升级先确认 `latest` 对应目标稳定 Release、阅读其发布说明并备份，再在面板拉取并重建 Web/Worker，不修改版本变量。
 
 安装向导不能在已有用户或已完成安装的实例上重新创建管理员。初始化状态必须存入数据库并受一次性令牌保护。
 
@@ -286,7 +288,7 @@ nextbuf-worker.service
 - 实例配置和加密密钥的安全副本。
 - 当前应用版本、Compose 文件和迁移版本记录。
 
-Redis 不作为业务事实来源，通常不进入核心灾难恢复备份，但 AOF 有助于短时队列恢复。关键任务依靠 Outbox 从 PostgreSQL 重新投递。
+Redis 不作为业务事实来源，通常不进入核心灾难恢复备份，但 AOF 有助于短时队列恢复。关键任务依靠 Outbox 从 PostgreSQL 重新投递；已经标记为发布但尚无 `ProcessedJob` 的事件也会在默认 5 分钟窗口后由 Worker 维护任务自动重新确认入队，不需要运维人员改写 Outbox 行。未解决的最终失败仍通过后台请求重放。
 
 恢复演练必须验证：
 

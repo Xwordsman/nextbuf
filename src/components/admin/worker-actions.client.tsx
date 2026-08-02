@@ -3,6 +3,17 @@
 import { RefreshCw, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/shadcn/ui/alert-dialog";
 import { Button } from "@/components/shadcn/ui/button";
 
 export function WorkerActions() {
@@ -44,17 +55,25 @@ export function WorkerActions() {
   );
 }
 
-export function WorkerReplayButton({ failureId }: { failureId: string }) {
+export function WorkerReplayButton({
+  failureId,
+  requiresDuplicateRiskAcknowledgement = false,
+}: {
+  failureId: string;
+  requiresDuplicateRiskAcknowledgement?: boolean;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
-  const replay = async () => {
+  const replay = async (acknowledgeDuplicateRisk = false) => {
     setBusy(true);
     setMessage("");
     try {
       const response = await fetch(`/api/admin/worker/failures/${failureId}/replay`, {
         method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ acknowledgeDuplicateRisk }),
       });
       const result = (await response.json().catch(() => null)) as { code?: string } | null;
       setMessage(response.ok ? "已登记重放。" : `重放失败：${result?.code ?? response.status}`);
@@ -68,10 +87,34 @@ export function WorkerReplayButton({ failureId }: { failureId: string }) {
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      <Button type="button" variant="outline" size="sm" onClick={replay} disabled={busy}>
-        <RefreshCw aria-hidden="true" />
-        {busy ? "登记中" : "重放"}
-      </Button>
+      {requiresDuplicateRiskAcknowledgement ? (
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button type="button" variant="outline" size="sm" disabled={busy}>
+              <RefreshCw aria-hidden="true" />
+              {busy ? "登记中" : "确认风险后重放"}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>确认可能重复投递？</AlertDialogTitle>
+              <AlertDialogDescription>
+                SMTP
+                是否已接受这封邮件没有确定结果。再次投递可能让收件人收到重复邮件；确认后才会登记重放。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction onClick={() => replay(true)}>确认风险并重放</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : (
+        <Button type="button" variant="outline" size="sm" onClick={() => replay()} disabled={busy}>
+          <RefreshCw aria-hidden="true" />
+          {busy ? "登记中" : "重放"}
+        </Button>
+      )}
       {message ? (
         <span className="text-xs text-muted-foreground" role="status">
           {message}

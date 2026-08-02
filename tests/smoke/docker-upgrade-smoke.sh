@@ -13,10 +13,16 @@ REGISTRY_NAME="nextbuf-upgrade-registry-$$"
 REGISTRY_ADDRESS=127.0.0.1:5510
 UPGRADE_IMAGE="$REGISTRY_ADDRESS/nextbuf"
 ENV_FILE=.env.upgrade-smoke
-FAILURE_COMPOSE_FILE=compose.upgrade-failure-smoke.yml
 BACKUP_DIR="$ROOT/backups-upgrade-smoke"
+BASELINE_LAST_MIGRATION=20260720090000_editor_session_idempotency
+BASELINE_LAST_CHECKSUM=79932f8f3aa65f5f24eea9c7139ea65b3ce3332504606ed2c95be157a964d2f4
+FINAL_CANDIDATE_CHECKSUM=b3f57da005d1c547bbe59ce9b4c9c97acd0f40731119d538a3a9179f665de5a9
+CHECKSUM_REPORT=/tmp/nextbuf-upgrade-checksum-$$.log
+P3009_REPORT=/tmp/nextbuf-upgrade-p3009-$$.log
+MARKER_REPORT=/tmp/nextbuf-upgrade-marker-$$.log
 COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml -f deploy/compose/compose.smoke.yml"
 BASE_COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml"
+MAILPIT_API_URL=http://127.0.0.1:38025
 SMOKE_STAGE=bootstrap
 SMOKE_CHECKPOINT=initializing
 
@@ -50,6 +56,24 @@ wait_for_url() {
   done
 }
 
+expect_doctor_continuity_warning() {
+  report="/tmp/nextbuf-upgrade-doctor-continuity-$$.log"
+  if ! NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml \
+    timeout --signal=TERM --kill-after=5s 60s ./nextbufctl doctor >"$report" 2>&1; then
+    cat "$report" >&2
+    rm -f "$report"
+    return 1
+  fi
+  if ! sh tests/smoke/assert-doctor-continuity-warning.sh "$report"; then
+    printf 'Upgraded doctor did not report the expected administrator continuity warning\n' >&2
+    cat "$report" >&2
+    rm -f "$report"
+    return 1
+  fi
+  cat "$report"
+  rm -f "$report"
+}
+
 diagnose_failure() {
   printf 'Upgrade smoke stage: %s\n' "$SMOKE_STAGE" >&2
   printf 'Upgrade smoke checkpoint: %s\n' "$SMOKE_CHECKPOINT" >&2
@@ -70,7 +94,7 @@ cleanup() {
     NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true
   fi
   docker rm -f "$REGISTRY_NAME" >/dev/null 2>&1 || true
-  rm -f "$ENV_FILE" "$FAILURE_COMPOSE_FILE"
+  rm -f "$ENV_FILE" "$CHECKSUM_REPORT" "$P3009_REPORT" "$MARKER_REPORT"
   rm -rf "$BACKUP_DIR"
   exit "$status"
 }
@@ -120,17 +144,6 @@ sed -i \
   -e 's|^AUTH_REGISTRATION_MODE=.*|AUTH_REGISTRATION_MODE=invite|' \
   "$ENV_FILE"
 mkdir -p "$BACKUP_DIR"
-checkpoint 'render injected-failure compose file'
-sed '0,/^    command: \["setup"\]$/s||    command: ["sh", "-ec", "node dist/cli/index.mjs setup; echo NEXTBUF_INJECTED_SETUP_FAILURE >\&2; exit 42"]|' \
-  compose.yml >"$FAILURE_COMPOSE_FILE"
-checkpoint 'verify injected-failure command replacement'
-grep -Fq 'NEXTBUF_INJECTED_SETUP_FAILURE' "$FAILURE_COMPOSE_FILE"
-checkpoint 'validate injected-failure compose file'
-if ! config_error=$(NEXTBUF_ENV_FILE="$ENV_FILE" docker compose --env-file "$ENV_FILE" \
-  -f "$FAILURE_COMPOSE_FILE" config --quiet 2>&1); then
-  report_error "$config_error"
-  exit 1
-fi
 checkpoint 'validate baseline smoke compose files'
 if ! config_error=$(NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE config --quiet 2>&1); then
   report_error "$config_error"
@@ -154,6 +167,9 @@ response=$(curl --fail-with-body --silent \
   -d '{"token":"nextbuf-upgrade-setup-token-at-least-32-characters","name":"Upgrade Admin","username":"upgrade_admin","email":"upgrade-admin@nextbuf.test","password":"upgrade-admin-password-12345"}' \
   http://127.0.0.1:3200/api/setup)
 printf '%s' "$response" | grep -q '"ok":true'
+checkpoint 'verify baseline administrator email through Mailpit'
+sh tests/smoke/verify-mailpit-user.sh \
+  "$MAILPIT_API_URL" upgrade-admin@nextbuf.test http://127.0.0.1:3200
 checkpoint 'create baseline attachment file'
 printf 'upgrade-proof-%s\n' "$ARCH" | NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup -ec 'cat > /app/data/uploads/upgrade-proof.txt'
 checkpoint 'insert baseline database fixtures'
@@ -164,6 +180,169 @@ INSERT INTO community_nodes (
 ) VALUES (
   '20000000-0000-4000-8000-000000000001', 'upgrade-proof', 'Upgrade proof',
   'Durable upgrade fixture', '#334455', 'grid', 10, 'public', CURRENT_TIMESTAMP
+);
+INSERT INTO users (
+  id, name, email, email_verified, status, activated_at, username,
+  deletion_requested_at, deletion_scheduled_at, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000010',
+  'Upgrade deletion member', 'upgrade-deletion@nextbuf.test', TRUE, 'active',
+  CURRENT_TIMESTAMP - INTERVAL '30 days', 'upgrade_delete',
+  CURRENT_TIMESTAMP - INTERVAL '15 days', CURRENT_TIMESTAMP - INTERVAL '1 day',
+  CURRENT_TIMESTAMP
+);
+INSERT INTO auth_accounts (
+  id, account_id, provider_id, user_id, password, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000011',
+  'upgrade-deletion@nextbuf.test', 'credential',
+  '20000000-0000-4000-8000-000000000010', 'upgrade-fixture-password-hash',
+  CURRENT_TIMESTAMP
+);
+INSERT INTO users (
+  id, name, email, email_verified, status, activated_at, username,
+  deletion_requested_at, deletion_scheduled_at, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000020',
+  'Legacy deleted member', 'legacy-deleted@nextbuf.test', TRUE, 'deleted',
+  CURRENT_TIMESTAMP - INTERVAL '60 days', 'legacy_deleted',
+  CURRENT_TIMESTAMP - INTERVAL '30 days', CURRENT_TIMESTAMP + INTERVAL '30 days',
+  CURRENT_TIMESTAMP
+);
+UPDATE profiles
+SET bio = 'Legacy private profile must be removed', updated_at = CURRENT_TIMESTAMP
+WHERE user_id = '20000000-0000-4000-8000-000000000020';
+INSERT INTO auth_accounts (
+  id, account_id, provider_id, user_id, password, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000021',
+  'legacy-deleted@nextbuf.test', 'credential',
+  '20000000-0000-4000-8000-000000000020', 'legacy-fixture-password-hash',
+  CURRENT_TIMESTAMP
+);
+INSERT INTO auth_sessions (
+  id, expires_at, token, updated_at, user_id
+) VALUES (
+  '20000000-0000-4000-8000-000000000022',
+  CURRENT_TIMESTAMP + INTERVAL '30 days', 'legacy-deleted-session', CURRENT_TIMESTAMP,
+  '20000000-0000-4000-8000-000000000020'
+);
+INSERT INTO auth_verifications (
+  id, identifier, value, expires_at, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000023', repeat('f', 64),
+  '20000000-0000-4000-8000-000000000020',
+  CURRENT_TIMESTAMP + INTERVAL '1 day', CURRENT_TIMESTAMP
+);
+INSERT INTO email_deliveries (
+  id, kind, recipient, subject, ciphertext, initialization_vector, auth_tag,
+  status, attempts, last_error, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000024', 'password-reset',
+  'legacy-deleted@nextbuf.test', 'Legacy private mail', 'legacy-private-ciphertext',
+  repeat('0', 24), repeat('1', 24), 'failed', 5,
+  'legacy failure for legacy-deleted@nextbuf.test', CURRENT_TIMESTAMP
+);
+INSERT INTO notifications (
+  id, recipient_id, actor_id, type, dedupe_key, snapshot, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000026',
+  (SELECT id FROM users WHERE email = 'upgrade-admin@nextbuf.test'),
+  '20000000-0000-4000-8000-000000000020', 'reply',
+  'upgrade-legacy-actor-notification',
+  '{"actorName":"Legacy deleted member","actorUsername":"legacy_deleted"}'::jsonb,
+  CURRENT_TIMESTAMP
+);
+INSERT INTO email_deliveries (
+  id, kind, recipient, subject, ciphertext, initialization_vector, auth_tag,
+  status, attempts, last_error, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000025', 'notification-reply',
+  'upgrade-admin@nextbuf.test', 'Legacy actor notification',
+  'legacy-actor-private-ciphertext', repeat('2', 24), repeat('3', 24),
+  'failed', 5, 'legacy actor identity leaked in provider error', CURRENT_TIMESTAMP
+);
+INSERT INTO notification_deliveries (
+  id, notification_id, channel, status, email_delivery_id, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000027',
+  '20000000-0000-4000-8000-000000000026', 'email', 'failed',
+  '20000000-0000-4000-8000-000000000025', CURRENT_TIMESTAMP
+);
+INSERT INTO outbox_events (
+  id, topic, payload, idempotency_key, published_at, last_error, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000028',
+  'nextbuf.mail.delivery.send',
+  '{"deliveryId":"20000000-0000-4000-8000-000000000025"}'::jsonb,
+  'upgrade-legacy-actor-mail', CURRENT_TIMESTAMP,
+  'legacy actor identity leaked in outbox error', CURRENT_TIMESTAMP
+);
+INSERT INTO worker_job_failures (
+  id, queue_name, job_id, job_name, outbox_event_id, attempts, last_error, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000029', 'system',
+  'upgrade-legacy-actor-mail', 'outbox-event',
+  '20000000-0000-4000-8000-000000000028', 5,
+  'legacy actor identity leaked in worker error', CURRENT_TIMESTAMP
+);
+INSERT INTO notification_preferences (
+  user_id, type, in_app_enabled, email_enabled, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000020', 'reply', TRUE, TRUE, CURRENT_TIMESTAMP
+);
+INSERT INTO community_topics (
+  id, node_id, author_id, title, status, published_at, last_activity_at, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000012',
+  '20000000-0000-4000-8000-000000000001',
+  '20000000-0000-4000-8000-000000000010',
+  'Deletion member public topic', 'published', CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+);
+INSERT INTO community_posts (
+  id, topic_id, author_id, position, status, body_source, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000013',
+  '20000000-0000-4000-8000-000000000012',
+  '20000000-0000-4000-8000-000000000010',
+  1, 'published', 'Public content must survive final deletion', CURRENT_TIMESTAMP
+);
+INSERT INTO community_post_revisions (
+  id, post_id, editor_id, version, title, body_source, source
+) VALUES (
+  '20000000-0000-4000-8000-000000000014',
+  '20000000-0000-4000-8000-000000000013',
+  '20000000-0000-4000-8000-000000000010',
+  1, 'Deletion member public topic',
+  'Public content must survive final deletion', 'create'
+);
+INSERT INTO community_topics (
+  id, node_id, author_id, title, status, deleted_from_status,
+  deleted_at, last_activity_at, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000015',
+  '20000000-0000-4000-8000-000000000001',
+  '20000000-0000-4000-8000-000000000010',
+  'Deleted private draft', 'deleted', 'draft', CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+);
+INSERT INTO community_posts (
+  id, topic_id, author_id, position, status, body_source, deleted_at, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000016',
+  '20000000-0000-4000-8000-000000000015',
+  '20000000-0000-4000-8000-000000000010',
+  1, 'deleted', 'Private draft lineage must be removed', CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+);
+INSERT INTO community_post_revisions (
+  id, post_id, editor_id, version, title, body_source, source
+) VALUES (
+  '20000000-0000-4000-8000-000000000017',
+  '20000000-0000-4000-8000-000000000016',
+  '20000000-0000-4000-8000-000000000010',
+  1, 'Deleted private draft', 'Private draft lineage must be removed', 'create'
 );
 INSERT INTO community_topics (
   id, node_id, author_id, title, status, reply_count, next_post_position,
@@ -237,7 +416,87 @@ INSERT INTO community_post_draft_attachments (draft_id, attachment_id) VALUES (
   '20000000-0000-4000-8000-000000000007',
   '20000000-0000-4000-8000-000000000008'
 );
+INSERT INTO email_deliveries (
+  id, kind, recipient, subject, ciphertext, initialization_vector, auth_tag,
+  status, attempts, last_error, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000018', 'password-reset',
+  'upgrade-admin@nextbuf.test', 'Historical mail failure', 'ciphertext',
+  repeat('0', 24), repeat('0', 32), 'failed', 5,
+  'historical provider failure', CURRENT_TIMESTAMP
+);
+INSERT INTO outbox_events (
+  id, topic, payload, idempotency_key, published_at, last_error, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000019',
+  'nextbuf.identity.email.send',
+  '{"deliveryId":"20000000-0000-4000-8000-000000000018"}'::jsonb,
+  'upgrade-historical-mail-failure', CURRENT_TIMESTAMP,
+  'historical provider failure', CURRENT_TIMESTAMP
+);
+INSERT INTO worker_job_failures (
+  id, queue_name, job_id, job_name, outbox_event_id, attempts, last_error, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-00000000001a', 'system',
+  'upgrade-historical-mail-failure', 'outbox-event',
+  '20000000-0000-4000-8000-000000000019', 5,
+  'historical provider failure', CURRENT_TIMESTAMP
+);
+INSERT INTO outbox_events (
+  id, topic, payload, idempotency_key, published_at, updated_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000030',
+  'nextbuf.runtime.probe', '{"source":"upgrade-processed-outbox"}'::jsonb,
+  'upgrade-processed-outbox', CURRENT_TIMESTAMP - INTERVAL '1 day',
+  CURRENT_TIMESTAMP - INTERVAL '1 day'
+);
+INSERT INTO processed_jobs (
+  id, queue_name, job_name, idempotency_key, completed_at
+) VALUES (
+  '20000000-0000-4000-8000-000000000031', 'system', 'outbox-event',
+  'outbox-20000000-0000-4000-8000-000000000030',
+  CURRENT_TIMESTAMP - INTERVAL '23 hours'
+);
 SQL
+
+stage 'reject a drifted immutable migration baseline before candidate DDL'
+checkpoint 'stop baseline writers for migration identity verification'
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE stop web worker
+checkpoint 'verify and corrupt the final baseline checksum'
+baseline_checksum=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT checksum FROM _prisma_migrations WHERE migration_name = '\''20260720090000_editor_session_idempotency'\'' AND finished_at IS NOT NULL AND rolled_back_at IS NULL"' | tr -d '\r')
+[ "$baseline_checksum" = "$BASELINE_LAST_CHECKSUM" ]
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "UPDATE _prisma_migrations SET checksum = repeat('\''0'\'', 64) WHERE migration_name = '\''20260720090000_editor_session_idempotency'\'' AND finished_at IS NOT NULL AND rolled_back_at IS NULL"' >/dev/null
+checkpoint 'run candidate migration against the drifted baseline'
+if NEXTBUF_VERSION="$TARGET_VERSION" NEXTBUF_ENV_FILE="$ENV_FILE" \
+  $BASE_COMPOSE run --rm --no-deps setup migrate >"$CHECKSUM_REPORT" 2>&1; then
+  printf 'Candidate migration unexpectedly accepted a drifted v0.13.10 checksum\n' >&2
+  exit 1
+fi
+grep -q 'not an exact prefix of the immutable v1.0.0 candidate' "$CHECKSUM_REPORT"
+checkpoint 'verify checksum rejection left candidate Schema absent'
+candidate_column_count=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''users'\'' AND column_name = '\''deletion_finalized_at'\''"' | tr -d '\r')
+[ "$candidate_column_count" = 0 ]
+checkpoint 'restore the immutable baseline checksum and writers'
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  "psql -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -c \"UPDATE _prisma_migrations SET checksum = '$BASELINE_LAST_CHECKSUM' WHERE migration_name = '$BASELINE_LAST_MIGRATION' AND finished_at IS NOT NULL AND rolled_back_at IS NULL\"" >/dev/null
+checkpoint 'exclude the final baseline record from initialized history'
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  "psql -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -c \"UPDATE _prisma_migrations SET rolled_back_at = CURRENT_TIMESTAMP WHERE migration_name = '$BASELINE_LAST_MIGRATION' AND finished_at IS NOT NULL AND rolled_back_at IS NULL\"" >/dev/null
+if NEXTBUF_VERSION="$TARGET_VERSION" NEXTBUF_ENV_FILE="$ENV_FILE" \
+  $BASE_COMPOSE run --rm --no-deps setup migrate >"$CHECKSUM_REPORT" 2>&1; then
+  printf 'Candidate migration unexpectedly accepted initialized history before v0.13.10\n' >&2
+  exit 1
+fi
+grep -q 'predates the supported immutable v0.13.10 upgrade baseline' "$CHECKSUM_REPORT"
+checkpoint 'restore the final baseline record'
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  "psql -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -c \"UPDATE _prisma_migrations SET rolled_back_at = NULL WHERE migration_name = '$BASELINE_LAST_MIGRATION' AND finished_at IS NOT NULL\"" >/dev/null
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE up -d --no-deps web worker
+wait_for_url http://127.0.0.1:3200/health/ready 180
+wait_for_url http://127.0.0.1:3200/health/worker 180
 
 stage 'reject a mismatched image before backup or migration'
 checkpoint 'run mismatched-image upgrade'
@@ -259,26 +518,106 @@ checkpoint 'verify baseline health after mismatch rejection'
 wait_for_url http://127.0.0.1:3200/health/ready 180
 wait_for_url http://127.0.0.1:3200/health/worker 180
 
-stage 'keep services stopped when target setup fails after migration starts'
-checkpoint 'run injected target setup failure'
+stage 'roll back and recover a failed candidate migration'
+checkpoint 'inject legacy mail data rejected by the final candidate migration'
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "UPDATE email_deliveries SET attempts = -1 WHERE id = '\''20000000-0000-4000-8000-000000000018'\''"' >/dev/null
+checkpoint 'run target upgrade until the transactional migration fails'
 if NEXTBUFCTL_ASSUME_YES=1 \
   NEXTBUF_ENV_FILE="$ENV_FILE" \
-  NEXTBUF_COMPOSE_FILE="$FAILURE_COMPOSE_FILE" \
+  NEXTBUF_COMPOSE_FILE=compose.yml \
   NEXTBUF_BACKUP_DIR="$BACKUP_DIR" \
   ./nextbufctl upgrade "$TARGET_VERSION"; then
-  printf 'Upgrade unexpectedly succeeded after the injected target setup failure\n' >&2
+  printf 'Upgrade unexpectedly accepted invalid legacy mail attempts\n' >&2
   exit 1
 fi
-checkpoint 'verify target failure state and backup'
+checkpoint 'verify failed migration state, stopped writers and backup'
 grep -q "^NEXTBUF_VERSION=$TARGET_VERSION$" "$ENV_FILE"
 [ -z "$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps -q web)" ]
 [ -z "$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps -q worker)" ]
 find "$BACKUP_DIR" -maxdepth 1 -name "nextbuf-$BASELINE_VERSION-*.tar.gz" -print -quit | grep -q .
 failure_log=$(find "$BACKUP_DIR" -maxdepth 1 -name "upgrade-$BASELINE_VERSION-to-$TARGET_VERSION-*.log" -print | sort | tail -n 1)
 [ -n "$failure_log" ]
-grep -q 'NEXTBUF_INJECTED_SETUP_FAILURE' "$failure_log"
+grep -q '20260731180000_email_delivery_attempt_fencing' "$failure_log"
+candidate_migration_state=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT
+    (SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260730120000_account_deletion_finalization'\'' AND finished_at IS NOT NULL AND rolled_back_at IS NULL) || '\''|'\'' ||
+    (SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260731120000_outbox_processed_status'\'' AND finished_at IS NOT NULL AND rolled_back_at IS NULL) || '\''|'\'' ||
+    (SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260731180000_email_delivery_attempt_fencing'\'' AND finished_at IS NULL AND rolled_back_at IS NULL) || '\''|'\'' ||
+    (SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''email_deliveries'\'' AND column_name = '\''attempt_token'\'') || '\''|'\'' ||
+    (SELECT attempts FROM email_deliveries WHERE id = '\''20000000-0000-4000-8000-000000000018'\'')"' | tr -d '\r')
+[ "$candidate_migration_state" = '1|1|1|0|-1' ]
+checkpoint 'verify unresolved P3009 state blocks an ordinary retry'
+if NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm setup >"$P3009_REPORT" 2>&1; then
+  printf 'Candidate setup unexpectedly retried an unresolved failed migration\n' >&2
+  exit 1
+fi
+grep -q 'is recorded as failed' "$P3009_REPORT"
+checkpoint 'verify drifted failed migration records cannot be resolved'
+failed_checksum=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT checksum FROM _prisma_migrations WHERE migration_name = '\''20260731180000_email_delivery_attempt_fencing'\'' AND finished_at IS NULL AND rolled_back_at IS NULL"' | tr -d '\r')
+[ "$failed_checksum" = "$FINAL_CANDIDATE_CHECKSUM" ]
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "UPDATE _prisma_migrations SET checksum = repeat('\''0'\'', 64) WHERE migration_name = '\''20260731180000_email_delivery_attempt_fencing'\'' AND finished_at IS NULL AND rolled_back_at IS NULL"' >/dev/null
+if NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm setup migrate \
+  --resolve-rolled-back 20260731180000_email_delivery_attempt_fencing \
+  >"$CHECKSUM_REPORT" 2>&1; then
+  printf 'Candidate resolver accepted a drifted failed migration checksum\n' >&2
+  exit 1
+fi
+grep -q 'checksum that differs from the immutable v1.0.0 candidate' "$CHECKSUM_REPORT"
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  "psql -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -c \"UPDATE _prisma_migrations SET checksum = '$FINAL_CANDIDATE_CHECKSUM' WHERE migration_name = '20260731180000_email_delivery_attempt_fencing' AND finished_at IS NULL AND rolled_back_at IS NULL\"" >/dev/null
+checkpoint 'verify committed Schema markers cannot be declared rolled back'
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "ALTER TABLE email_deliveries ADD COLUMN attempt_token UUID"' >/dev/null
+if NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm setup migrate \
+  --resolve-rolled-back 20260731180000_email_delivery_attempt_fencing \
+  >"$MARKER_REPORT" 2>&1; then
+  printf 'Candidate resolver accepted a migration whose Schema marker exists\n' >&2
+  exit 1
+fi
+grep -q 'left its committed Schema marker email_deliveries.attempt_token' "$MARKER_REPORT"
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "ALTER TABLE email_deliveries DROP COLUMN attempt_token"' >/dev/null
+checkpoint 'verify resolution is restricted to candidate migration names'
+if NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm setup migrate \
+  --resolve-rolled-back 20260720090000_editor_session_idempotency >/dev/null 2>&1; then
+  printf 'Candidate resolver accepted a migration outside the recovery allowlist\n' >&2
+  exit 1
+fi
+checkpoint 'repair the rejected data and resolve the rolled-back transaction'
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "UPDATE email_deliveries SET attempts = 5 WHERE id = '\''20000000-0000-4000-8000-000000000018'\''"' >/dev/null
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm setup migrate \
+  --resolve-rolled-back 20260731180000_email_delivery_attempt_fencing
+rolled_back_count=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260731180000_email_delivery_attempt_fencing'\'' AND finished_at IS NULL AND rolled_back_at IS NOT NULL"' | tr -d '\r')
+[ "$rolled_back_count" = 1 ]
+checkpoint 'verify migration quarantined legacy deleted credentials and mail'
+legacy_quarantine=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT
+    (u.deletion_requested_at IS NOT NULL AND u.deletion_scheduled_at IS NOT NULL)::int || '\''|'\'' ||
+    (u.deletion_scheduled_at <= CURRENT_TIMESTAMP)::int || '\''|'\'' ||
+    (SELECT COUNT(*) FROM auth_accounts WHERE user_id = u.id) || '\''|'\'' ||
+    (SELECT COUNT(*) FROM auth_sessions WHERE user_id = u.id) || '\''|'\'' ||
+    (SELECT COUNT(*) FROM auth_verifications WHERE value = u.id::text) || '\''|'\'' ||
+    (SELECT COUNT(*) FROM email_deliveries WHERE lower(recipient) = lower(u.email)) || '\''|'\'' ||
+    (SELECT COUNT(*) FROM email_deliveries WHERE id = '\''20000000-0000-4000-8000-000000000025'\'') || '\''|'\'' ||
+    (SELECT COUNT(*) FROM worker_job_failures WHERE id = '\''20000000-0000-4000-8000-000000000029'\'') || '\''|'\'' ||
+    (SELECT (last_error IS NULL)::int FROM outbox_events WHERE id = '\''20000000-0000-4000-8000-000000000028'\'') || '\''|'\'' ||
+    (SELECT (email_delivery_id IS NULL)::int FROM notification_deliveries WHERE id = '\''20000000-0000-4000-8000-000000000027'\'')
+  FROM users AS u WHERE u.id = '\''20000000-0000-4000-8000-000000000020'\''"' | tr -d '\r')
+[ "$legacy_quarantine" = '1|1|0|0|0|0|0|0|1|1' ]
+checkpoint 'verify incomplete account deletion state is rejected'
+if NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "UPDATE users SET deletion_scheduled_at = CURRENT_TIMESTAMP WHERE email = '\''upgrade-admin@nextbuf.test'\''"' \
+  >/dev/null 2>&1; then
+  printf 'Migration accepted an account deletion schedule without a matching request\n' >&2
+  exit 1
+fi
 
-stage 'retry the tested target after the injected setup failure'
+stage 'retry the tested target after resolving the rolled-back migration'
 checkpoint 'retry target setup'
 NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm setup
 checkpoint 'restart target web and worker'
@@ -310,6 +649,38 @@ generic_node_migration=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T post
 editor_session_migration=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260720090000_editor_session_idempotency'\'' AND finished_at IS NOT NULL"' | tr -d '\r')
 [ "$editor_session_migration" = 1 ]
+account_deletion_migration=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260730120000_account_deletion_finalization'\'' AND finished_at IS NOT NULL"' | tr -d '\r')
+[ "$account_deletion_migration" = 1 ]
+outbox_status_migration=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260731120000_outbox_processed_status'\'' AND finished_at IS NOT NULL"' | tr -d '\r')
+[ "$outbox_status_migration" = 1 ]
+mail_attempt_fencing_migration=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM _prisma_migrations WHERE migration_name = '\''20260731180000_email_delivery_attempt_fencing'\'' AND finished_at IS NOT NULL"' | tr -d '\r')
+[ "$mail_attempt_fencing_migration" = 1 ]
+checkpoint 'verify completed Outbox backfill and recovery index'
+outbox_processed_backfill=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT (event.processed_at = processed.completed_at)::int FROM outbox_events AS event INNER JOIN processed_jobs AS processed ON processed.queue_name = '\''system'\'' AND processed.idempotency_key = '\''outbox-'\'' || event.id::text WHERE event.id = '\''20000000-0000-4000-8000-000000000030'\''"' | tr -d '\r')
+[ "$outbox_processed_backfill" = 1 ]
+outbox_recovery_index=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM pg_index AS index INNER JOIN pg_class AS class ON class.oid = index.indexrelid WHERE class.relname = '\''outbox_events_recovery_pending_idx'\'' AND index.indisvalid AND index.indisready AND pg_get_expr(index.indpred, index.indrelid) ILIKE '\''%processed_at IS NULL%published_at IS NOT NULL%'\''"' | tr -d '\r')
+[ "$outbox_recovery_index" = 1 ]
+checkpoint 'verify historical mail failure backfill and deletion cascade'
+mail_failure_delivery=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT
+    failure.email_delivery_id::text || '\''|'\'' || failure.last_error || '\''|'\'' ||
+    delivery.last_error || '\''|'\'' || event.last_error || '\''|'\'' ||
+    (delivery.attempt_token IS NOT NULL)::int || '\''|'\'' || delivery.attempt_generation
+  FROM worker_job_failures AS failure
+  INNER JOIN email_deliveries AS delivery ON delivery.id = failure.email_delivery_id
+  INNER JOIN outbox_events AS event ON event.id = failure.outbox_event_id
+  WHERE failure.id = '\''20000000-0000-4000-8000-00000000001a'\''"' | tr -d '\r')
+[ "$mail_failure_delivery" = '20000000-0000-4000-8000-000000000018|Mail delivery failed|Mail delivery failed|Mail dispatch failed|1|5' ]
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DELETE FROM email_deliveries WHERE id = '\''20000000-0000-4000-8000-000000000018'\''"' >/dev/null
+mail_failure_count=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM worker_job_failures WHERE id = '\''20000000-0000-4000-8000-00000000001a'\''"' | tr -d '\r')
+[ "$mail_failure_count" = 0 ]
 checkpoint 'verify preserved community fixtures'
 preserved_fixture=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM community_topics AS topic JOIN community_posts AS post ON post.topic_id = topic.id AND post.position = 1 JOIN community_nodes AS node ON node.id = topic.node_id WHERE node.slug = '\''upgrade-proof'\'' AND topic.title = '\''Durable upgrade topic'\'' AND topic.editor_session_key IS NULL AND post.body_source = '\''Durable upgrade body'\'' AND post.editor_session_key IS NULL"' | tr -d '\r')
@@ -326,9 +697,44 @@ preserved_attachment=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgr
 session_table=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT to_regclass('\''community_reply_editor_sessions'\'') IS NOT NULL"' | tr -d '\r')
 [ "$session_table" = t ]
+checkpoint 'verify due account finalization after upgrade'
+deadline=$(( $(date +%s) + 180 ))
+deletion_status=
+while [ "$(date +%s)" -lt "$deadline" ]; do
+  deletion_status=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+    'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT status FROM users WHERE id = '\''20000000-0000-4000-8000-000000000010'\''"' | tr -d '\r')
+  [ "$deletion_status" != deleted ] || break
+  sleep 2
+done
+[ "$deletion_status" = deleted ]
+deletion_invariants=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT
+    (u.deletion_finalized_at IS NOT NULL)::int || '\''|'\'' ||
+    (u.email LIKE '\''deleted+%@deleted.invalid'\'')::int || '\''|'\'' ||
+    (SELECT COUNT(*) FROM auth_accounts WHERE user_id = u.id) || '\''|'\'' ||
+    (SELECT COUNT(*) FROM community_topics WHERE id = '\''20000000-0000-4000-8000-000000000015'\'') || '\''|'\'' ||
+    (SELECT COUNT(*) FROM community_topics WHERE id = '\''20000000-0000-4000-8000-000000000012'\'' AND author_id = u.id AND status = '\''published'\'') || '\''|'\'' ||
+    (SELECT COUNT(*) FROM community_posts WHERE id = '\''20000000-0000-4000-8000-000000000013'\'' AND author_id = u.id AND position = 1 AND status = '\''published'\'') || '\''|'\'' ||
+    (SELECT COUNT(*) FROM community_post_revisions WHERE id = '\''20000000-0000-4000-8000-000000000014'\'' AND editor_id = u.id) || '\''|'\'' ||
+    (SELECT COUNT(*) FROM username_aliases WHERE username = '\''upgrade_delete'\'' AND user_id = u.id)
+  FROM users AS u WHERE u.id = '\''20000000-0000-4000-8000-000000000010'\''"' | tr -d '\r')
+[ "$deletion_invariants" = '1|1|0|0|1|1|1|1' ]
+checkpoint 'verify legacy deleted account reached a complete immutable tombstone'
+legacy_deletion_invariants=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT
+    (u.deletion_finalized_at IS NOT NULL)::int || '\''|'\'' ||
+    (u.username LIKE '\''deleted-%'\'')::int || '\''|'\'' ||
+    (u.email = '\''deleted+'\'' || u.id::text || '\''@deleted.invalid'\'')::int || '\''|'\'' ||
+    (SELECT COUNT(*) FROM profiles WHERE user_id = u.id) || '\''|'\'' ||
+    (SELECT COUNT(*) FROM notification_preferences WHERE user_id = u.id) || '\''|'\'' ||
+    (SELECT COUNT(*) FROM username_aliases WHERE username = '\''legacy_deleted'\'' AND user_id = u.id) || '\''|'\'' ||
+    (SELECT COUNT(*) FROM notifications WHERE id = '\''20000000-0000-4000-8000-000000000026'\'' AND actor_id IS NULL) || '\''|'\'' ||
+    (SELECT COUNT(*) FROM email_deliveries WHERE id = '\''20000000-0000-4000-8000-000000000025'\'')
+  FROM users AS u WHERE u.id = '\''20000000-0000-4000-8000-000000000020'\''"' | tr -d '\r')
+[ "$legacy_deletion_invariants" = '1|1|1|0|0|1|1|0' ]
 checkpoint 'verify backup and final doctor'
 find "$BACKUP_DIR" -maxdepth 1 -name "nextbuf-$BASELINE_VERSION-*.tar.gz" -print -quit | grep -q .
-NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml ./nextbufctl doctor
+expect_doctor_continuity_warning
 
 stage 'report upgraded service state'
 NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps

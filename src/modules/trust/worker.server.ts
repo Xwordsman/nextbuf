@@ -55,12 +55,14 @@ export async function processTrustRecalculationChunk(
       data: { status: "running", startedAt: now, lastError: null },
     });
   }
-  const users = await transaction.user.findMany({
-    where: { uid: { gt: batch.cursorUid } },
-    orderBy: { uid: "asc" },
-    take: TRUST_RECALCULATION_CHUNK_SIZE,
-    select: { id: true, uid: true },
-  });
+  const users = await transaction.$queryRaw<Array<{ id: string; uid: number }>>(
+    Prisma.sql`SELECT "id", "uid" FROM "users"
+      WHERE "uid" > ${batch.cursorUid}
+        AND "status" <> 'deleted'
+      ORDER BY "uid" ASC
+      LIMIT ${TRUST_RECALCULATION_CHUNK_SIZE}
+      FOR UPDATE`,
+  );
   const summary = batchSummary(batch.summary);
   let changed = 0;
   for (const user of users) {
@@ -85,7 +87,7 @@ export async function processTrustRecalculationChunk(
     data: {
       status: completed ? "completed" : "running",
       processedUsers,
-      totalUsers: Math.max(batch.totalUsers, processedUsers),
+      totalUsers: completed ? processedUsers : Math.max(batch.totalUsers, processedUsers),
       changedUsers: batch.changedUsers + changed,
       cursorUid,
       summary,

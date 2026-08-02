@@ -11,6 +11,8 @@ import { verifySmtpConnection } from "@/infrastructure/mail/smtp";
 import { verifyObjectStorageConnection } from "@/infrastructure/storage/object-storage";
 import { getWorkerHealthStatus } from "@/infrastructure/health/status";
 import { getOperationalCapacity } from "@/infrastructure/operations/capacity.server";
+import { getAdministratorContinuityDiagnosticState } from "@/modules/admin/continuity-policy";
+import { getAdministratorContinuityStatus } from "@/modules/admin/continuity.server";
 import { getInstallationStatus } from "@/modules/installation/installation.server";
 import { getErrorMessage } from "@/shared/errors/error-message";
 import { PROJECT } from "@/shared/project";
@@ -23,6 +25,26 @@ async function diagnostic(check: () => Promise<unknown>) {
   } catch (error) {
     return {
       ok: false,
+      latencyMs: Math.round(performance.now() - startedAt),
+      detail: getErrorMessage(error).slice(0, 500),
+    };
+  }
+}
+
+async function administratorContinuityDiagnostic() {
+  const startedAt = performance.now();
+  try {
+    const detail = await getAdministratorContinuityStatus(getPrismaClient());
+    const state = getAdministratorContinuityDiagnosticState(detail);
+    return {
+      ...state,
+      latencyMs: Math.round(performance.now() - startedAt),
+      detail,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      warning: false,
       latencyMs: Math.round(performance.now() - startedAt),
       detail: getErrorMessage(error).slice(0, 500),
     };
@@ -43,6 +65,7 @@ export async function doctor(): Promise<void> {
       mail,
       storage,
       capacity,
+      administratorContinuity,
     ] = await Promise.all([
       checkDatabaseHealth(),
       checkRedisHealth(),
@@ -72,6 +95,7 @@ export async function doctor(): Promise<void> {
       diagnostic(() => verifySmtpConnection()),
       diagnostic(() => verifyObjectStorageConnection()),
       diagnostic(() => getOperationalCapacity()),
+      administratorContinuityDiagnostic(),
     ]);
     const version = {
       ok: environment.NEXTBUF_VERSION === PROJECT.version,
@@ -91,10 +115,11 @@ export async function doctor(): Promise<void> {
       mail,
       storage,
       capacity,
+      administratorContinuity,
     };
     const ok = version.ok && Object.values(checks).every((check) => check.ok);
     const report = {
-      status: ok ? "ok" : "error",
+      status: ok ? (administratorContinuity.warning ? "warning" : "ok") : "error",
       checkedAt: new Date().toISOString(),
       environment: runtimeEnv.NODE_ENV,
       version,

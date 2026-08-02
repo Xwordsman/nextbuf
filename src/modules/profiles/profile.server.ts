@@ -19,7 +19,10 @@ export async function resolvePublicProfile(handle: string) {
   const prisma = getPrismaClient();
   const username = handle.toLowerCase();
   const user = await prisma.user.findUnique({
-    where: { username, status: "active" },
+    where: {
+      username,
+      OR: [{ status: "active" }, { status: "deleted", deletionFinalizedAt: { not: null } }],
+    },
     include: {
       profile: true,
       trustState: { select: { currentLevel: true } },
@@ -78,5 +81,9 @@ export async function resolvePublicProfile(handle: string) {
       },
     },
   });
-  return alias?.user.status === "active" ? ({ user: alias.user, redirected: true } as const) : null;
+  return alias &&
+    (alias.user.status === "active" ||
+      (alias.user.status === "deleted" && alias.user.deletionFinalizedAt !== null))
+    ? ({ user: alias.user, redirected: true } as const)
+    : null;
 }

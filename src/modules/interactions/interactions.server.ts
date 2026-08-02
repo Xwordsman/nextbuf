@@ -1,12 +1,12 @@
 import "server-only";
 
-import { createHmac, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { getPrismaClient } from "@/infrastructure/database/client";
 import { createOutboxEvent } from "@/infrastructure/outbox/create-event";
 import { requireActiveCommunityActor } from "@/modules/community/authorization.server";
 import { InteractionError } from "@/modules/interactions/errors";
-import { getAuthEnvironment } from "@/shared/config/runtime-env";
+import { getCurrentTopicViewViewerKeyHash } from "@/modules/interactions/topic-view-identity.server";
 
 const publicStatuses = ["published", "closed"];
 const viewBucketMinutes = 30;
@@ -191,11 +191,17 @@ export async function recordTopicView(input: {
   const viewerKey = input.viewerId
     ? `user:${input.viewerId}`
     : `anonymous:${input.anonymousFingerprint}`;
-  const viewerKeyHash = createHmac("sha256", getAuthEnvironment().AUTH_SECRET)
-    .update(`nextbuf-topic-view-v1:${viewerKey}`)
-    .digest("hex");
+  const viewerKeyHash = getCurrentTopicViewViewerKeyHash(viewerKey);
 
   return getPrismaClient().$transaction(async (transaction) => {
+    if (input.viewerId) {
+      const users = await transaction.$queryRaw<Array<{ status: string }>>(
+        Prisma.sql`SELECT "status" FROM "users"
+          WHERE "id" = CAST(${input.viewerId} AS uuid)
+          FOR UPDATE`,
+      );
+      if (users[0]?.status === "deleted") return { accepted: false };
+    }
     const topic = await requirePublicTopic(transaction, input.number);
     const id = randomUUID();
     const inserted = await transaction.interactionTopicView.createMany({

@@ -140,7 +140,7 @@ async function createBatch(
   transaction: Prisma.TransactionClient,
   input: { ruleVersionId: string; requestedById?: string; mode: "preview" | "apply" },
 ) {
-  const totalUsers = await transaction.user.count();
+  const totalUsers = await transaction.user.count({ where: { status: { not: "deleted" } } });
   const batch = await transaction.trustRecalculationBatch.create({
     data: {
       ruleVersionId: input.ruleVersionId,

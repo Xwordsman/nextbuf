@@ -6,6 +6,10 @@ import { hasSameOrigin } from "@/shared/http/same-origin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const replayRequestSchema = z.object({
+  acknowledgeDuplicateRisk: z.boolean().optional().default(false),
+});
+
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   if (!hasSameOrigin(request)) return Response.json({ code: "invalid_origin" }, { status: 403 });
   const session = await getRequestSession(request);
@@ -14,8 +18,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!z.uuid().safeParse(id).success) {
     return Response.json({ ok: false, code: "failure_not_replayable" }, { status: 409 });
   }
+  const parsed = replayRequestSchema.safeParse(await request.json().catch(() => ({})));
+  if (!parsed.success) {
+    return Response.json({ ok: false, code: "failure_not_replayable" }, { status: 409 });
+  }
   try {
-    await requestReplayAsOperator(session.user.id, id);
+    await requestReplayAsOperator(session.user.id, id, parsed.data);
     return Response.json({ ok: true, status: "requested" });
   } catch (error) {
     if (error instanceof WorkerOperationsError) {

@@ -4,6 +4,10 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { getPrismaClient } from "@/infrastructure/database/client";
 import {
+  acquireAdministratorContinuityLock,
+  assertAdministratorContinuityAfterExcludingUser,
+} from "@/modules/admin/continuity.server";
+import {
   getCommunityPermissions,
   type CommunityPermissions,
 } from "@/modules/community/authorization.server";
@@ -238,6 +242,9 @@ export async function applyModerationAction(input: {
   requestId: string;
 }) {
   return getPrismaClient().$transaction(async (transaction) => {
+    if (["suspend", "ban"].includes(input.action)) {
+      await acquireAdministratorContinuityLock(transaction);
+    }
     await lockCase(transaction, input.caseNumber);
     const moderationCase = await getOpenCase(transaction, input.caseNumber);
     const actor = await requireCaseModerator(transaction, input.actorId, moderationCase);
@@ -309,8 +316,8 @@ export async function applyModerationAction(input: {
       select: { status: true },
     });
     if (!targetUser) throw new ModerationError("invalid_action", 400);
+    const now = new Date();
     if (sanctionType !== "warning") {
-      const now = new Date();
       const duplicate = await transaction.moderationSanction.findFirst({
         where: {
           userId: affectedUserId,
@@ -323,6 +330,9 @@ export async function applyModerationAction(input: {
         select: { id: true },
       });
       if (duplicate) throw new ModerationError("invalid_action", 409);
+    }
+    if (["suspend", "ban"].includes(input.action)) {
+      await assertAdministratorContinuityAfterExcludingUser(transaction, affectedUserId, now);
     }
     const actionId = randomUUID();
     const sanctionId = randomUUID();

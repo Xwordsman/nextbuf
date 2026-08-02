@@ -8,6 +8,7 @@ export async function runDatabaseJobOnce(
     queueName: string;
     jobName: string;
     idempotencyKey: string;
+    onCompleted?: (transaction: JobTransaction) => Promise<void>;
   },
   action: (transaction: JobTransaction) => Promise<Prisma.InputJsonValue | undefined>,
 ): Promise<{ processed: boolean }> {
@@ -24,10 +25,12 @@ export async function runDatabaseJobOnce(
       });
 
       if (existing) {
+        await input.onCompleted?.(transaction);
         return { processed: false };
       }
 
       const result = await action(transaction);
+      await input.onCompleted?.(transaction);
       await transaction.processedJob.create({
         data: {
           queueName: input.queueName,

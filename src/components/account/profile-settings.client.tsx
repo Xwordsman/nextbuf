@@ -49,6 +49,7 @@ function messageFor(error: unknown): string {
     username_cooldown: "用户名仍在 30 天修改冷却期内。",
     invalid_avatar: "请选择有效的 PNG、JPEG 或 WebP 图片。",
     avatar_too_large: "裁剪后的头像文件过大。",
+    administrator_handover_required: "请先交接站点管理职责并撤销自己的管理员角色，再申请注销账号。",
   };
   return messages[code] ?? "保存失败，请稍后重试。";
 }

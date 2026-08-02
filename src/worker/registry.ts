@@ -1,7 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { RUNTIME_PROBE_TOPIC, type OutboxJobData } from "@/infrastructure/queue/contracts";
-import { IDENTITY_EMAIL_TOPIC, MAIL_DELIVERY_TOPIC } from "@/infrastructure/mail/queue";
-import { sendEmailDelivery } from "@/infrastructure/mail/smtp";
 import {
   ATTACHMENT_COLLECT_TOPIC,
   ATTACHMENT_PROCESS_TOPIC,
@@ -14,6 +12,10 @@ import { TRUST_RECALCULATION_TOPIC } from "@/modules/trust/contracts";
 import { processTrustRecalculationChunk } from "@/modules/trust/worker.server";
 import { COMMUNITY_NOTIFICATION_TOPIC } from "@/modules/notifications/events.server";
 import { processCommunityNotification } from "@/modules/notifications/worker.server";
+import {
+  ACCOUNT_DELETION_AVATAR_COLLECT_TOPIC,
+  collectDeletedAccountAvatar,
+} from "@/modules/identity/account-deletion.server";
 
 type OutboxHandler = (
   transaction: Prisma.TransactionClient,
@@ -42,23 +44,6 @@ handlers.set(handlerKey(RUNTIME_PROBE_TOPIC, 1), async (transaction, job) => {
   return { eventId: job.eventId, processedAt };
 });
 
-handlers.set(handlerKey(IDENTITY_EMAIL_TOPIC, 1), async (transaction, job) => {
-  const deliveryId = job.payload.deliveryId;
-  if (typeof deliveryId !== "string") {
-    throw new Error("Identity email job is missing deliveryId");
-  }
-
-  await sendEmailDelivery(transaction, deliveryId);
-  return { deliveryId };
-});
-
-handlers.set(handlerKey(MAIL_DELIVERY_TOPIC, 1), async (transaction, job) => {
-  const deliveryId = job.payload.deliveryId;
-  if (typeof deliveryId !== "string") throw new Error("Email job is missing deliveryId");
-  await sendEmailDelivery(transaction, deliveryId);
-  return { deliveryId };
-});
-
 handlers.set(handlerKey(COMMUNITY_NOTIFICATION_TOPIC, 1), async (transaction, job) =>
   processCommunityNotification(transaction, job.payload),
 );
@@ -76,6 +61,12 @@ handlers.set(handlerKey(ATTACHMENT_PROCESS_TOPIC, 1), async (transaction, job) =
 handlers.set(handlerKey(ATTACHMENT_COLLECT_TOPIC, 1), async (transaction, job) =>
   collectCommunityAttachment(transaction, attachmentId(job)),
 );
+
+handlers.set(handlerKey(ACCOUNT_DELETION_AVATAR_COLLECT_TOPIC, 1), async (_transaction, job) => {
+  const url = job.payload.url;
+  if (typeof url !== "string") throw new Error("Deleted account avatar job is missing url");
+  return collectDeletedAccountAvatar(url);
+});
 
 handlers.set(handlerKey(TOPIC_VIEW_AGGREGATE_TOPIC, 1), async (transaction, job) => {
   const viewId = job.payload.viewId;

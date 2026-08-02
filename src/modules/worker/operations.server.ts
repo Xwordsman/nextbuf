@@ -26,20 +26,49 @@ export async function requireWorkerOperator(userId: string): Promise<void> {
 export async function getWorkerOperationsSummary(userId: string) {
   await requireWorkerOperator(userId);
   const prisma = getPrismaClient();
-  const [outboxPending, outboxErrors, failures, workers, tasks, pendingMail, failedMail] =
-    await Promise.all([
-      prisma.outboxEvent.count({ where: { publishedAt: null } }),
-      prisma.outboxEvent.count({ where: { publishedAt: null, lastError: { not: null } } }),
-      prisma.workerJobFailure.findMany({
-        where: { resolvedAt: null },
-        orderBy: { failedAt: "desc" },
-        take: 50,
-      }),
-      prisma.workerHeartbeat.findMany({ orderBy: { heartbeatAt: "desc" }, take: 20 }),
-      prisma.workerScheduledTask.findMany({ orderBy: { name: "asc" } }),
-      prisma.emailDelivery.count({ where: { status: { in: ["pending", "sending"] } } }),
-      prisma.emailDelivery.count({ where: { status: "failed" } }),
-    ]);
+  const [
+    outboxPending,
+    outboxErrors,
+    failures,
+    workers,
+    tasks,
+    pendingMail,
+    failedMail,
+    pendingAccountDeletions,
+    failedAccountDeletions,
+    recentAccountDeletionFailures,
+  ] = await Promise.all([
+    prisma.outboxEvent.count({ where: { publishedAt: null } }),
+    prisma.outboxEvent.count({ where: { publishedAt: null, lastError: { not: null } } }),
+    prisma.workerJobFailure.findMany({
+      where: { resolvedAt: null },
+      orderBy: { failedAt: "desc" },
+      take: 50,
+      include: { emailDelivery: { select: { status: true } } },
+    }),
+    prisma.workerHeartbeat.findMany({ orderBy: { heartbeatAt: "desc" }, take: 20 }),
+    prisma.workerScheduledTask.findMany({ orderBy: { name: "asc" } }),
+    prisma.emailDelivery.count({ where: { status: { in: ["pending", "sending"] } } }),
+    prisma.emailDelivery.count({ where: { status: { in: ["failed", "outcome_unknown"] } } }),
+    prisma.user.count({
+      where: { deletionScheduledAt: { not: null }, deletionFinalizedAt: null },
+    }),
+    prisma.user.count({
+      where: { deletionScheduledAt: { not: null }, deletionLastError: { not: null } },
+    }),
+    prisma.user.findMany({
+      where: { deletionScheduledAt: { not: null }, deletionLastError: { not: null } },
+      orderBy: [{ deletionNextAttemptAt: "asc" }, { uid: "asc" }],
+      take: 20,
+      select: {
+        uid: true,
+        username: true,
+        deletionAttemptCount: true,
+        deletionNextAttemptAt: true,
+        deletionLastError: true,
+      },
+    }),
+  ]);
   let queue:
     | { available: true; counts: Awaited<ReturnType<typeof getSystemQueueHealth>> }
     | { available: false; error: string };
@@ -56,15 +85,24 @@ export async function getWorkerOperationsSummary(userId: string) {
     queue,
     outbox: { pending: outboxPending, dispatchErrors: outboxErrors },
     mail: { pending: pendingMail, failed: failedMail },
+    accountDeletions: {
+      pending: pendingAccountDeletions,
+      failed: failedAccountDeletions,
+      recentFailures: recentAccountDeletionFailures,
+    },
     failures,
     workers,
     tasks,
   };
 }
 
-export async function requestReplayAsOperator(userId: string, failureId: string): Promise<void> {
+export async function requestReplayAsOperator(
+  userId: string,
+  failureId: string,
+  options: { acknowledgeDuplicateRisk?: boolean } = {},
+): Promise<void> {
   await requireWorkerOperator(userId);
-  if (!(await requestWorkerReplay(failureId, userId))) {
+  if (!(await requestWorkerReplay(failureId, userId, options))) {
     throw new WorkerOperationsError("failure_not_replayable", 409);
   }
 }

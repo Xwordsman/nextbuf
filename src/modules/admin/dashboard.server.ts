@@ -4,6 +4,8 @@ import { getPrismaClient } from "@/infrastructure/database/client";
 import { getSystemQueueHealth } from "@/infrastructure/queue/health";
 import { buildOperationalAlerts } from "@/infrastructure/operations/capacity-policy";
 import { requireAdministrator } from "@/modules/admin/authorization.server";
+import { buildAdministratorContinuityAlert } from "@/modules/admin/continuity-policy";
+import { getAdministratorContinuityStatus } from "@/modules/admin/continuity.server";
 import {
   managedPostWhere,
   managedReplyWhere,
@@ -39,6 +41,7 @@ export async function getAdminDashboard(actorId: string) {
     unresolvedJobs,
     activeWorkers,
     trustBatches,
+    administratorContinuity,
     recentUsers,
   ] = await Promise.all([
     prisma.user.count(),
@@ -68,12 +71,13 @@ export async function getAdminDashboard(actorId: string) {
     prisma.outboxEvent.count({ where: { publishedAt: null } }),
     prisma.outboxEvent.count({ where: { publishedAt: null, lastError: { not: null } } }),
     prisma.emailDelivery.count({ where: { status: { in: ["pending", "sending"] } } }),
-    prisma.emailDelivery.count({ where: { status: "failed" } }),
+    prisma.emailDelivery.count({ where: { status: { in: ["failed", "outcome_unknown"] } } }),
     prisma.workerJobFailure.count({ where: { resolvedAt: null } }),
     prisma.workerHeartbeat.count({
       where: { status: "ready", heartbeatAt: { gte: staleWorkerAt } },
     }),
     prisma.trustRecalculationBatch.count({ where: { status: { in: ["pending", "running"] } } }),
+    getAdministratorContinuityStatus(prisma),
     prisma.user.findMany({
       orderBy: { createdAt: "desc" },
       take: 6,
@@ -105,6 +109,7 @@ export async function getAdminDashboard(actorId: string) {
     activeWorkers,
     trustBatches,
   };
+  const continuityAlert = buildAdministratorContinuityAlert(administratorContinuity);
   return {
     generatedAt: now,
     users: {
@@ -117,7 +122,11 @@ export async function getAdminDashboard(actorId: string) {
     moderation: { openReports, openCases },
     operations,
     queue,
-    alerts: buildOperationalAlerts({ ...operations, queue }),
+    administratorContinuity,
+    alerts: [
+      ...(continuityAlert ? [continuityAlert] : []),
+      ...buildOperationalAlerts({ ...operations, queue }),
+    ],
     recentUsers,
   };
 }
