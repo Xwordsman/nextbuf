@@ -327,7 +327,7 @@ legacy_other_status=$(curl --silent -o /tmp/nextbuf-setup-legacy-other.json -w '
 grep -q '"code":"existing_users_require_recovery"' /tmp/nextbuf-setup-legacy-other.json
 rm -f /tmp/nextbuf-setup-legacy-other.json
 legacy_claim_owner=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
-  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT value->>'\''email'\'' || '\''|'\'' || value->>'\''username'\'' FROM system_state WHERE key = '\''installation.claim'\''"' | tr -d '\r')
+  'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT (value->>'\''email'\'') || '\''|'\'' || (value->>'\''username'\'') FROM system_state WHERE key = '\''installation.claim'\''"' | tr -d '\r')
 [ "$legacy_claim_owner" = 'smoke-admin@nextbuf.test|smoke_admin' ]
 
 stage 'create and reject repeated initial administrator setup'
