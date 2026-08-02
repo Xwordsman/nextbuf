@@ -22,6 +22,29 @@ export function getPrismaClient(): PrismaClient {
   return globalDatabase.nextbufPrisma;
 }
 
+/** @internal Test-only hook for isolated integration database contexts. */
+export function overridePrismaClientForTests(client: PrismaClient): () => void {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("Prisma client overrides are only available in tests");
+  }
+
+  const previous = globalDatabase.nextbufPrisma;
+  globalDatabase.nextbufPrisma = client;
+  let restored = false;
+
+  return () => {
+    if (restored) {
+      throw new Error("Prisma client override has already been restored");
+    }
+    if (globalDatabase.nextbufPrisma !== client) {
+      throw new Error("Prisma client override ownership was lost");
+    }
+
+    globalDatabase.nextbufPrisma = previous;
+    restored = true;
+  };
+}
+
 export async function disconnectPrismaClient(): Promise<void> {
   if (!globalDatabase.nextbufPrisma) {
     return;

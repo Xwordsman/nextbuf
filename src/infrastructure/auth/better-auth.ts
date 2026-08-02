@@ -238,3 +238,12 @@ export function getAuth() {
   authInstance ??= createAuthInstance();
   return authInstance;
 }
+
+/** @internal Test-only hook for rebuilding the adapter after a Prisma client override. */
+export function resetAuthForTests(): void {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("Better Auth reset is only available in tests");
+  }
+
+  authInstance = undefined;
+}

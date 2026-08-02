@@ -15,6 +15,7 @@ import {
   assertAdministratorHandoverComplete,
   getAdministratorContinuityStatus,
 } from "@/modules/admin/continuity.server";
+import { withIsolatedNextBufDatabase } from "../support/isolated-nextbuf-database";
 import { getAdminDashboard } from "@/modules/admin/dashboard.server";
 import {
   applyModerationAction,
@@ -110,6 +111,58 @@ function deferred() {
     resolve = resolver;
   });
   return { promise, resolve };
+}
+
+async function waitForRequestCheckpoint(
+  checkpoint: Promise<void>,
+  request: Promise<unknown>,
+  label: string,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const prematureSettlement = request.then(
+    () => {
+      throw new Error(`${label} completed before reaching its expected Better Auth checkpoint`);
+    },
+    (cause: unknown) => {
+      throw new Error(`${label} failed before reaching its expected Better Auth checkpoint`, {
+        cause,
+      });
+    },
+  );
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} did not reach its Better Auth checkpoint within 10s`)),
+      10_000,
+    );
+  });
+
+  try {
+    await Promise.race([checkpoint, prematureSettlement, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function waitForRequestSettlement(
+  requests: Promise<unknown>[],
+  label: string,
+): Promise<void> {
+  if (requests.length === 0) return;
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(new Error(`${label} did not settle within 10s after its barriers were released`)),
+      10_000,
+    );
+  });
+
+  try {
+    await Promise.race([Promise.allSettled(requests), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function grantAdmin(userId: string) {
@@ -373,80 +426,76 @@ describe("administrator continuity integration", () => {
     }
   });
 
-  it("fences a delayed setup request after its PostgreSQL lease is taken over", async () => {
-    const prisma = getPrismaClient();
-    const claimKey = "installation.claim";
-    const setupToken = getAuthEnvironment().SETUP_TOKEN;
-    if (!setupToken) throw new Error("SETUP_TOKEN is required for the setup race integration test");
-    const password = "claim-race-password-12345";
-    const authContext = await getAuth().$context;
-    const candidate = await createUser(
-      "claim_race",
-      true,
-      await authContext.password.hash(password),
-    );
-    await prisma.user.update({
-      where: { id: candidate.id },
-      data: { emailVerified: false, status: "pending", activatedAt: null },
-    });
-    const [previousClaim, previousComplete] = await Promise.all([
-      prisma.systemState.findUnique({ where: { key: claimKey } }),
-      prisma.systemState.findUnique({ where: { key: INSTALLATION_COMPLETE_KEY } }),
-    ]);
-    await prisma.systemState.deleteMany({
-      where: { key: { in: [claimKey, INSTALLATION_COMPLETE_KEY] } },
-    });
-    const firstAuthStarted = deferred();
-    const secondAuthStarted = deferred();
-    const releaseFirstAuth = deferred();
-    const releaseSecondAuth = deferred();
-    let authCalls = 0;
-    let firstRequest: ReturnType<typeof createInitialAdministrator> | undefined;
-    let secondRequest: ReturnType<typeof createInitialAdministrator> | undefined;
-    const verificationSpy = vi
-      .spyOn(getAuth().api, "sendVerificationEmail")
-      .mockImplementation(async () => {
-        authCalls += 1;
-        if (authCalls === 1) {
-          firstAuthStarted.resolve();
-          await releaseFirstAuth.promise;
-        } else if (authCalls === 2) {
-          secondAuthStarted.resolve();
-          await releaseSecondAuth.promise;
-        } else {
-          throw new Error(`Unexpected verification call ${authCalls}`);
-        }
-        return { status: true };
-      });
-    const setupInput = {
-      token: setupToken,
-      name: candidate.name,
-      username: candidate.username,
-      email: candidate.email,
-      password,
-    };
+  it(
+    "fences a delayed setup request after its PostgreSQL lease is taken over",
+    async () => {
+      await withIsolatedNextBufDatabase("setup-claim-lease", async (isolatedPrisma) => {
+        const prisma = isolatedPrisma;
+        const claimKey = "installation.claim";
+        const setupToken = getAuthEnvironment().SETUP_TOKEN;
+        if (!setupToken)
+          throw new Error("SETUP_TOKEN is required for the setup race integration test");
+        const password = "claim-race-password-12345";
+        const email = `${emailPrefix}claim_race${emailDomain}`;
+        const username = "continuity_claim_race";
+        const name = "Continuity Claim Race";
+        const firstAuthStarted = deferred();
+        const secondAuthStarted = deferred();
+        const releaseFirstAuth = deferred();
+        const releaseSecondAuth = deferred();
+        const auth = getAuth();
+        const originalSignUpEmail = auth.api.signUpEmail.bind(auth.api);
+        let authCalls = 0;
+        let firstRequest: ReturnType<typeof createInitialAdministrator> | undefined;
+        let secondRequest: ReturnType<typeof createInitialAdministrator> | undefined;
+        const signUpSpy = vi.spyOn(auth.api, "signUpEmail").mockImplementation(async (options) => {
+          authCalls += 1;
+          if (authCalls === 1) {
+            firstAuthStarted.resolve();
+            await releaseFirstAuth.promise;
+          } else if (authCalls === 2) {
+            secondAuthStarted.resolve();
+            await releaseSecondAuth.promise;
+          } else {
+            throw new Error(`Unexpected sign-up call ${authCalls}`);
+          }
+          return originalSignUpEmail(options);
+        });
+        const setupInput = {
+          token: setupToken,
+          name,
+          username,
+          email,
+          password,
+        };
 
-    try {
-      await expect(
-        prisma.communityRoleAssignment.count({ where: { role: "admin", scopeKey: "site" } }),
-      ).resolves.toBe(0);
-      firstRequest = createInitialAdministrator({
-        ...setupInput,
-        requestId: "claim-race-old-owner",
-      });
-      await firstAuthStarted.promise;
+        try {
+          await expect(
+            prisma.communityRoleAssignment.count({ where: { role: "admin", scopeKey: "site" } }),
+          ).resolves.toBe(0);
+          firstRequest = createInitialAdministrator({
+            ...setupInput,
+            requestId: "claim-race-old-owner",
+          });
+          await waitForRequestCheckpoint(
+            firstAuthStarted.promise,
+            firstRequest,
+            "old setup lease owner",
+          );
 
-      const firstClaim = await prisma.systemState.findUniqueOrThrow({ where: { key: claimKey } });
-      const firstClaimValue = firstClaim.value as {
-        claimId?: string;
-        claimedAt?: string;
-        leaseExpiresAt?: string;
-      };
-      expect(firstClaimValue.claimId).toEqual(expect.any(String));
-      expect(firstClaimValue.claimedAt).toEqual(expect.any(String));
-      expect(firstClaimValue.leaseExpiresAt).toEqual(expect.any(String));
-      const firstClaimId = firstClaimValue.claimId!;
-      const expiredRows = await prisma.$executeRaw(Prisma.sql`
+          const firstClaim = await prisma.systemState.findUniqueOrThrow({
+            where: { key: claimKey },
+          });
+          const firstClaimValue = firstClaim.value as {
+            claimId?: string;
+            claimedAt?: string;
+            leaseExpiresAt?: string;
+          };
+          expect(firstClaimValue.claimId).toEqual(expect.any(String));
+          expect(firstClaimValue.claimedAt).toEqual(expect.any(String));
+          expect(firstClaimValue.leaseExpiresAt).toEqual(expect.any(String));
+          const firstClaimId = firstClaimValue.claimId!;
+          const expiredRows = await prisma.$executeRaw(Prisma.sql`
         UPDATE "system_state"
         SET "value" = jsonb_set(
           "value",
@@ -455,155 +504,163 @@ describe("administrator continuity integration", () => {
         )
         WHERE "key" = ${claimKey}
           AND "value"->>'claimId' = ${firstClaimId}`);
-      expect(expiredRows).toBe(1);
+          expect(expiredRows).toBe(1);
 
-      secondRequest = createInitialAdministrator({
-        ...setupInput,
-        requestId: "claim-race-current-owner",
-      });
-      await secondAuthStarted.promise;
-      const secondClaim = await prisma.systemState.findUniqueOrThrow({ where: { key: claimKey } });
-      expect(secondClaim.value).toMatchObject({
-        version: 1,
-        email: candidate.email,
-        username: candidate.username,
-      });
-      const secondClaimId = (secondClaim.value as { claimId?: string }).claimId;
-      expect(secondClaimId).toEqual(expect.any(String));
-      expect(secondClaimId).not.toBe(firstClaimId);
-
-      const firstRejection = expect(firstRequest).rejects.toMatchObject({
-        code: "setup_claim_lost",
-        status: 409,
-      });
-      releaseFirstAuth.resolve();
-      await firstRejection;
-      await expect(
-        prisma.communityRoleAssignment.count({
-          where: { userId: candidate.id, role: "admin", scopeKey: "site" },
-        }),
-      ).resolves.toBe(0);
-      await expect(
-        prisma.governanceAuditEvent.count({
-          where: { actorId: candidate.id, action: "installation.administrator.created" },
-        }),
-      ).resolves.toBe(0);
-      await expect(
-        prisma.systemState.findUnique({ where: { key: INSTALLATION_COMPLETE_KEY } }),
-      ).resolves.toBeNull();
-      await expect(
-        prisma.systemState.findUniqueOrThrow({ where: { key: claimKey } }),
-      ).resolves.toMatchObject({
-        value: expect.objectContaining({ claimId: secondClaimId }),
-      });
-
-      releaseSecondAuth.resolve();
-      await expect(secondRequest).resolves.toMatchObject({
-        uid: candidate.uid,
-        username: candidate.username,
-        email: candidate.email,
-      });
-      await expect(
-        prisma.communityRoleAssignment.count({
-          where: { userId: candidate.id, role: "admin", scopeKey: "site" },
-        }),
-      ).resolves.toBe(1);
-      await expect(
-        prisma.governanceAuditEvent.findMany({
-          where: { actorId: candidate.id, action: "installation.administrator.created" },
-          select: { requestId: true },
-        }),
-      ).resolves.toEqual([{ requestId: "claim-race-current-owner" }]);
-      await expect(
-        prisma.systemState.findUniqueOrThrow({ where: { key: INSTALLATION_COMPLETE_KEY } }),
-      ).resolves.toMatchObject({
-        value: expect.objectContaining({ administratorId: candidate.id }),
-      });
-      await expect(prisma.systemState.findUnique({ where: { key: claimKey } })).resolves.toBeNull();
-      expect(verificationSpy).toHaveBeenCalledTimes(2);
-    } finally {
-      releaseFirstAuth.resolve();
-      releaseSecondAuth.resolve();
-      await Promise.allSettled(
-        [firstRequest, secondRequest].filter(
-          (request): request is ReturnType<typeof createInitialAdministrator> => Boolean(request),
-        ),
-      );
-      verificationSpy.mockRestore();
-      await prisma.systemState.deleteMany({
-        where: { key: { in: [claimKey, INSTALLATION_COMPLETE_KEY] } },
-      });
-      for (const state of [previousClaim, previousComplete]) {
-        if (state) {
-          await prisma.systemState.create({
-            data: {
-              ...state,
-              value: state.value === null ? Prisma.JsonNull : state.value,
-            },
+          secondRequest = createInitialAdministrator({
+            ...setupInput,
+            requestId: "claim-race-current-owner",
           });
+          await waitForRequestCheckpoint(
+            secondAuthStarted.promise,
+            secondRequest,
+            "current setup lease owner",
+          );
+          await expect(prisma.user.count({ where: { email } })).resolves.toBe(0);
+          const secondClaim = await prisma.systemState.findUniqueOrThrow({
+            where: { key: claimKey },
+          });
+          expect(secondClaim.value).toMatchObject({
+            version: 1,
+            email,
+            username,
+          });
+          const secondClaimId = (secondClaim.value as { claimId?: string }).claimId;
+          expect(secondClaimId).toEqual(expect.any(String));
+          expect(secondClaimId).not.toBe(firstClaimId);
+
+          const firstRejection = expect(firstRequest).rejects.toMatchObject({
+            code: "setup_claim_lost",
+            status: 409,
+          });
+          releaseFirstAuth.resolve();
+          await firstRejection;
+          const candidate = await prisma.user.findUniqueOrThrow({ where: { email } });
+          await expect(
+            prisma.communityRoleAssignment.count({
+              where: { userId: candidate.id, role: "admin", scopeKey: "site" },
+            }),
+          ).resolves.toBe(0);
+          await expect(
+            prisma.governanceAuditEvent.count({
+              where: { actorId: candidate.id, action: "installation.administrator.created" },
+            }),
+          ).resolves.toBe(0);
+          await expect(
+            prisma.systemState.findUnique({ where: { key: INSTALLATION_COMPLETE_KEY } }),
+          ).resolves.toBeNull();
+          await expect(
+            prisma.systemState.findUniqueOrThrow({ where: { key: claimKey } }),
+          ).resolves.toMatchObject({
+            value: expect.objectContaining({ claimId: secondClaimId }),
+          });
+
+          releaseSecondAuth.resolve();
+          await expect(secondRequest).resolves.toMatchObject({
+            uid: candidate.uid,
+            username,
+            email,
+          });
+          await expect(
+            prisma.communityRoleAssignment.count({
+              where: { userId: candidate.id, role: "admin", scopeKey: "site" },
+            }),
+          ).resolves.toBe(1);
+          await expect(
+            prisma.governanceAuditEvent.findMany({
+              where: { actorId: candidate.id, action: "installation.administrator.created" },
+              select: { requestId: true },
+            }),
+          ).resolves.toEqual([{ requestId: "claim-race-current-owner" }]);
+          await expect(
+            prisma.systemState.findUniqueOrThrow({ where: { key: INSTALLATION_COMPLETE_KEY } }),
+          ).resolves.toMatchObject({
+            value: expect.objectContaining({ administratorId: candidate.id }),
+          });
+          await expect(
+            prisma.systemState.findUnique({ where: { key: claimKey } }),
+          ).resolves.toBeNull();
+          expect(signUpSpy).toHaveBeenCalledTimes(2);
+        } finally {
+          releaseFirstAuth.resolve();
+          releaseSecondAuth.resolve();
+          try {
+            await waitForRequestSettlement(
+              [firstRequest, secondRequest].filter(
+                (request): request is ReturnType<typeof createInitialAdministrator> =>
+                  Boolean(request),
+              ),
+              "setup lease race requests",
+            );
+          } finally {
+            signUpSpy.mockRestore();
+          }
         }
-      }
-    }
-  });
-
-  it("rejects a taken-over setup when the delayed request created a different password", async () => {
-    const prisma = getPrismaClient();
-    const claimKey = "installation.claim";
-    const setupToken = getAuthEnvironment().SETUP_TOKEN;
-    if (!setupToken) throw new Error("SETUP_TOKEN is required for the setup race integration test");
-    const email = `${emailPrefix}claim_password_race${emailDomain}`;
-    const username = "continuity_claim_pass";
-    const [previousClaim, previousComplete] = await Promise.all([
-      prisma.systemState.findUnique({ where: { key: claimKey } }),
-      prisma.systemState.findUnique({ where: { key: INSTALLATION_COMPLETE_KEY } }),
-    ]);
-    await prisma.systemState.deleteMany({
-      where: { key: { in: [claimKey, INSTALLATION_COMPLETE_KEY] } },
-    });
-    const firstAuthStarted = deferred();
-    const secondAuthStarted = deferred();
-    const releaseFirstAuth = deferred();
-    const releaseSecondAuth = deferred();
-    const auth = getAuth();
-    const originalSignUpEmail = auth.api.signUpEmail.bind(auth.api);
-    const signInSpy = vi.spyOn(auth.api, "signInEmail");
-    let authCalls = 0;
-    let firstRequest: ReturnType<typeof createInitialAdministrator> | undefined;
-    let secondRequest: ReturnType<typeof createInitialAdministrator> | undefined;
-    const signUpSpy = vi.spyOn(auth.api, "signUpEmail").mockImplementation(async (options) => {
-      authCalls += 1;
-      if (authCalls === 1) {
-        firstAuthStarted.resolve();
-        await releaseFirstAuth.promise;
-      } else if (authCalls === 2) {
-        secondAuthStarted.resolve();
-        await releaseSecondAuth.promise;
-      } else {
-        throw new Error(`Unexpected sign-up call ${authCalls}`);
-      }
-      return originalSignUpEmail(options);
-    });
-    const oldPassword = "old-setup-password-12345";
-    const newPassword = "new-setup-password-67890";
-    const setupInput = {
-      token: setupToken,
-      name: "Continuity Claim Password",
-      username,
-      email,
-    };
-
-    try {
-      firstRequest = createInitialAdministrator({
-        ...setupInput,
-        password: oldPassword,
-        requestId: "claim-password-old-owner",
       });
-      await firstAuthStarted.promise;
+    },
+    { timeout: 90_000 },
+  );
 
-      const firstClaim = await prisma.systemState.findUniqueOrThrow({ where: { key: claimKey } });
-      const firstClaimId = (firstClaim.value as { claimId?: string }).claimId;
-      expect(firstClaimId).toEqual(expect.any(String));
-      const expiredRows = await prisma.$executeRaw(Prisma.sql`
+  it(
+    "rejects a taken-over setup when the delayed request created a different password",
+    async () => {
+      await withIsolatedNextBufDatabase("setup-claim-password", async (isolatedPrisma) => {
+        const prisma = isolatedPrisma;
+        const claimKey = "installation.claim";
+        const setupToken = getAuthEnvironment().SETUP_TOKEN;
+        if (!setupToken)
+          throw new Error("SETUP_TOKEN is required for the setup race integration test");
+        const email = `${emailPrefix}claim_password_race${emailDomain}`;
+        const username = "continuity_claim_pass";
+        const firstAuthStarted = deferred();
+        const secondAuthStarted = deferred();
+        const releaseFirstAuth = deferred();
+        const releaseSecondAuth = deferred();
+        const auth = getAuth();
+        const originalSignUpEmail = auth.api.signUpEmail.bind(auth.api);
+        const signInSpy = vi.spyOn(auth.api, "signInEmail");
+        let authCalls = 0;
+        let firstRequest: ReturnType<typeof createInitialAdministrator> | undefined;
+        let secondRequest: ReturnType<typeof createInitialAdministrator> | undefined;
+        const signUpSpy = vi.spyOn(auth.api, "signUpEmail").mockImplementation(async (options) => {
+          authCalls += 1;
+          if (authCalls === 1) {
+            firstAuthStarted.resolve();
+            await releaseFirstAuth.promise;
+          } else if (authCalls === 2) {
+            secondAuthStarted.resolve();
+            await releaseSecondAuth.promise;
+          } else {
+            throw new Error(`Unexpected sign-up call ${authCalls}`);
+          }
+          return originalSignUpEmail(options);
+        });
+        const oldPassword = "old-setup-password-12345";
+        const newPassword = "new-setup-password-67890";
+        const setupInput = {
+          token: setupToken,
+          name: "Continuity Claim Password",
+          username,
+          email,
+        };
+
+        try {
+          firstRequest = createInitialAdministrator({
+            ...setupInput,
+            password: oldPassword,
+            requestId: "claim-password-old-owner",
+          });
+          await waitForRequestCheckpoint(
+            firstAuthStarted.promise,
+            firstRequest,
+            "old password setup lease owner",
+          );
+
+          const firstClaim = await prisma.systemState.findUniqueOrThrow({
+            where: { key: claimKey },
+          });
+          const firstClaimId = (firstClaim.value as { claimId?: string }).claimId;
+          expect(firstClaimId).toEqual(expect.any(String));
+          const expiredRows = await prisma.$executeRaw(Prisma.sql`
         UPDATE "system_state"
         SET "value" = jsonb_set(
           "value",
@@ -612,97 +669,100 @@ describe("administrator continuity integration", () => {
         )
         WHERE "key" = ${claimKey}
           AND "value"->>'claimId' = ${firstClaimId!}`);
-      expect(expiredRows).toBe(1);
+          expect(expiredRows).toBe(1);
 
-      secondRequest = createInitialAdministrator({
-        ...setupInput,
-        password: newPassword,
-        requestId: "claim-password-current-owner",
-      });
-      await secondAuthStarted.promise;
-      await expect(prisma.user.count({ where: { email } })).resolves.toBe(0);
-      const secondClaim = await prisma.systemState.findUniqueOrThrow({ where: { key: claimKey } });
-      const secondClaimId = (secondClaim.value as { claimId?: string }).claimId;
-      expect(secondClaimId).toEqual(expect.any(String));
-      expect(secondClaimId).not.toBe(firstClaimId);
-
-      const firstRejection = expect(firstRequest).rejects.toMatchObject({
-        code: "setup_claim_lost",
-        status: 409,
-      });
-      releaseFirstAuth.resolve();
-      await firstRejection;
-
-      const user = await prisma.user.findUniqueOrThrow({ where: { email } });
-      await expect(
-        prisma.communityRoleAssignment.count({
-          where: { userId: user.id, role: "admin", scopeKey: "site" },
-        }),
-      ).resolves.toBe(0);
-      await expect(
-        prisma.systemState.findUniqueOrThrow({ where: { key: claimKey } }),
-      ).resolves.toMatchObject({
-        value: expect.objectContaining({ claimId: secondClaimId }),
-      });
-
-      releaseSecondAuth.resolve();
-      await expect(secondRequest).rejects.toMatchObject({
-        code: "initial_administrator_password_mismatch",
-        status: 409,
-      });
-
-      const credential = await prisma.account.findFirstOrThrow({
-        where: { userId: user.id, providerId: "credential" },
-        select: { password: true },
-      });
-      expect(credential.password).toEqual(expect.any(String));
-      const context = await auth.$context;
-      await expect(
-        context.password.verify({ password: oldPassword, hash: credential.password! }),
-      ).resolves.toBe(true);
-      await expect(
-        context.password.verify({ password: newPassword, hash: credential.password! }),
-      ).resolves.toBe(false);
-      await expect(
-        prisma.communityRoleAssignment.count({ where: { role: "admin", scopeKey: "site" } }),
-      ).resolves.toBe(0);
-      await expect(
-        prisma.systemState.findUnique({ where: { key: INSTALLATION_COMPLETE_KEY } }),
-      ).resolves.toBeNull();
-      await expect(prisma.systemState.findUnique({ where: { key: claimKey } })).resolves.toBeNull();
-      await expect(prisma.session.count({ where: { userId: user.id } })).resolves.toBe(0);
-      await expect(
-        prisma.identityAuditEvent.count({
-          where: { userId: user.id, eventType: "identity.session.created" },
-        }),
-      ).resolves.toBe(0);
-      expect(signInSpy).not.toHaveBeenCalled();
-      expect(signUpSpy).toHaveBeenCalledTimes(2);
-    } finally {
-      releaseFirstAuth.resolve();
-      releaseSecondAuth.resolve();
-      await Promise.allSettled(
-        [firstRequest, secondRequest].filter(
-          (request): request is ReturnType<typeof createInitialAdministrator> => Boolean(request),
-        ),
-      );
-      signUpSpy.mockRestore();
-      signInSpy.mockRestore();
-      await prisma.systemState.deleteMany({
-        where: { key: { in: [claimKey, INSTALLATION_COMPLETE_KEY] } },
-      });
-      for (const state of [previousClaim, previousComplete]) {
-        if (state) {
-          await prisma.systemState.create({
-            data: {
-              ...state,
-              value: state.value === null ? Prisma.JsonNull : state.value,
-            },
+          secondRequest = createInitialAdministrator({
+            ...setupInput,
+            password: newPassword,
+            requestId: "claim-password-current-owner",
           });
+          await waitForRequestCheckpoint(
+            secondAuthStarted.promise,
+            secondRequest,
+            "current password setup lease owner",
+          );
+          await expect(prisma.user.count({ where: { email } })).resolves.toBe(0);
+          const secondClaim = await prisma.systemState.findUniqueOrThrow({
+            where: { key: claimKey },
+          });
+          const secondClaimId = (secondClaim.value as { claimId?: string }).claimId;
+          expect(secondClaimId).toEqual(expect.any(String));
+          expect(secondClaimId).not.toBe(firstClaimId);
+
+          const firstRejection = expect(firstRequest).rejects.toMatchObject({
+            code: "setup_claim_lost",
+            status: 409,
+          });
+          releaseFirstAuth.resolve();
+          await firstRejection;
+
+          const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+          await expect(
+            prisma.communityRoleAssignment.count({
+              where: { userId: user.id, role: "admin", scopeKey: "site" },
+            }),
+          ).resolves.toBe(0);
+          await expect(
+            prisma.systemState.findUniqueOrThrow({ where: { key: claimKey } }),
+          ).resolves.toMatchObject({
+            value: expect.objectContaining({ claimId: secondClaimId }),
+          });
+
+          releaseSecondAuth.resolve();
+          await expect(secondRequest).rejects.toMatchObject({
+            code: "initial_administrator_password_mismatch",
+            status: 409,
+          });
+
+          const credential = await prisma.account.findFirstOrThrow({
+            where: { userId: user.id, providerId: "credential" },
+            select: { password: true },
+          });
+          expect(credential.password).toEqual(expect.any(String));
+          const context = await auth.$context;
+          await expect(
+            context.password.verify({ password: oldPassword, hash: credential.password! }),
+          ).resolves.toBe(true);
+          await expect(
+            context.password.verify({ password: newPassword, hash: credential.password! }),
+          ).resolves.toBe(false);
+          await expect(
+            prisma.communityRoleAssignment.count({ where: { role: "admin", scopeKey: "site" } }),
+          ).resolves.toBe(0);
+          await expect(
+            prisma.systemState.findUnique({ where: { key: INSTALLATION_COMPLETE_KEY } }),
+          ).resolves.toBeNull();
+          await expect(
+            prisma.systemState.findUnique({ where: { key: claimKey } }),
+          ).resolves.toBeNull();
+          await expect(prisma.session.count({ where: { userId: user.id } })).resolves.toBe(0);
+          await expect(
+            prisma.identityAuditEvent.count({
+              where: { userId: user.id, eventType: "identity.session.created" },
+            }),
+          ).resolves.toBe(0);
+          expect(signInSpy).not.toHaveBeenCalled();
+          expect(signUpSpy).toHaveBeenCalledTimes(2);
+        } finally {
+          releaseFirstAuth.resolve();
+          releaseSecondAuth.resolve();
+          try {
+            await waitForRequestSettlement(
+              [firstRequest, secondRequest].filter(
+                (request): request is ReturnType<typeof createInitialAdministrator> =>
+                  Boolean(request),
+              ),
+              "setup password race requests",
+            );
+          } finally {
+            signUpSpy.mockRestore();
+            signInSpy.mockRestore();
+          }
         }
-      }
-    }
-  });
+      });
+    },
+    { timeout: 90_000 },
+  );
 
   it("waits for a deletion transition and rejects every new role for that account", async () => {
     const prisma = getPrismaClient();
