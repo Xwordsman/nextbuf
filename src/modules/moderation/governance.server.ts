@@ -79,12 +79,12 @@ export async function grantCommunityRole(input: {
         : Promise.resolve(null),
     ]);
     if (!user || (nodeId && !node)) throw new ModerationError("role_not_found", 404);
-    if (
+    const invalidTarget =
       user.status !== "active" ||
       user.deletionRequestedAt ||
       user.deletionScheduledAt ||
-      user.deletionFinalizedAt
-    ) {
+      user.deletionFinalizedAt;
+    if (input.role !== "admin" && invalidTarget) {
       throw new ModerationError("invalid_action", 409);
     }
     const scopeKey = nodeId ?? "site";
@@ -93,7 +93,10 @@ export async function grantCommunityRole(input: {
         userId_role_scopeKey: { userId: input.targetUserId, role: input.role, scopeKey },
       },
     });
-    if (existing) return existing;
+    if (existing) {
+      if (invalidTarget) throw new ModerationError("invalid_action", 409);
+      return existing;
+    }
     if (input.role === "admin") {
       await assertUserEligibleForAdministratorRole(transaction, input.targetUserId);
       const concurrentlyGranted = await transaction.communityRoleAssignment.findUnique({

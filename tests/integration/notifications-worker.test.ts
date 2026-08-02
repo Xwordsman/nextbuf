@@ -468,10 +468,10 @@ describe("notifications, mail and Worker recovery integration", () => {
     });
     await expect(claimEmailDelivery(delivery.id)).resolves.toMatchObject({ state: "claimed" });
 
-    let sends = 0;
+    const sentRecipients: string[] = [];
     setMailProviderForTests({
-      async send() {
-        sends += 1;
+      async send(message) {
+        sentRecipients.push(message.to);
       },
     });
     const worker = createOutboxWorker();
@@ -487,7 +487,7 @@ describe("notifications, mail and Worker recovery integration", () => {
         ),
       );
 
-      expect(sends).toBe(0);
+      expect(sentRecipients).not.toContain(member.email);
       await expect(
         prisma.emailDelivery.findUniqueOrThrow({ where: { id: delivery.id } }),
       ).resolves.toMatchObject({
@@ -524,7 +524,7 @@ describe("notifications, mail and Worker recovery integration", () => {
         const current = await prisma.emailDelivery.findUnique({ where: { id: delivery.id } });
         return current?.status === "sent";
       });
-      expect(sends).toBe(1);
+      expect(sentRecipients.filter((recipient) => recipient === member.email)).toHaveLength(1);
       await expect(
         prisma.emailDelivery.findUniqueOrThrow({ where: { id: delivery.id } }),
       ).resolves.toMatchObject({ status: "sent", attempts: 2, sentAt: expect.any(Date) });

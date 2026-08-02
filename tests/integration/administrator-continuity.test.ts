@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { setup } from "@/cli/commands/setup";
 import { Prisma } from "@/generated/prisma/client";
@@ -77,11 +78,13 @@ async function createUser(
 ) {
   const prisma = getPrismaClient();
   const suffix = label.toLowerCase().replaceAll(/[^a-z0-9]+/g, "_");
+  const usernameSuffix =
+    suffix.length <= 13 ? suffix : createHash("sha256").update(suffix).digest("hex").slice(0, 13);
   const email = `${emailPrefix}${suffix}${emailDomain}`;
   const user = await prisma.user.create({
     data: {
       name: `Continuity ${label}`,
-      username: `continuity_${suffix}`.slice(0, 24),
+      username: `continuity_${usernameSuffix}`,
       email,
       emailVerified: true,
       status: "active",
@@ -265,11 +268,28 @@ describe("administrator continuity integration", () => {
       where: { id: target.id },
       data: { deletionRequestedAt: null, deletionScheduledAt: null },
     });
-    await expect(grantCommunityRole(grantInput)).resolves.toMatchObject({
+    const assignment = await grantCommunityRole(grantInput);
+    expect(assignment).toMatchObject({
       userId: target.id,
       role: "admin",
       scopeKey: "site",
     });
+
+    await Promise.all([
+      prisma.account.updateMany({
+        where: { userId: target.id, providerId: "credential" },
+        data: { password: "" },
+      }),
+      prisma.user.update({ where: { id: target.id }, data: { emailVerified: false } }),
+    ]);
+    await expect(
+      grantCommunityRole({ ...grantInput, requestId: "continuity-admin-grant-repeat" }),
+    ).resolves.toMatchObject({ id: assignment.id });
+    await expect(
+      prisma.governanceAuditEvent.count({
+        where: { action: "role.granted", targetKey: assignment.id },
+      }),
+    ).resolves.toBe(1);
   });
 
   it("requires a usable password credential before granting the initial administrator", async () => {
@@ -356,7 +376,15 @@ describe("administrator continuity integration", () => {
   it("fences a delayed setup request after its PostgreSQL lease is taken over", async () => {
     const prisma = getPrismaClient();
     const claimKey = "installation.claim";
-    const candidate = await createUser("claim_race");
+    const setupToken = getAuthEnvironment().SETUP_TOKEN;
+    if (!setupToken) throw new Error("SETUP_TOKEN is required for the setup race integration test");
+    const password = "claim-race-password-12345";
+    const authContext = await getAuth().$context;
+    const candidate = await createUser(
+      "claim_race",
+      true,
+      await authContext.password.hash(password),
+    );
     await prisma.user.update({
       where: { id: candidate.id },
       data: { emailVerified: false, status: "pending", activatedAt: null },
@@ -368,8 +396,6 @@ describe("administrator continuity integration", () => {
     await prisma.systemState.deleteMany({
       where: { key: { in: [claimKey, INSTALLATION_COMPLETE_KEY] } },
     });
-    const setupToken = getAuthEnvironment().SETUP_TOKEN;
-    if (!setupToken) throw new Error("SETUP_TOKEN is required for the setup race integration test");
     const firstAuthStarted = deferred();
     const secondAuthStarted = deferred();
     const releaseFirstAuth = deferred();
@@ -397,7 +423,7 @@ describe("administrator continuity integration", () => {
       name: candidate.name,
       username: candidate.username,
       email: candidate.email,
-      password: "claim-race-password-12345",
+      password,
     };
 
     try {
@@ -523,8 +549,10 @@ describe("administrator continuity integration", () => {
   it("rejects a taken-over setup when the delayed request created a different password", async () => {
     const prisma = getPrismaClient();
     const claimKey = "installation.claim";
+    const setupToken = getAuthEnvironment().SETUP_TOKEN;
+    if (!setupToken) throw new Error("SETUP_TOKEN is required for the setup race integration test");
     const email = `${emailPrefix}claim_password_race${emailDomain}`;
-    const username = "continuity_claim_password";
+    const username = "continuity_claim_pass";
     const [previousClaim, previousComplete] = await Promise.all([
       prisma.systemState.findUnique({ where: { key: claimKey } }),
       prisma.systemState.findUnique({ where: { key: INSTALLATION_COMPLETE_KEY } }),
@@ -532,8 +560,6 @@ describe("administrator continuity integration", () => {
     await prisma.systemState.deleteMany({
       where: { key: { in: [claimKey, INSTALLATION_COMPLETE_KEY] } },
     });
-    const setupToken = getAuthEnvironment().SETUP_TOKEN;
-    if (!setupToken) throw new Error("SETUP_TOKEN is required for the setup race integration test");
     const firstAuthStarted = deferred();
     const secondAuthStarted = deferred();
     const releaseFirstAuth = deferred();

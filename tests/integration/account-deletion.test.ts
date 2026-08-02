@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { setup } from "@/cli/commands/setup";
 import { disconnectPrismaClient, getPrismaClient } from "@/infrastructure/database/client";
 import { decryptMailPayload, encryptMailPayload } from "@/infrastructure/mail/encryption";
@@ -19,6 +19,9 @@ import { resolvePublicProfile } from "@/modules/profiles/profile.server";
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
 
 const dayMs = 86_400_000;
+const accountDeletionEmailPrefix = "account-deletion+";
+const accountDeletionEmailDomain = "@nextbuf.test";
+const requestedDeletionUserIds = new Set<string>();
 
 function token(): string {
   return randomUUID().replaceAll("-", "").slice(0, 10);
@@ -39,12 +42,40 @@ async function createMember(label: string) {
     data: {
       name: `${label} ${suffix}`,
       username: `del_${label}_${suffix}`.slice(0, 24),
-      email: `account-deletion+${label}-${suffix}@nextbuf.test`,
+      email: `${accountDeletionEmailPrefix}${label}-${suffix}${accountDeletionEmailDomain}`,
       emailVerified: true,
       status: "active",
       activatedAt: new Date(),
     },
   });
+}
+
+async function requestDeletionForTest(userId: string, requestedAt: Date): Promise<Date | null> {
+  const scheduledAt = await updateAccountDeletionRequest(userId, "request", requestedAt);
+  requestedDeletionUserIds.add(userId);
+  return scheduledAt;
+}
+
+async function cancelPendingDeletionRequests(userIds?: string[]): Promise<void> {
+  const pendingRequests = await getPrismaClient().user.findMany({
+    where: {
+      ...(userIds
+        ? { id: { in: userIds } }
+        : {
+            email: {
+              startsWith: accountDeletionEmailPrefix,
+              endsWith: accountDeletionEmailDomain,
+            },
+          }),
+      status: { not: "deleted" },
+      deletionFinalizedAt: null,
+      deletionRequestedAt: { not: null },
+    },
+    select: { id: true },
+  });
+  for (const { id } of pendingRequests) {
+    await updateAccountDeletionRequest(id, "cancel", new Date());
+  }
 }
 
 async function createNode() {
@@ -117,10 +148,18 @@ async function createAttachment(uploaderId: string, originalName: string) {
 describe("final account deletion", () => {
   beforeAll(async () => {
     await setup();
+    await cancelPendingDeletionRequests();
   });
 
   afterAll(async () => {
     await disconnectPrismaClient();
+  });
+
+  afterEach(async () => {
+    const userIds = [...requestedDeletionUserIds];
+    if (userIds.length === 0) return;
+    await cancelPendingDeletionRequests(userIds);
+    for (const id of userIds) requestedDeletionUserIds.delete(id);
   });
 
   it("anonymizes a due account once while preserving public content and governance evidence", async () => {
@@ -717,9 +756,8 @@ describe("final account deletion", () => {
       },
     });
 
-    const scheduledAt = await updateAccountDeletionRequest(
+    const scheduledAt = await requestDeletionForTest(
       member.id,
-      "request",
       new Date(now.getTime() - 15 * dayMs),
     );
     expect(scheduledAt?.getTime()).toBeLessThan(now.getTime());
@@ -1196,7 +1234,7 @@ describe("final account deletion", () => {
     const prisma = getPrismaClient();
     const now = new Date();
     const member = await createMember("mail-lock");
-    await updateAccountDeletionRequest(member.id, "request", new Date(now.getTime() - 30 * dayMs));
+    await requestDeletionForTest(member.id, new Date(now.getTime() - 30 * dayMs));
     const delivery = await prisma.emailDelivery.create({
       data: {
         kind: "password-reset",
@@ -1240,7 +1278,13 @@ describe("final account deletion", () => {
       async (transaction) => {
         await transaction.emailDelivery.update({
           where: { id: delivery.id },
-          data: { status: "sending", attempts: { increment: 1 }, lastError: null },
+          data: {
+            status: "sending",
+            attempts: { increment: 1 },
+            attemptToken: randomUUID(),
+            attemptGeneration: { increment: 1 },
+            lastError: null,
+          },
         });
         sendAttempts += 1;
         signalDeliveryLocked();
@@ -1308,7 +1352,7 @@ describe("final account deletion", () => {
     const prisma = getPrismaClient();
     const now = new Date();
     const member = await createMember("mail-claim");
-    await updateAccountDeletionRequest(member.id, "request", new Date(now.getTime() - 30 * dayMs));
+    await requestDeletionForTest(member.id, new Date(now.getTime() - 30 * dayMs));
     const delivery = await prisma.emailDelivery.create({
       data: {
         kind: "password-reset",
@@ -1319,6 +1363,8 @@ describe("final account deletion", () => {
         authTag: "0".repeat(32),
         status: "sending",
         attempts: 1,
+        attemptToken: randomUUID(),
+        attemptGeneration: 1,
       },
     });
 
@@ -1438,7 +1484,7 @@ describe("final account deletion", () => {
     const prisma = getPrismaClient();
     const member = await createMember("forged");
     const now = new Date();
-    await updateAccountDeletionRequest(member.id, "request", new Date(now.getTime() - 15 * dayMs));
+    await requestDeletionForTest(member.id, new Date(now.getTime() - 15 * dayMs));
     await prisma.usernameAlias.create({
       data: { username: member.username, userId: member.id },
     });
@@ -1476,7 +1522,7 @@ describe("final account deletion", () => {
     const prisma = getPrismaClient();
     const member = await createMember("canonical");
     const now = new Date();
-    await updateAccountDeletionRequest(member.id, "request", new Date(now.getTime() - 15 * dayMs));
+    await requestDeletionForTest(member.id, new Date(now.getTime() - 15 * dayMs));
     await prisma.usernameAlias.create({
       data: { username: member.username, userId: member.id },
     });
@@ -1565,7 +1611,7 @@ describe("final account deletion", () => {
     const prisma = getPrismaClient();
     const now = new Date();
     const member = await createMember("retry");
-    await updateAccountDeletionRequest(member.id, "request", new Date(now.getTime() - 15 * dayMs));
+    await requestDeletionForTest(member.id, new Date(now.getTime() - 15 * dayMs));
     await prisma.communityRoleAssignment.create({
       data: { userId: member.id, role: "admin", scopeKey: "site" },
     });

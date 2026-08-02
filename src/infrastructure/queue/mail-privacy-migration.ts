@@ -52,9 +52,9 @@ async function tryClaimMigration(owner: string, now: Date): Promise<boolean> {
       ${MAIL_QUEUE_PRIVACY_MIGRATION_KEY},
       jsonb_build_object(
         'status', 'running',
-        'owner', ${owner},
-        'startedAt', ${now.toISOString()},
-        'leaseUntil', ${leaseUntil}
+        'owner', ${owner}::text,
+        'startedAt', ${now.toISOString()}::text,
+        'leaseUntil', ${leaseUntil}::text
       ),
       CURRENT_TIMESTAMP,
       CURRENT_TIMESTAMP
@@ -208,7 +208,7 @@ async function markMigrationRequired(owner: string): Promise<void> {
     SET
       "value" = jsonb_build_object(
         'status', 'required',
-        'lastFailedAt', ${new Date().toISOString()}
+        'lastFailedAt', ${new Date().toISOString()}::text
       ),
       "updated_at" = CURRENT_TIMESTAMP
     WHERE "key" = ${MAIL_QUEUE_PRIVACY_MIGRATION_KEY}
@@ -225,10 +225,10 @@ async function markMigrationComplete(
     SET
       "value" = jsonb_build_object(
         'status', 'complete',
-        'completedAt', ${new Date().toISOString()},
-        'removedJobs', ${result.removedJobs},
-        'resetOutboxEvents', ${result.resetOutboxEvents},
-        'trimmedEvents', ${result.trimmedEvents}
+        'completedAt', ${new Date().toISOString()}::text,
+        'removedJobs', ${result.removedJobs}::integer,
+        'resetOutboxEvents', ${result.resetOutboxEvents}::integer,
+        'trimmedEvents', ${result.trimmedEvents}::integer
       ),
       "updated_at" = CURRENT_TIMESTAMP
     WHERE "key" = ${MAIL_QUEUE_PRIVACY_MIGRATION_KEY}

@@ -52,6 +52,7 @@ jobs:
       RUN_INTEGRATION_TESTS: "true"
       APP_URL: http://127.0.0.1:3000
       AUTH_SECRET: nextbuf-ci-auth-secret-at-least-32-characters
+      SETUP_TOKEN: nextbuf-ci-setup-token-at-least-32-characters
       AUTH_REGISTRATION_MODE: open
       MAIL_PAYLOAD_KEY: SoxCSq6+35KG9qqH7JHtneowihiWs8hjtqqI37UhPQw=
       SMTP_HOST: 127.0.0.1
