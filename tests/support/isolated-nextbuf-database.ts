@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Client } from "pg";
-import { V1_0_0_MIGRATIONS } from "@/cli/commands/migration-policy";
+import {
+  type AppliedMigrationIdentity,
+  V0_13_10_BASELINE_MIGRATIONS,
+  V1_0_0_MIGRATIONS,
+} from "@/cli/commands/migration-policy";
 import { runNodePackageBinary } from "@/cli/process";
 import { PrismaClient } from "@/generated/prisma/client";
 import { resetAuthForTests } from "@/infrastructure/auth/better-auth";
@@ -68,6 +74,43 @@ async function deployMigrations(connectionString: string): Promise<void> {
   }
 }
 
+async function deployRecordedMigrations(
+  connectionString: string,
+  migrations: AppliedMigrationIdentity[],
+): Promise<void> {
+  const client = new Client({ connectionString });
+  await client.connect();
+  try {
+    await client.query(`
+      CREATE TABLE "_prisma_migrations" (
+        "id" VARCHAR(36) NOT NULL PRIMARY KEY,
+        "checksum" VARCHAR(64) NOT NULL,
+        "finished_at" TIMESTAMPTZ,
+        "migration_name" VARCHAR(255) NOT NULL,
+        "logs" TEXT,
+        "rolled_back_at" TIMESTAMPTZ,
+        "started_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "applied_steps_count" INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    for (const migration of migrations) {
+      const sql = await readFile(
+        join(process.cwd(), "prisma", "migrations", migration.migrationName, "migration.sql"),
+        "utf8",
+      );
+      await client.query(sql);
+      await client.query(
+        `INSERT INTO "_prisma_migrations" (
+          "id", "checksum", "finished_at", "migration_name", "started_at", "applied_steps_count"
+        ) VALUES ($1, $2, CURRENT_TIMESTAMP, $3, CURRENT_TIMESTAMP, 1)`,
+        [randomUUID(), migration.checksum, migration.migrationName],
+      );
+    }
+  } finally {
+    await client.end();
+  }
+}
+
 function createIsolatedPrismaClient(connectionString: string): PrismaClient {
   const environment = getDatabaseEnvironment();
   const adapter = new PrismaPg(
@@ -82,9 +125,17 @@ function createIsolatedPrismaClient(connectionString: string): PrismaClient {
   return new PrismaClient({ adapter });
 }
 
-export async function withIsolatedNextBufDatabase<T>(
+type IsolatedDatabaseContext = {
+  prisma: PrismaClient;
+  database: string;
+  connectionString: string;
+  deployCandidateMigrations: () => Promise<void>;
+};
+
+async function withIsolatedNextBufDatabaseAtMigrations<T>(
   label: string,
-  callback: (prisma: PrismaClient) => Promise<T>,
+  migrations: AppliedMigrationIdentity[],
+  callback: (context: IsolatedDatabaseContext) => Promise<T>,
 ): Promise<T> {
   const environment = getDatabaseEnvironment();
   const releaseIsolationGuard = acquireIsolationGuard(label);
@@ -107,7 +158,11 @@ export async function withIsolatedNextBufDatabase<T>(
       administrationConnected = true;
       await administration.query(`CREATE DATABASE ${quotedDatabase}`);
       databaseCreated = true;
-      await deployMigrations(directUrl);
+      if (migrations === V1_0_0_MIGRATIONS) {
+        await deployMigrations(directUrl);
+      } else {
+        await deployRecordedMigrations(directUrl, migrations);
+      }
       prisma = createIsolatedPrismaClient(directUrl);
       const connectionIdentity = await prisma.$queryRaw<
         Array<{ database: string; migrationCount: number; schema: string }>
@@ -125,10 +180,10 @@ export async function withIsolatedNextBufDatabase<T>(
       if (
         connectionIdentity[0]?.database !== database ||
         connectionIdentity[0]?.schema !== "public" ||
-        connectionIdentity[0]?.migrationCount !== V1_0_0_MIGRATIONS.length
+        connectionIdentity[0]?.migrationCount !== migrations.length
       ) {
         throw new Error(
-          `Isolated Prisma client did not reach the ${V1_0_0_MIGRATIONS.length}-migration database ${database}`,
+          `Isolated Prisma client did not reach the ${migrations.length}-migration database ${database}`,
         );
       }
 
@@ -137,7 +192,12 @@ export async function withIsolatedNextBufDatabase<T>(
       restoreRedisPrefix = overrideRedisPrefixForTests(
         `${getRedisEnvironment().REDIS_PREFIX}_${database}`,
       );
-      return await callback(prisma);
+      return await callback({
+        prisma,
+        database,
+        connectionString: directUrl,
+        deployCandidateMigrations: () => deployMigrations(directUrl),
+      });
     } finally {
       try {
         resetAuthForTests();
@@ -170,4 +230,20 @@ export async function withIsolatedNextBufDatabase<T>(
   } finally {
     releaseIsolationGuard();
   }
+}
+
+export async function withIsolatedNextBufDatabase<T>(
+  label: string,
+  callback: (prisma: PrismaClient) => Promise<T>,
+): Promise<T> {
+  return withIsolatedNextBufDatabaseAtMigrations(label, V1_0_0_MIGRATIONS, async ({ prisma }) =>
+    callback(prisma),
+  );
+}
+
+export async function withIsolatedV0_13_10Database<T>(
+  label: string,
+  callback: (context: IsolatedDatabaseContext) => Promise<T>,
+): Promise<T> {
+  return withIsolatedNextBufDatabaseAtMigrations(label, V0_13_10_BASELINE_MIGRATIONS, callback);
 }

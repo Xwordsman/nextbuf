@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+umask 077
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$ROOT"
@@ -271,6 +272,152 @@ do_doctor() {
   compose --profile tools run --rm --no-deps doctor
 }
 
+verify_image_version() {
+  image_probe_requested_version=$1
+  if ! image_probe_reported_version=$(compose_for_version "$image_probe_requested_version" run --rm --no-deps setup version); then
+    printf 'nextbufctl: target image version probe failed: %s\n' \
+      "$image_probe_requested_version" >&2
+    return 1
+  fi
+  image_probe_reported_version=$(printf '%s' "$image_probe_reported_version" | tr -d '\r')
+  if [ "$image_probe_reported_version" != "$image_probe_requested_version" ]; then
+    printf 'nextbufctl: target image reports %s instead of %s\n' \
+      "$image_probe_reported_version" "$image_probe_requested_version" >&2
+    return 1
+  fi
+}
+
+write_evidence_checksum() {
+  checksum_file=$1
+  checksum_directory=$(dirname "$checksum_file")
+  checksum_basename=$(basename "$checksum_file")
+  (
+    cd "$checksum_directory"
+    sha256sum "$checksum_basename" >"$checksum_basename.SHA256"
+    chmod 600 "$checksum_basename.SHA256"
+  )
+}
+
+capture_acceptance_snapshot() {
+  requested_version=$1
+  output=$2
+  verify_objects=${3:-0}
+  partial="$output.partial.$$"
+  rm -f "$partial"
+  if [ "$verify_objects" = 1 ]; then
+    if ! compose_for_version "$requested_version" run --rm --no-deps setup \
+      acceptance snapshot --verify-objects >"$partial"; then
+      rm -f "$partial"
+      return 1
+    fi
+  elif ! compose_for_version "$requested_version" run --rm --no-deps setup \
+    acceptance snapshot >"$partial"; then
+    rm -f "$partial"
+    return 1
+  fi
+  [ -s "$partial" ] || {
+    rm -f "$partial"
+    return 1
+  }
+  chmod 600 "$partial"
+  mv "$partial" "$output"
+}
+
+compare_acceptance_snapshots() {
+  requested_version=$1
+  before=$2
+  after=$3
+  output=$4
+  before_absolute=$(realpath "$before")
+  after_absolute=$(realpath "$after")
+  partial="$output.partial.$$"
+  rm -f "$partial"
+  status=0
+  compose_for_version "$requested_version" run --rm --no-deps \
+    --user "$(id -u):$(id -g)" \
+    -v "$before_absolute:/nextbuf-evidence/before.json:ro" \
+    -v "$after_absolute:/nextbuf-evidence/after.json:ro" \
+    setup acceptance compare \
+    /nextbuf-evidence/before.json /nextbuf-evidence/after.json >"$partial" || status=$?
+  if [ -s "$partial" ]; then
+    chmod 600 "$partial"
+    mv "$partial" "$output"
+  else
+    rm -f "$partial"
+  fi
+  return "$status"
+}
+
+do_acceptance() {
+  require_files
+  action=${1:-}
+  if [ "$#" -gt 0 ]; then shift; fi
+  case "$action" in
+    capture)
+      requested_version=${1:-}
+      [ "$#" -gt 0 ] && shift
+      is_exact_semver "$requested_version" ||
+        die "usage: ./nextbufctl acceptance capture <image-version> [--verify-objects]"
+      verify_objects=0
+      if [ "${1:-}" = --verify-objects ]; then
+        verify_objects=1
+        shift
+      fi
+      [ "$#" -eq 0 ] ||
+        die "usage: ./nextbufctl acceptance capture <image-version> [--verify-objects]"
+      if service_is_running web || service_is_running worker; then
+        die "acceptance capture requires Web and Worker to be stopped"
+      fi
+      require_command realpath
+      require_command sha256sum
+      mkdir -p "$BACKUP_DIR"
+      chmod 700 "$BACKUP_DIR"
+      compose_for_version "$requested_version" pull setup
+      verify_image_version "$requested_version" || die "target image version validation failed"
+      wait_for_service postgres 180
+      stamp=$(date -u +%Y%m%dT%H%M%SZ)
+      configured_version=$(env_get NEXTBUF_VERSION)
+      is_exact_semver "$configured_version" ||
+        die "current NEXTBUF_VERSION is not an exact SemVer: $configured_version"
+      output="$BACKUP_DIR/acceptance-$configured_version-$stamp-$$.json"
+      capture_acceptance_snapshot "$requested_version" "$output" "$verify_objects" ||
+        die "acceptance snapshot failed"
+      write_evidence_checksum "$output"
+      info "acceptance snapshot completed: $output"
+      ;;
+    compare)
+      requested_version=${1:-}
+      before=${2:-}
+      after=${3:-}
+      [ "$#" -eq 3 ] && is_exact_semver "$requested_version" ||
+        die "usage: ./nextbufctl acceptance compare <image-version> <before.json> <after.json>"
+      [ -f "$before" ] || die "acceptance snapshot not found: $before"
+      [ -f "$after" ] || die "acceptance snapshot not found: $after"
+      require_command realpath
+      require_command sha256sum
+      require_command id
+      compose_for_version "$requested_version" pull setup
+      verify_image_version "$requested_version" || die "target image version validation failed"
+      mkdir -p "$BACKUP_DIR"
+      chmod 700 "$BACKUP_DIR"
+      stamp=$(date -u +%Y%m%dT%H%M%SZ)
+      output="$BACKUP_DIR/acceptance-comparison-$stamp-$$.json"
+      if ! compare_acceptance_snapshots "$requested_version" "$before" "$after" "$output"; then
+        if [ -f "$output" ]; then
+          write_evidence_checksum "$output" || true
+          cat "$output" >&2
+        fi
+        die "acceptance comparison found invariant changes"
+      fi
+      write_evidence_checksum "$output"
+      info "acceptance comparison completed: $output"
+      ;;
+    *)
+      die "usage: ./nextbufctl acceptance <capture|compare>"
+      ;;
+  esac
+}
+
 do_backup() {
   keep_stopped=${1:-0}
   require_files
@@ -345,7 +492,9 @@ EOF
   if [ "$keep_stopped" != 1 ]; then
     resume_app_services "$resume_web" "$resume_worker"
   fi
-  trap - EXIT HUP INT TERM
+  if [ "$keep_stopped" != 1 ]; then
+    trap - EXIT HUP INT TERM
+  fi
   LAST_BACKUP=$archive
   export LAST_BACKUP
   info "backup completed: $archive"
@@ -440,7 +589,17 @@ do_restore() {
 do_upgrade() {
   require_files
   target=${1:-}
-  is_exact_semver "$target" || die "upgrade requires an exact SemVer such as 1.0.0 or 1.0.0-rc.1"
+  [ "$#" -gt 0 ] && shift
+  upgrade_verify_objects=0
+  if [ "${1:-}" = --verify-objects ]; then
+    upgrade_verify_objects=1
+    shift
+  fi
+  [ "$#" -eq 0 ] && is_exact_semver "$target" ||
+    die "usage: ./nextbufctl upgrade <exact-version> [--verify-objects]"
+  require_command realpath
+  require_command sha256sum
+  require_command id
   current=$(env_get NEXTBUF_VERSION)
   is_exact_semver "$current" || die "current NEXTBUF_VERSION is not an exact SemVer: $current"
   [ "$target" != "$current" ] || die "already running $target"
@@ -448,21 +607,80 @@ do_upgrade() {
   if ! compose_for_version "$target" pull web worker setup migrate doctor; then
     die "image pull failed; configuration remains $current"
   fi
-  if ! image_version=$(compose_for_version "$target" run --rm --no-deps setup version); then
+  if ! verify_image_version "$target"; then
     die "target image version probe failed; configuration remains $current"
-  fi
-  image_version=$(printf '%s' "$image_version" | tr -d '\r')
-  if [ "$image_version" != "$target" ]; then
-    die "target image reports $image_version instead of $target; no migration was started"
   fi
   do_backup 1
   backup_path=$LAST_BACKUP
+  upgrade_resume_web=$resume_web
+  upgrade_resume_worker=$resume_worker
+  upgrade_target_configured=0
+  upgrade_migration_started=0
+  upgrade_migration_marker_dir=
+  upgrade_migration_marker=
+  upgrade_pre_migration_abort() {
+    upgrade_abort_status=$?
+    [ "$upgrade_abort_status" -ne 0 ] || upgrade_abort_status=1
+    trap - EXIT HUP INT TERM
+    if [ -n "$upgrade_migration_marker" ] && [ -f "$upgrade_migration_marker" ]; then
+      upgrade_migration_started=1
+    fi
+    if [ "$upgrade_migration_started" = 0 ]; then
+      if [ "$upgrade_target_configured" = 1 ]; then
+        env_set NEXTBUF_VERSION "$current" || true
+      fi
+      resume_app_services_best_effort "$upgrade_resume_web" "$upgrade_resume_worker"
+    fi
+    if [ -n "$upgrade_migration_marker_dir" ]; then
+      rm -rf "$upgrade_migration_marker_dir"
+    fi
+    exit "$upgrade_abort_status"
+  }
+  trap upgrade_pre_migration_abort EXIT HUP INT TERM
+  evidence_stamp=$(date -u +%Y%m%dT%H%M%SZ)
+  evidence_prefix="$BACKUP_DIR/acceptance-$current-to-$target-$evidence_stamp-$$"
+  before_snapshot="$evidence_prefix-before.json"
+  after_snapshot="$evidence_prefix-after.json"
+  comparison_report="$evidence_prefix-comparison.json"
+  if ! capture_acceptance_snapshot "$target" "$before_snapshot" "$upgrade_verify_objects"; then
+    die "pre-upgrade acceptance snapshot failed before migration; configuration remains $current"
+  fi
+  write_evidence_checksum "$before_snapshot"
+  upgrade_target_configured=1
   env_set NEXTBUF_VERSION "$target"
   upgrade_log="$BACKUP_DIR/upgrade-$current-to-$target-$(date -u +%Y%m%dT%H%M%SZ)-$$.log"
-  if ! compose run --rm setup >"$upgrade_log" 2>&1; then
+  upgrade_migration_marker_dir=$(mktemp -d "$BACKUP_DIR/.nextbuf-upgrade.XXXXXX")
+  # The image runs as uid 1000. The 700 evidence root still prevents host traversal;
+  # this mounted scratch directory grants only write/execute to the container uid.
+  chmod 733 "$upgrade_migration_marker_dir"
+  upgrade_migration_marker="$upgrade_migration_marker_dir/migration-started"
+  if ! compose run --rm \
+    -e NEXTBUF_MIGRATION_START_MARKER=/nextbuf-upgrade/migration-started \
+    -v "$upgrade_migration_marker_dir:/nextbuf-upgrade" \
+    setup >"$upgrade_log" 2>&1; then
+    if [ -f "$upgrade_migration_marker" ]; then upgrade_migration_started=1; fi
     cat "$upgrade_log" >&2
-    die "upgrade setup failed after the target setup started; Web and Worker remain stopped and NEXTBUF_VERSION remains $target. Retry setup or explicitly restore $backup_path. Log: $upgrade_log"
+    if [ "$upgrade_migration_started" = 1 ]; then
+      die "upgrade setup failed after the target setup started; Web and Worker remain stopped and NEXTBUF_VERSION remains $target. Retry setup or explicitly restore $backup_path. Log: $upgrade_log"
+    fi
+    die "upgrade setup container did not start; configuration and previously running services will be restored to $current. Log: $upgrade_log"
   fi
+  upgrade_migration_started=1
+  [ -f "$upgrade_migration_marker" ] ||
+    die "target setup did not confirm the migration-start boundary; Web and Worker remain stopped. Explicitly restore $backup_path. Log: $upgrade_log"
+  if ! capture_acceptance_snapshot "$target" "$after_snapshot" "$upgrade_verify_objects"; then
+    die "post-upgrade acceptance snapshot failed; Web and Worker remain stopped. Explicitly restore $backup_path unless the failure can be diagnosed without changing data. Log: $upgrade_log"
+  fi
+  write_evidence_checksum "$after_snapshot"
+  if ! compare_acceptance_snapshots \
+    "$target" "$before_snapshot" "$after_snapshot" "$comparison_report"; then
+    if [ -f "$comparison_report" ]; then
+      write_evidence_checksum "$comparison_report" || true
+      cat "$comparison_report" >&2
+    fi
+    die "upgrade acceptance comparison found invariant changes; Web and Worker remain stopped. Explicitly restore $backup_path. Report: $comparison_report"
+  fi
+  write_evidence_checksum "$comparison_report"
   if ! compose up -d --no-deps web worker >>"$upgrade_log" 2>&1 ||
     ! (wait_for_service web 180 && wait_for_service worker 180); then
     compose logs --no-color --tail 200 web worker >>"$upgrade_log" 2>&1 || true
@@ -471,20 +689,22 @@ do_upgrade() {
     fi
     die "target services did not become healthy; Web and Worker remain stopped and NEXTBUF_VERSION remains $target. Explicitly restore $backup_path unless the release notes permit a code-only retry. Log: $upgrade_log"
   fi
-  info "upgrade completed: $current -> $target (log: $upgrade_log)"
+  trap - EXIT HUP INT TERM
+  rm -rf "$upgrade_migration_marker_dir"
+  info "upgrade completed: $current -> $target (log: $upgrade_log; evidence: $comparison_report)"
 }
 
 command_name=${1:-help}
 if [ "$#" -gt 0 ]; then shift; fi
 case "$command_name" in
   help|-h|--help)
-    printf '%s\n' 'Usage: ./nextbufctl <init|start|stop|status|logs|doctor|backup|restore|upgrade>'
+    printf '%s\n' 'Usage: ./nextbufctl <init|start|stop|status|logs|doctor|backup|restore|upgrade|acceptance>'
     exit 0
     ;;
 esac
 require_command docker
 case "$command_name" in
-  init|start|stop|backup|restore|upgrade) acquire_operation_lock ;;
+  init|start|stop|backup|restore|upgrade|acceptance) acquire_operation_lock ;;
 esac
 case "$command_name" in
   init) do_init "$@" ;;
@@ -496,5 +716,6 @@ case "$command_name" in
   backup) [ "$#" -eq 0 ] || die "usage: ./nextbufctl backup"; do_backup 0 ;;
   restore) do_restore "$@" ;;
   upgrade) do_upgrade "$@" ;;
+  acceptance) do_acceptance "$@" ;;
   *) die "unknown command: $command_name" ;;
 esac

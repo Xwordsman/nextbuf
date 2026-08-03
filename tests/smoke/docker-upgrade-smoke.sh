@@ -172,6 +172,8 @@ sh tests/smoke/verify-mailpit-user.sh \
   "$MAILPIT_API_URL" upgrade-admin@nextbuf.test http://127.0.0.1:3200
 checkpoint 'create baseline attachment file'
 printf 'upgrade-proof-%s\n' "$ARCH" | NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup -ec 'cat > /app/data/uploads/upgrade-proof.txt'
+attachment_checksum=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup -ec 'sha256sum /app/data/uploads/upgrade-proof.txt' | awk '{ print $1 }' | tr -d '\r')
+printf '%s\n' "$attachment_checksum" | grep -Eq '^[[:xdigit:]]{64}$'
 checkpoint 'insert baseline database fixtures'
 NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
@@ -458,6 +460,12 @@ INSERT INTO processed_jobs (
   CURRENT_TIMESTAMP - INTERVAL '23 hours'
 );
 SQL
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<SQL
+UPDATE community_attachments
+SET checksum_sha256 = '$attachment_checksum'
+WHERE id = '20000000-0000-4000-8000-000000000008';
+SQL
 
 stage 'reject a drifted immutable migration baseline before candidate DDL'
 checkpoint 'stop baseline writers for migration identity verification'
@@ -535,7 +543,8 @@ checkpoint 'verify failed migration state, stopped writers and backup'
 grep -q "^NEXTBUF_VERSION=$TARGET_VERSION$" "$ENV_FILE"
 [ -z "$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps -q web)" ]
 [ -z "$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps -q worker)" ]
-find "$BACKUP_DIR" -maxdepth 1 -name "nextbuf-$BASELINE_VERSION-*.tar.gz" -print -quit | grep -q .
+failed_upgrade_backup=$(find "$BACKUP_DIR" -maxdepth 1 -name "nextbuf-$BASELINE_VERSION-*.tar.gz" -print | sort | tail -n 1)
+[ -n "$failed_upgrade_backup" ]
 failure_log=$(find "$BACKUP_DIR" -maxdepth 1 -name "upgrade-$BASELINE_VERSION-to-$TARGET_VERSION-*.log" -print | sort | tail -n 1)
 [ -n "$failure_log" ]
 grep -q '20260731180000_email_delivery_attempt_fencing' "$failure_log"
@@ -735,6 +744,95 @@ legacy_deletion_invariants=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T 
 checkpoint 'verify backup and final doctor'
 find "$BACKUP_DIR" -maxdepth 1 -name "nextbuf-$BASELINE_VERSION-*.tar.gz" -print -quit | grep -q .
 expect_doctor_continuity_warning
+
+stage 'restore the baseline and exercise a successful acceptance-gated upgrade'
+checkpoint 'remove the smoke-only mail service before the empty-install restore'
+NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE rm -sf mailpit
+checkpoint 'restore the failed-upgrade baseline backup and its configuration'
+NEXTBUF_ENV_FILE="$ENV_FILE" \
+  NEXTBUF_COMPOSE_FILE=compose.yml \
+  NEXTBUF_BACKUP_DIR="$BACKUP_DIR" \
+  ./nextbufctl restore "$failed_upgrade_backup" \
+    --empty-install --restore-config --yes
+checkpoint 'restore the smoke-only mail service and verify baseline health'
+NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d --no-deps mailpit
+grep -q "^NEXTBUF_VERSION=$BASELINE_VERSION$" "$ENV_FILE"
+wait_for_url http://127.0.0.1:3200/health/ready 180
+wait_for_url http://127.0.0.1:3200/health/worker 180
+checkpoint 'repair the injected baseline fixture before the successful upgrade'
+NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "UPDATE email_deliveries SET attempts = 5 WHERE id = '\''20000000-0000-4000-8000-000000000018'\''"' >/dev/null
+checkpoint 'run the complete target upgrade with attachment verification'
+NEXTBUFCTL_ASSUME_YES=1 \
+  NEXTBUF_ENV_FILE="$ENV_FILE" \
+  NEXTBUF_COMPOSE_FILE=compose.yml \
+  NEXTBUF_BACKUP_DIR="$BACKUP_DIR" \
+  ./nextbufctl upgrade "$TARGET_VERSION" --verify-objects
+checkpoint 'locate the successful pre-snapshot, post-snapshot and comparison'
+comparison_report=$(find "$BACKUP_DIR" -maxdepth 1 \
+  -name "acceptance-$BASELINE_VERSION-to-$TARGET_VERSION-*-comparison.json" \
+  -print | sort | tail -n 1)
+[ -n "$comparison_report" ]
+evidence_prefix=${comparison_report%-comparison.json}
+before_snapshot="$evidence_prefix-before.json"
+after_snapshot="$evidence_prefix-after.json"
+for evidence_file in "$before_snapshot" "$after_snapshot" "$comparison_report"; do
+  [ -s "$evidence_file" ]
+  [ "$(stat -c '%a' "$evidence_file")" = 600 ]
+  [ "$(stat -c '%u' "$evidence_file")" = "$(id -u)" ]
+  checksum_file="$evidence_file.SHA256"
+  [ -s "$checksum_file" ]
+  [ "$(stat -c '%a' "$checksum_file")" = 600 ]
+  [ "$(stat -c '%u' "$checksum_file")" = "$(id -u)" ]
+  checksum_entry=$(awk 'NF { print $2 }' "$checksum_file")
+  [ "$checksum_entry" = "$(basename "$evidence_file")" ]
+  (cd "$(dirname "$evidence_file")" && sha256sum -c "$(basename "$checksum_file")")
+done
+checkpoint 'verify successful object snapshots and comparison contract'
+node - "$before_snapshot" "$after_snapshot" "$comparison_report" \
+  "$BASELINE_VERSION" "$TARGET_VERSION" <<'NODE'
+const fs = require("node:fs");
+
+const [beforePath, afterPath, comparisonPath, baselineVersion, targetVersion] =
+  process.argv.slice(2);
+const before = JSON.parse(fs.readFileSync(beforePath, "utf8"));
+const after = JSON.parse(fs.readFileSync(afterPath, "utf8"));
+const comparison = JSON.parse(fs.readFileSync(comparisonPath, "utf8"));
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+for (const [phase, snapshot] of [
+  ["before", before],
+  ["after", after],
+]) {
+  assert(snapshot.format === "nextbuf-acceptance-snapshot-v1", `${phase} snapshot format`);
+  assert(snapshot.storage?.requested === true, `${phase} object verification requested`);
+  assert(snapshot.storage?.ok === true, `${phase} object verification passed`);
+  assert(snapshot.storage?.originals > 0, `${phase} original attachment counted`);
+  assert(snapshot.storage?.missingOriginals === 0, `${phase} original attachment present`);
+  assert(snapshot.storage?.checksumMismatches === 0, `${phase} attachment checksum matched`);
+  assert(snapshot.privacy?.rawIdentifiersIncluded === false, `${phase} identifiers redacted`);
+  assert(snapshot.privacy?.secretsIncluded === false, `${phase} secrets redacted`);
+}
+
+assert(before.application?.configuredVersion === baselineVersion, "before configured version");
+assert(after.application?.configuredVersion === targetVersion, "after configured version");
+assert(comparison.format === "nextbuf-acceptance-comparison-v1", "comparison format");
+assert(comparison.status === "pass", "comparison passed");
+assert(Array.isArray(comparison.issues) && comparison.issues.length === 0, "comparison issues empty");
+assert(comparison.sourceVersion === baselineVersion, "comparison source version");
+assert(comparison.targetVersion === targetVersion, "comparison target version");
+assert(comparison.privacy?.rawIdentifiersIncluded === false, "comparison identifiers redacted");
+assert(comparison.privacy?.secretsIncluded === false, "comparison secrets redacted");
+NODE
+checkpoint 'verify successful upgrade started healthy target services'
+grep -q "^NEXTBUF_VERSION=$TARGET_VERSION$" "$ENV_FILE"
+wait_for_url http://127.0.0.1:3200/health/ready 180
+wait_for_url http://127.0.0.1:3200/health/worker 180
+[ -n "$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps -q web)" ]
+[ -n "$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps -q worker)" ]
 
 stage 'report upgraded service state'
 NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps

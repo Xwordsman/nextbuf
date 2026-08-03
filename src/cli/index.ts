@@ -54,8 +54,15 @@ async function main(): Promise<void> {
       await mail(process.argv.slice(3));
       return;
     }
+    case "acceptance": {
+      const { acceptance } = await import("@/cli/commands/acceptance");
+      await acceptance(process.argv.slice(3));
+      return;
+    }
     default:
-      console.log("Usage: nextbuf <web|worker|migrate|setup|doctor|preflight|version|invite|mail>");
+      console.log(
+        "Usage: nextbuf <web|worker|migrate|setup|doctor|preflight|version|invite|mail|acceptance>",
+      );
       process.exitCode = command ? 1 : 0;
   }
 }

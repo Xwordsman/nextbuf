@@ -6,7 +6,7 @@
 - 当前已发布版本：`v0.13.10`，最后一个完整发布的公开 Beta
 - 当前开发版本：已批准的 `v1.0.0` 稳定化；不增加 `v1.1.0` 产品功能
 - 发布例外：不可变 `v0.13.9` 标签的 Linux x64 standalone 归档因 pnpm 依赖链接被展平而无法启动，Release 资产未完成；它不是完整、受支持的发布，也不能设为升级基线
-- 下一动作：自动化候选门槛已在 commit `9342815e394b4e93d215ace98b2937412f422016` 全部通过；按正式版人工验收模板完成全新安装和真实 Beta 数据 `v0.13.10 -> v1.0.0` 升级，逐项证明用户、UID、内容、Better Auth 凭据/Session、附件、Provider、备份恢复和双管理员连续性，再决定是否创建正式标签；`v1.0.0` 仍未发布，不混入 `v1.1.0` 功能
+- 下一动作：自动化候选门槛已在 commit `9342815e394b4e93d215ace98b2937412f422016` 全部通过；按正式版人工验收模板完成全新安装，并把生产维护窗口备份恢复到隔离副本执行真实 Beta 数据 `v0.13.10 -> v1.0.0` 升级，逐项证明用户、UID、内容、Better Auth 凭据/Session、附件、Provider、备份恢复和双管理员连续性，再决定是否创建正式标签；生产实例不承担破坏性演练，`v1.0.0` 仍未发布，不混入 `v1.1.0` 功能
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -202,8 +202,8 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 
 ## 3. 测试与验证边界
 
-- 当前 `v1.0.0` 候选本地已通过：Prisma generate、Prettier、ESLint、TypeScript、109 项单元测试、生产/归档运行时依赖零已知漏洞、16 条迁移清单和 Next.js/Worker/CLI 生产构建；本机无 Docker、PostgreSQL 与 Redis，真实服务与镜像以 Actions 为最终门槛。迁移预检要求所有成功记录是冻结 `v1.0.0` 清单的 checksum 精确连续前缀，已初始化实例至少完整匹配 `v0.13.10`，失败恢复同时核对 checksum、前缀位置和目标 schema marker。
-- 当前候选集成测试共 87 项，覆盖运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任、后台、容量、迁移索引、编辑会话并发、私人草稿防枚举、引用可见性、隐藏节点附件授权、最终注销、管理员连续性、首次安装 claim/密码栅栏、Better Auth 资料更新边界，以及 `processed_at` 回填、处理租约提交栅栏、`published -> Redis flush -> no ProcessedJob` 自动重入队、replay 后再次丢失 Redis 的恢复、replay 重置发布状态与终态 Redis Job 的普通 Dispatcher 竞态、新最终失败重新阻断、SMTP 明确未接受重试、结果未知确认和失租旧 attempt 栅栏；周期任务竞争夹具隔离其他到期任务。
+- 已审计自动化基线 commit `9342815e394b4e93d215ace98b2937412f422016` 为 109 项单元、87 项真实服务集成和 14 项 Playwright。本次升级证据候选本地已通过 Prisma generate、Prettier、ESLint、TypeScript、124 项单元测试、16 条迁移清单和 Next.js/Worker/CLI 生产构建；清单现为 89 项集成测试，其中新增真实 13 条 `v0.13.10` 历史迁移到 16 条 `v1.0.0` 迁移的 HMAC 快照比较。本机无 Docker、PostgreSQL 与 Redis，因此 89 项真实服务集成、Shell/Compose 和镜像门槛仍等待本次 Actions，不能用本地结果覆盖旧基线证据。
+- 集成测试覆盖运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任、后台、容量、迁移索引、编辑会话并发、私人草稿防枚举、引用可见性、隐藏节点附件授权、最终注销、管理员连续性、首次安装 claim/密码栅栏、Better Auth 资料更新边界，以及 `processed_at` 回填、处理租约提交栅栏、`published -> Redis flush -> no ProcessedJob` 自动重入队、replay 后再次丢失 Redis 的恢复、replay 重置发布状态与终态 Redis Job 的普通 Dispatcher 竞态、新最终失败重新阻断、SMTP 明确未接受重试、结果未知确认和失租旧 attempt 栅栏；周期任务竞争夹具隔离其他到期任务。迁移预检要求所有成功记录是冻结 `v1.0.0` 清单的 checksum 精确连续前缀，已初始化实例至少完整匹配 `v0.13.10`，失败恢复同时核对 checksum、前缀位置和目标 schema marker。
 - Playwright 共 14 项，覆盖完整身份/社区旅程、编辑器网络屏障与响应丢失恢复、私人草稿 HTTP 防枚举、性能样本、三种视口布局，以及四个公开页面的 serious/critical axe、水平溢出、键盘和 reduced-motion。
 - `v1.0.0` 自动化基线 `9342815e394b4e93d215ace98b2937412f422016` 的 [主线 CI](https://github.com/Xwordsman/nextbuf/actions/runs/30755901995) 已通过 `check`、Linux x64 归档启动、amd64/arm64 镜像冒烟和主线发布；[定时深度 CI](https://github.com/Xwordsman/nextbuf/actions/runs/30763832572) 在同一 SHA 再次通过完整检查、归档、arm64 基础冒烟、amd64 空卷恢复与 PostgreSQL/Redis/Worker/SMTP/本地存储故障注入，以及真实不可变 `0.13.10` 到候选的升级。GHCR `edge` 与不可变 `sha-9342815e394b4e93d215ace98b2937412f422016` 均为双架构 index `sha256:e94eaeb87876e1e30f44f3a370f384c07e327b4ca95ea31045616fd9f26ae7ca`，amd64/arm64 manifest 分别为 `sha256:b4a88d4d514c1c97a5244cca9281c08128ac8552affa2414e1f29f63f0312952` 与 `sha256:388e6a852004953ee22dd47145b7b8a38bc64eb2c4bb4162fa36a9885997f3c3`；`latest` 仍停留在历史 Beta，没有被候选覆盖。完整证据见 [发布就绪门槛](./19-v1.0.0-release-readiness.md)。
 - 主分支 `0.13.0` 候选已由 CI #56/#57 完成 amd64 setup、首次管理员、故障注入、空卷恢复和 `v0.12.0` 升级；正式标签 CI #58 已重跑 amd64 并完成原生 arm64、manifest、SBOM/provenance、非 Docker x64 归档和 Release。
@@ -274,7 +274,8 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 21. 宝塔单文件入口遵循 ADR-0017 与 ADR-0020：`latest` 只指向最新完整稳定补丁；候选验证使用 `edge`/`sha-*`，源码 SemVer、commit 与 Digest 共同标识镜像；高级运维继续使用 `.env + nextbufctl`。
 22. 编辑自动保存、发布幂等、刷新恢复和私人草稿遵循 ADR-0019：浏览器超时或无效 2xx 响应体不代表事务失败，回复清空/发布终态由 PostgreSQL 保存；新回复编辑会话限 60 个/用户/小时，`cleared`/`superseded` 墓碑保留 30 天并由 Worker 每批清理 500 条；管理员和版主不能读取作者私人草稿谱系，Topic 关闭或账号受限也不能阻止作者删除自己的既有回复草稿。
 23. 最终账号注销与数据保留遵循 ADR-0021：到期账号匿名化为 User 墓碑并保留公开内容、修订和治理证据，清理认证、私人数据、旧收件邮件及由旧 actor 渲染的通知邮件，并清空治理案件当前指派；邮件最终失败与注销统一遵循 `EmailDelivery -> WorkerJobFailure -> OutboxEvent` 锁序。管理员注销必须先完成角色交接，旧备份恢复后须在重新开放公网写入前清理到期注销积压。
-24. 升级前至少保留 1 位可接管管理员，优先 2 位：必须是 `admin/site`、active、邮箱已验证、未申请/计划注销、无有效 suspend/ban 且有非空 credential 密码。0 位连续性失败是升级阻断项；在线成员仍是明确未实现的空状态。
+24. 正式升级证据遵循 ADR-0022：生产只提供维护窗口备份，破坏性验收在隔离副本执行；目标镜像在停写迁移前后以只读事务生成 HMAC 脱敏快照，严格比较身份、Better Auth 凭据/Session、社区、附件引用、互动和治理稳定事实，并单独验证三条候选迁移的允许变换。`nextbufctl upgrade` 只有比较通过才启动 Web/Worker，`--verify-objects` 进一步核对 local/S3 原始附件 SHA-256 和派生对象。
+25. 升级前至少保留 1 位可接管管理员，优先 2 位：必须是 `admin/site`、active、邮箱已验证、未申请/计划注销、无有效 suspend/ban 且有非空 credential 密码。0 位连续性失败是升级阻断项；在线成员仍是明确未实现的空状态。
 
 ## 6. `v1.0.0` 稳定化边界
 

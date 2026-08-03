@@ -27,6 +27,7 @@ ADR 记录已经影响长期兼容性的技术决策。决策被替代时保留�
 | [0019-editor-autosave-idempotency-and-draft-privacy.md](./0019-editor-autosave-idempotency-and-draft-privacy.md) | Accepted | 编辑写入幂等、刷新恢复、回复会话终态与私人草稿边界 |
 | [0020-stable-release-channels-and-lifecycle.md](./0020-stable-release-channels-and-lifecycle.md) | Accepted | `latest` 稳定通道、`edge` 主线通道与不可变发布生命周期 |
 | [0021-final-account-deletion-and-data-retention.md](./0021-final-account-deletion-and-data-retention.md) | Accepted | 到期账号墓碑化、公开内容与治理证据保留、私人数据清理、管理员连续性和 Worker 重试 |
+| [0022-privacy-preserving-upgrade-acceptance-evidence.md](./0022-privacy-preserving-upgrade-acceptance-evidence.md) | Accepted | 真实 Beta 隔离升级、只读 HMAC 快照、迁移变换白名单、附件核验和停写前后强制比较 |
 
 ## 模板
 

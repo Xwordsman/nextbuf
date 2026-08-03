@@ -376,6 +376,8 @@ Redis 不作为主要数据备份。Outbox 保证关键任务可以从 PostgreSQ
 
 ```bash
 ./nextbufctl upgrade 1.2.3
+# 正式验收或存储迁移演练同时逐个读取并校验原始/派生附件对象
+./nextbufctl upgrade 1.2.3 --verify-objects
 ```
 
 工具内部实际流程：
@@ -385,14 +387,31 @@ Redis 不作为主要数据备份。Outbox 保证关键任务可以从 PostgreSQ
 验证目标是高于当前版本的精确 SemVer
 创建并校验升级前备份
 停止 Web 与 Worker
+由目标镜像在只读、可重复读事务中生成升级前脱敏验收快照
 运行目标镜像的一次性 setup（先迁移，再协调运行时状态和周期任务）
+在 Web/Worker 尚未启动时生成升级后快照并严格比较稳定事实
 以目标版本启动 Web 与 Worker
 等待 readiness
 执行冒烟检查
-保留升级日志
+保留升级日志、两份快照、比较报告和各自 SHA-256
 ```
 
-升级不能只执行迁移后直接启动。目标版本 `setup` 是幂等升级入口，负责部署迁移、协调安装状态、注册目标版本需要的周期任务，并更新 `runtime.initialized`；它不会重复创建首位管理员。
+升级不能只执行迁移后直接启动。目标版本 `setup` 是幂等升级入口，负责部署迁移、协调安装状态、注册目标版本需要的周期任务，并更新 `runtime.initialized`；它不会重复创建首位管理员。验收采集器由目标镜像执行，因此能在迁移前读取 `v0.13.10` 公共 Schema，也能在迁移后检查目标 Schema；两次都从同一 `AUTH_SECRET` 派生域隔离 HMAC 密钥，只输出表/分组计数、不可逆摘要、迁移身份和结构校验结果。邮箱、用户名、UID/UUID、正文、草稿、密码哈希、OAuth Token、Cookie/Session、IP/User-Agent、附件对象键和治理详情不会写入 JSON。
+
+稳定事实包括 active 用户身份、Better Auth 凭据与 Session、节点/主题/楼层/修订、草稿、提及、附件引用、互动、通知、角色、治理、信任、设置及持久任务事实。账号注销、Outbox `processed_at` 和邮件 attempt fencing 三条迁移允许的确定变换由独立后置检查证明，不会用笼统的“忽略差异”跳过。任一稳定指纹、迁移身份、完整性或附件校验失败时，`NEXTBUF_VERSION` 保持目标版本、Web/Worker 保持停止，并报告升级前备份和比较文件；此时按第 10 节恢复，不能删除证据后强行启动。
+
+`--verify-objects` 会逐个读取数据库引用的 local/S3 原始附件，核对数据库 SHA-256，并确认派生对象存在；社区较大时会延长停写窗口。普通升级仍生成数据库不变量快照，但省略逐对象 I/O。正式版真实数据副本验收必须启用该选项。
+
+需要在已经停止 Web/Worker 的隔离实例单独采集或重做比较时：
+
+```bash
+./nextbufctl acceptance capture 1.0.0 --verify-objects
+./nextbufctl acceptance compare 1.0.0 \
+  backups/acceptance-0.13.10-<time>-<pid>.json \
+  backups/acceptance-1.0.0-<time>-<pid>.json
+```
+
+`capture` 要求 PostgreSQL 正在运行且 Web/Worker 已停止，避免真实写入被误判为迁移差异。它和 `compare` 都使用目标精确 SemVer 镜像并在 `backups/` 生成权限 600 的 JSON 与 SHA-256；文件不含原始会员资料，但仍会暴露规模、状态计数和跨快照关联摘要，应只放在加密、受限的验收目录，不提交仓库。未公开 SemVer 前验证不可变 `sha-*` 候选时，先按已记录 Digest 拉取该镜像并在隔离主机本地标记为 `NEXTBUF_IMAGE:1.0.0`；不得用另一次构建冒充候选。
 
 PostgreSQL 和 Redis 不因每次应用补丁自动升级主版本。基础服务主版本升级使用独立指南和备份恢复测试。
 
@@ -404,6 +423,7 @@ PostgreSQL 和 Redis 不因每次应用补丁自动升级主版本。基础服�
 - Outbox 和队列继续下降，没有持续失败任务。
 - 邮件、附件和 OAuth Provider 正常。
 - 错误率和资源占用没有异常上升。
+- `backups/acceptance-<from>-to-<to>-*-comparison.json` 为 `status=pass`；若只有 1 位合格管理员，报告中的冗余警告仍是正式发布 `NO-GO`，直到配置第 2 位管理员并重新验收。
 
 ## 10. 回滚
 
