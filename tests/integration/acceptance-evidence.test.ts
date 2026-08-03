@@ -176,8 +176,10 @@ describe("acceptance evidence", () => {
             [deletedMemberId, now],
           );
           await client.query(
-            `INSERT INTO "profiles" ("user_id", "bio", "is_public", "show_activity", "created_at", "updated_at")
-             VALUES ($1, 'Stable profile', TRUE, TRUE, $2, $2)`,
+            `UPDATE "profiles"
+             SET "bio" = 'Stable profile', "is_public" = TRUE,
+                 "show_activity" = TRUE, "created_at" = $2, "updated_at" = $2
+             WHERE "user_id" = $1`,
             [administratorId, now],
           );
           await client.query(
