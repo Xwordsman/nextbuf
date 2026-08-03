@@ -1,7 +1,9 @@
 #!/bin/sh
 set -eu
 
-workflow=${1:-.github/workflows/ci.yml}
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+workflow=${1:-$ROOT/.github/workflows/ci.yml}
+upgrade_smoke=$ROOT/tests/smoke/docker-upgrade-smoke.sh
 stable_pattern='^[1-9][0-9]*\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 
 fail() {
@@ -11,6 +13,10 @@ fail() {
 
 main_job=$(sed -n '/^  publish-main-image:/,/^  publish-release-image:/p' "$workflow")
 image_job=$(sed -n '/^  image-smoke:/,/^  archive-build:/p' "$workflow")
+upgrade_step=$(printf '%s\n' "$image_job" \
+  | sed -n '/- name: Upgrade the current public release to the candidate/,/- name: Record the tested architecture image identity/p')
+restore_gate=$(printf '%s\n' "$image_job" | sed -n '/RUN_RESTORE:/p')
+fault_gate=$(printf '%s\n' "$image_job" | sed -n '/RUN_FAULTS:/p')
 archive_job=$(sed -n '/^  archive-build:/,/^  publish-main-image:/p' "$workflow")
 release_job=$(sed -n '/^  publish-release-image:/,/^  release-assets:/p' "$workflow")
 assets_job=$(sed -n '/^  release-assets:/,/^  complete-release:/p' "$workflow")
@@ -42,9 +48,28 @@ head_checks=$(printf '%s\n' "$main_job" | grep -Fc -- 'git/ref/heads/main')
 [ "$head_checks" -ge 2 ] \
   || fail 'main must recheck the remote head immediately before moving edge'
 
-if printf '%s\n' "$image_job" | grep -F -- "github.ref == 'refs/heads/main'" >/dev/null; then
-  fail 'daily main pushes must not run the scheduled/tag recovery, fault and upgrade gates'
-fi
+printf '%s\n' "$upgrade_step" | grep -F -- "github.ref == 'refs/heads/main'" >/dev/null \
+  || fail 'main must exercise the public-release-to-candidate upgrade gate'
+printf '%s\n' "$upgrade_step" | grep -F -- "matrix.architecture == 'amd64'" >/dev/null \
+  || fail 'the main upgrade gate must run once on amd64 rather than duplicate the destructive fixture'
+printf '%s\n' "$upgrade_step" | grep -F -- 'steps.version.outputs.version != env.NEXTBUF_UPGRADE_BASELINE' >/dev/null \
+  || fail 'the upgrade gate must skip candidates that equal the configured public baseline'
+grep -F -- './nextbufctl upgrade "$TARGET_VERSION" --verify-objects' "$upgrade_smoke" >/dev/null \
+  || fail 'the upgrade gate must use the acceptance comparison and attachment object verification'
+for recovery_gate in "$restore_gate" "$fault_gate"; do
+  [ -n "$recovery_gate" ] || fail 'recovery and fault gates must remain explicit'
+  printf '%s\n' "$recovery_gate" | grep -F -- "matrix.architecture == 'amd64'" >/dev/null \
+    || fail 'recovery and fault gates must remain limited to amd64'
+  for deep_event in "startsWith(github.ref, 'refs/tags/v')" \
+    "github.event_name == 'schedule'" "github.event_name == 'workflow_dispatch'"; do
+    printf '%s\n' "$recovery_gate" | grep -F -- "$deep_event" >/dev/null \
+      || fail 'recovery and fault gates must cover tags, schedules and manual runs'
+  done
+  if printf '%s\n' "$recovery_gate" | grep -F -- "github.ref == 'refs/heads/main'" >/dev/null \
+    || printf '%s\n' "$recovery_gate" | grep -F -- "github.event_name == 'push'" >/dev/null; then
+    fail 'daily main pushes must not run the full restore and fault-injection gates'
+  fi
+done
 
 printf '%s\n' "$release_job" | grep -F -- '-t "$image:$version"' >/dev/null \
   || fail 'version tags must publish an immutable SemVer manifest'

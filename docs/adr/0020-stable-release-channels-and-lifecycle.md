@@ -29,7 +29,7 @@ GHCR `ghcr.io/xwordsman/nextbuf` 使用以下合同：
 
 ### 2. 主分支发布顺序
 
-每次 `main` push 必须先通过格式、Lint、类型、单元测试、真实服务集成、生产构建、E2E、归档启动及两个原生架构的镜像冒烟。每个架构在冒烟前固定实际拉取的运行时平台 Digest，成功后上传同时绑定候选顶层 Digest、commit、版本和平台的短期 Actions artifact。随后工作流确认该提交仍是远程 `main` HEAD，才从这两个内容地址创建：
+每次 `main` push 必须先通过格式、Lint、类型、单元测试、真实服务集成、生产构建、E2E、归档启动及两个原生架构的镜像冒烟。amd64 还必须从当前公开升级基线运行真实 `nextbufctl upgrade --verify-objects`，在候选 Web/Worker 启动前完成停写比较和附件对象校验。空卷恢复与依赖故障注入仍留在定时、手动和标签深度运行，这些通道及正式标签重跑同一升级。每个架构在冒烟前固定实际拉取的运行时平台 Digest，成功后上传同时绑定候选顶层 Digest、commit、版本和平台的短期 Actions artifact。随后工作流确认该提交仍是远程 `main` HEAD，才从这两个内容地址创建：
 
 1. 不可变 `sha-<完整提交>`；
 2. 指向同一 manifest 的可移动 `edge`。

@@ -208,13 +208,13 @@ PostgreSQL 18 官方镜像使用版本化的 `PGDATA` 布局，命名卷应挂�
 `.github/workflows/ci.yml` 已实现：
 
 1. Pull Request 执行格式、Lint、类型、单元测试、真实服务集成测试、生产构建和 E2E，不接触发布权限。
-2. 主分支在上述检查通过后，使用原生 amd64/arm64 Runner 并行构建、拉取并执行基础 Compose 冒烟；两者成功且提交仍是远程 HEAD 后才发布 `sha-<提交>` 与 `edge` manifest，绝不写入 `latest`。
-3. 每日定时和手动运行同样使用两种原生架构；amd64 额外执行删除卷后的备份恢复、故障注入和跨版本升级。
+2. 主分支在上述检查通过后，使用原生 amd64/arm64 Runner 并行构建、拉取并执行基础 Compose 冒烟；amd64 还从当前公开基线执行一次带验收证据比较的真实升级。两种架构与升级门槛成功且提交仍是远程 HEAD 后才发布 `sha-<提交>` 与 `edge` manifest，绝不写入 `latest`。
+3. 每日定时和手动运行同样使用两种原生架构；amd64 在上述升级门槛之外额外执行删除卷后的备份恢复和故障注入。
 4. `v*` 标签中每个架构只构建一次，并生成对应 SBOM/provenance；候选镜像通过完整 Compose 冒烟后，把运行时平台 Digest 与候选顶层 Digest 一起作为短期 artifact 固定。精确 SemVer manifest 只从两个顶层内容地址合并，并验证运行时成员、全部描述符和 attestation 关联未变化。Registry 只有明确报告 manifest 不存在时才允许创建标签，其他查询错误直接终止。GitHub Release 资产成功后，每个标签先在共享锁外完成回执：上传前后解析标签最终 commit，并重新下载回执、归档、旁路 SHA-256 和 SBOM，核对版本、commit、OCI index/amd64/arm64 Digest、全部资产 SHA-256 与归档校验和；远端验证失败会删除回执。只有后续稳定通道调和进入跨标签串行锁，并在锁内重新选择全局最高完整稳定 Release；提升源使用内容寻址的 `image@sha256:...`，写入后再次核对 `latest` Digest 和平台成员。`v0.x` 与其他预发布不提升。
 5. 非 Docker x64 归档只允许在 Linux x64 构建，并在每个主分支和标签流水线中与镜像并行构建、解压冒烟；打包必须保留 Next.js standalone 的 pnpm 符号链接拓扑，解压后拒绝悬空、逃出归档根目录或不能解析关键运行依赖的链接。只有标签运行发布归档、旁路 SHA-256 和 SPDX JSON SBOM。冒烟失败必须记录具体阶段和脱敏日志摘要，不能等到正式标签后才发现路径或运行时缺陷。
 6. 镜像与归档门槛全部通过后才合并滚动或不可变发布 manifest；正式标签随后创建 GitHub Release。SemVer manifest 先于 Release 资产形成，因此下游失败时可能保留“已有精确镜像、Release 尚未完成”的可恢复中间状态；没有完成回执的 Release 不参与 `latest` 选择，重跑只能复用平台内容完全一致的 SemVer manifest。
 
-arm64 不通过 QEMU 模拟构建。日常提交只在双架构基础门槛通过后更新 `edge` 与不可变 `sha-*`；恢复、故障注入、精确 SemVer 发布、稳定 `latest` 提升和供应链资产仍由定时/手动或标签运行覆盖。
+arm64 不通过 QEMU 模拟构建。日常提交只在双架构基础门槛和 amd64 公开基线升级通过后更新 `edge` 与不可变 `sha-*`；空卷恢复、故障注入、精确 SemVer 发布、稳定 `latest` 提升和供应链资产仍由定时/手动或标签运行覆盖。
 
 来自外部贡献者的 Pull Request 不接触发布密钥。Actions 权限使用最小范围并固定第三方 Action 的提交版本。
 

@@ -395,7 +395,7 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 - `compose.yml` 默认运行 Web、Worker、PostgreSQL 18、Redis 8 四个常驻服务；面板兼容修订由单机 Web 在启动前幂等执行 setup/preflight，Worker 等待 Web 健康，默认不保留停止的 setup 容器。PostgreSQL、Redis、附件使用独立命名卷，只有 Web 绑定宿主机 loopback。
 - `nextbufctl` 实现 init/start/stop/status/logs/doctor/backup/restore/upgrade，保留等价 Compose 命令。备份格式 `nextbuf-backup-v1` 包含 PostgreSQL custom dump、本地附件、配置、版本清单与 SHA-256；Redis 明确可重建。
 - `/setup` 使用环境中的一次性 `SETUP_TOKEN`，通过 Better Auth 创建首位邮箱密码账号，在受锁事务内授予唯一首个站点管理员并写治理审计/安装完成状态；普通邮箱/OAuth 注册在安装完成前被拒绝。
-- GitHub Actions 的主分支在完整检查后使用原生 amd64/arm64 Runner 分别执行 setup、首次管理员与 Web/Worker 基础冒烟；`v0.12.0` 至公开 Beta 阶段两个架构都通过后曾发布滚动 `latest` 及不可变 `sha-<提交>` GHCR manifest。进入 `v1.0.0` 稳定化后，ADR-0020 将主线可移动通道改为 `edge`，保留不可变 `sha-*`，完整稳定 Release 成功后才更新 `latest`。定时、手动和标签运行的 amd64 额外执行删除卷后的空安装恢复、故障注入和跨版本升级。每个架构冒烟后用 artifact 固定运行时与候选顶层 Digest；标签从两个顶层内容地址合并精确 SemVer manifest，并验证 SBOM/provenance attestation 没有丢失，再发布非 Docker x64 tar.gz、SHA-256 和 GitHub Release 资产。
+- GitHub Actions 的主分支在完整检查后使用原生 amd64/arm64 Runner 分别执行 setup、首次管理员与 Web/Worker 基础冒烟；amd64 还必须从当前公开基线真实升级到候选，并通过停写比较与附件对象校验，之后才允许发布主线镜像。`v0.12.0` 至公开 Beta 阶段两个架构都通过后曾发布滚动 `latest` 及不可变 `sha-<提交>` GHCR manifest。进入 `v1.0.0` 稳定化后，ADR-0020 将主线可移动通道改为 `edge`，保留不可变 `sha-*`，完整稳定 Release 成功后才更新 `latest`。删除卷后的空安装恢复和依赖故障注入仍由定时、手动和标签运行的 amd64 执行；这些深度通道及正式标签也重跑跨版本升级。每个架构冒烟后用 artifact 固定运行时与候选顶层 Digest；标签从两个顶层内容地址合并精确 SemVer manifest，并验证 SBOM/provenance attestation 没有丢失，再发布非 Docker x64 tar.gz、SHA-256 和 GitHub Release 资产。
 - Release 包提供 Nginx、systemd、PM2、宝塔、HTTPS、精确版本升级和恢复说明；持久部署/回退合同记录于 ADR-0015。
 
 ### v0.13.0：公开 Beta 加固
