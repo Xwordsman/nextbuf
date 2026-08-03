@@ -73,7 +73,6 @@ function wholeRowSpec(input: {
       FROM "${input.table}" AS ${alias}
       ${input.joins ?? ""}
       ${input.where ? `WHERE ${input.where}` : ""}
-      ORDER BY "canonical" COLLATE "C" ASC
     `,
   };
 }
@@ -164,7 +163,6 @@ const stableTableSpecs: StableTableSpec[] = [
       )::text AS "canonical"
       FROM "users" AS member
       WHERE member."status" <> 'deleted'
-      ORDER BY "canonical" COLLATE "C" ASC
     `,
   },
   {
@@ -184,7 +182,6 @@ const stableTableSpecs: StableTableSpec[] = [
       )::text AS "canonical"
       FROM "users" AS member
       WHERE member."status" = 'deleted'
-      ORDER BY "canonical" COLLATE "C" ASC
     `,
   },
   wholeRowSpec({ group: "identity", name: "profiles", table: "profiles" }),
@@ -228,7 +225,6 @@ const stableTableSpecs: StableTableSpec[] = [
         WHERE member."id" = verification_row."owner_id"
           AND member."status" = 'deleted'
       )
-      ORDER BY "canonical" COLLATE "C" ASC
     `,
   },
   wholeRowSpec({
@@ -459,7 +455,6 @@ const stableTableSpecs: StableTableSpec[] = [
         ON mail_delivery."id" = delivery_link."email_delivery_id"
       CROSS JOIN candidate_state
       CROSS JOIN migration_window
-      ORDER BY "canonical" COLLATE "C" ASC
     `,
   },
   wholeRowSpec({
@@ -552,7 +547,6 @@ const stableTableSpecs: StableTableSpec[] = [
       FROM "email_deliveries" AS delivery
       CROSS JOIN migration_window
       WHERE NOT ${deletedMailDeliveryPredicate("delivery")}
-      ORDER BY "canonical" COLLATE "C" ASC
     `,
   },
   {
@@ -650,7 +644,6 @@ const stableTableSpecs: StableTableSpec[] = [
        AND processed."idempotency_key" = 'outbox-' || event_record."id"::text
       CROSS JOIN candidate_state
       CROSS JOIN migration_window
-      ORDER BY "canonical" COLLATE "C" ASC
     `,
   },
   wholeRowSpec({
@@ -738,7 +731,6 @@ const stableTableSpecs: StableTableSpec[] = [
         "delivery",
         "notification",
       )}
-      ORDER BY "canonical" COLLATE "C" ASC
     `,
   },
   wholeRowSpec({
@@ -778,7 +770,15 @@ async function fingerprintTable(
   updateLengthPrefixed(hash, spec.name);
   let rows = 0;
   let rowError: Error | undefined;
-  const query = new Query<{ canonical: string }>({ text: spec.sql });
+  const query = new Query<{ canonical: string }>({
+    text: `
+      SELECT canonical_rows."canonical"
+      FROM (
+        ${spec.sql}
+      ) AS canonical_rows
+      ORDER BY canonical_rows."canonical" COLLATE "C" ASC
+    `,
+  });
 
   await new Promise<void>((resolve, reject) => {
     query.on("row", (row) => {
