@@ -43,6 +43,7 @@ NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开
 | [19-v1.0.0-release-readiness.md](./19-v1.0.0-release-readiness.md) | 首个稳定版的自动化、升级、安全、数据和发布 GO/NO-GO 门槛 | 测试、安全、发布、运维 |
 | [20-v1.0.0-release-notes.md](./20-v1.0.0-release-notes.md) | `v1.0.0` 候选发布说明、升级和回退草案 | 部署、发布、运维 |
 | [21-v1.0.0-manual-acceptance.md](./21-v1.0.0-manual-acceptance.md) | 全新安装、Beta 升级、核心旅程与正式发布人工验收模板 | 测试、发布、运维 |
+| [22-v1.0.0-provider-support-matrix.md](./22-v1.0.0-provider-support-matrix.md) | `v1.0.0` 数据库、缓存、存储、SMTP、OAuth、搜索和部署支持边界 | 部署、测试、支持 |
 | [../SUPPORT.md](../SUPPORT.md) | 稳定版本生命周期、官方支持边界和问题报告信息 | 部署、维护者、用户 |
 | [../SECURITY.md](../SECURITY.md) | 受支持安全版本、私密漏洞报告和披露流程 | 安全、维护者、部署者 |
 | [adr/](./adr/) | 关键架构决策的背景、取舍和后果 | 架构、维护者 |

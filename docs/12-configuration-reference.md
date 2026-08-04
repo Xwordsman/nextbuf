@@ -1,5 +1,7 @@
 # 配置参考
 
+`v1.0.0` 对数据库、Redis、存储、SMTP、OAuth、搜索和部署入口的正式支持级别见 [`v1.0.0` Provider 与运行环境支持矩阵](./22-v1.0.0-provider-support-matrix.md)；本文继续作为环境变量名称、类型、默认值和秘密边界的唯一字段参考。
+
 本文定义 NextBuf 环境变量的目标合同。`v0.1.0` 必须建立统一配置 Schema，`v0.12.0` 前必须让 `.env.example`、Compose、安装向导、Web、Worker、CLI 与本文完全一致。
 
 > 当前实现状态：已发布 `v0.13.10` 让共享 Zod Schema、根 `.env.example`、生产 Compose、宝塔单文件 Compose、Web、Worker、CLI、setup、doctor 和发布包继续使用同一合同。可信代理只接受明确 IP/CIDR，非 Docker Web 固定绑定回环；站点名称、注册策略、发布开关和每小时限额由 PostgreSQL `site_settings` 管理，Provider 密钥不在线保存或回显。

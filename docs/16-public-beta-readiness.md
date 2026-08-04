@@ -96,6 +96,8 @@ pnpm audit --prod --json
 
 2026-07-28 再次关闭 PostCSS 任意文件读取/路径遍历和 Valibot 异常路径公告：仓库固定 `postcss 8.5.24`，Prisma 统一升级到 `7.9.1`，`shadcn` CLI 归入开发依赖。仓库与非 Docker runtime lockfile 继续固定 `@hono/node-server 2.0.11`、`fast-uri 3.1.4`，并让 Next.js 使用 Sharp `0.35.3`。完整安装、Prisma generate、单元测试、类型检查、生产构建、真实服务和镜像测试必须验证覆盖兼容性；CI 同时审计两份生产依赖 lockfile 并阻断 high/critical，稳定版发布记录额外保存完整 audit 结果。
 
+2026-08-04，`GHSA-7p8r-x3mc-p8w7` 扩大了 `fast-uri` 反斜杠 authority 混淆的受影响范围，`3.1.4` 不再满足修复条件。仓库与独立 runtime lockfile 统一覆盖到已修复的 `3.1.5`；两套生产依赖审计、完整检查、构建和镜像门槛继续共同阻断回退。
+
 依赖升级不能批量追逐最新版。Better Auth、Prisma、Next.js、PostgreSQL、Redis、BullMQ、Sharp 或邮件链路升级后，必须重新执行真实服务、身份、附件、Worker、迁移和恢复测试。
 
 ## 4. 请求与出站网络规则

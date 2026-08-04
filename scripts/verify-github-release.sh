@@ -43,6 +43,7 @@ release_json=$(gh api "repos/$repository/releases/tags/$tag")
 release_tag=$(printf '%s' "$release_json" | jq -r '.tag_name')
 release_draft=$(printf '%s' "$release_json" | jq -r '.draft')
 release_prerelease=$(printf '%s' "$release_json" | jq -r '.prerelease')
+release_body_type=$(printf '%s' "$release_json" | jq -r '.body | type')
 if [ "$release_tag" != "$tag" ] || [ "$release_draft" != false ]; then
   printf '%s\n' "Release $tag is missing, draft, or resolves to a different tag" >&2
   exit 1
@@ -51,6 +52,11 @@ if [ "$release_prerelease" != "$expected_prerelease" ]; then
   printf '%s\n' "Release $tag has an unexpected prerelease classification" >&2
   exit 1
 fi
+if [ "$release_body_type" != string ]; then
+  printf '%s\n' "Release $tag does not contain a text body" >&2
+  exit 1
+fi
+printf '%s' "$release_json" | jq -j '.body' > "$work_dir/release-body.md"
 
 sh "$script_dir/verify-github-tag-commit.sh" \
   "$repository" "$tag" "$expected_commit" >/dev/null
@@ -68,4 +74,5 @@ done
 
 node "$script_dir/verify-release-receipt.mjs" \
   "$work_dir" "$tag" "$expected_commit" "$expected_oci_image" \
-  "$expected_oci_index_digest" "$expected_amd64_digest" "$expected_arm64_digest"
+  "$expected_oci_index_digest" "$expected_amd64_digest" "$expected_arm64_digest" \
+  "$work_dir/release-body.md"

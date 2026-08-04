@@ -8,6 +8,12 @@ on:
   schedule:
     - cron: "23 18 * * *"
   workflow_dispatch:
+    inputs:
+      release_rehearsal:
+        description: Build and verify the release OCI index without writing a SemVer tag
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -119,6 +125,9 @@ jobs:
       - name: Verify immutable migration history
         run: pnpm migration:verify
 
+      - name: Validate documentation links
+        run: pnpm docs:check
+
       - name: Validate development and test Compose files
         run: |
           docker compose -f deploy/compose/compose.dev.yml config --quiet
@@ -137,9 +146,11 @@ jobs:
           sh -n scripts/verify-github-release.sh
           sh -n scripts/verify-github-tag-commit.sh
           sh -n scripts/verify-oci-image-identity.sh
+          node --check scripts/prepare-github-release-body.mjs
           node --check scripts/release-receipt-metadata.mjs
           node --check scripts/tested-image-identity.mjs
           node --check scripts/oci-platform-members.mjs
+          node --check scripts/verify-oci-attestation-manifest.mjs
           sh -n tests/smoke/docker-smoke.sh
           sh -n tests/smoke/docker-upgrade-smoke.sh
           sh -n tests/smoke/release-archive-smoke.sh
@@ -161,6 +172,7 @@ jobs:
           sh tests/smoke/registry-channel-state-smoke.sh
           sh tests/smoke/release-channel-policy-smoke.sh
           sh tests/smoke/stable-image-channel-smoke.sh
+          node tests/smoke/github-release-body-smoke.mjs
           node tests/smoke/tested-image-identity-smoke.mjs
 
       - name: Check formatting
@@ -198,6 +210,9 @@ jobs:
     timeout-minutes: 60
     env:
       NEXTBUF_UPGRADE_BASELINE: 0.13.10
+      PUBLISH_CANDIDATE: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release_rehearsal) }}
+      GENERATE_RELEASE_ATTESTATIONS: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release_rehearsal) }}
+      REQUIRE_FROZEN_CANDIDATE: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.release_rehearsal) }}
     permissions:
       contents: read
       packages: write
@@ -237,14 +252,14 @@ jobs:
         id: image
         shell: bash
         run: |
-          candidate="ci-${GITHUB_RUN_ID}-${GITHUB_SHA}"
+          candidate="sha-${GITHUB_SHA}"
           echo "candidate=$candidate" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Log in to GHCR
-        if: github.event_name == 'push'
+        if: env.PUBLISH_CANDIDATE == 'true'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
@@ -252,16 +267,20 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Reuse a candidate from an earlier workflow attempt
-        if: github.event_name == 'push'
+        if: env.PUBLISH_CANDIDATE == 'true'
         id: candidate-image
         shell: bash
         run: |
           image="ghcr.io/xwordsman/nextbuf:${{ steps.image.outputs.candidate }}-${{ matrix.architecture }}"
           state=$(sh scripts/inspect-registry-manifest.sh "$image")
           if [[ "$state" == present ]]; then
-            echo "Reusing candidate $image from an earlier attempt of this workflow."
+            echo "Reusing frozen architecture candidate $image for commit $GITHUB_SHA."
             echo "reuse=true" >> "$GITHUB_OUTPUT"
           elif [[ "$state" == absent ]]; then
+            if [[ "$REQUIRE_FROZEN_CANDIDATE" == true ]]; then
+              echo "::error::Accepted architecture candidate $image is missing; release runs never rebuild it"
+              exit 1
+            fi
             echo "reuse=false" >> "$GITHUB_OUTPUT"
           else
             echo "::error::Unexpected candidate manifest state: $state"
@@ -269,26 +288,26 @@ jobs:
           fi
 
       - name: Build image once for this architecture
-        if: github.event_name != 'push' || steps.candidate-image.outputs.reuse != 'true'
+        if: env.PUBLISH_CANDIDATE != 'true' || steps.candidate-image.outputs.reuse != 'true'
         id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          load: ${{ github.event_name != 'push' }}
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ github.event_name == 'push' && format('ghcr.io/xwordsman/nextbuf:{0}-{1}', steps.image.outputs.candidate, matrix.architecture) || format('nextbuf-smoke:{0}', steps.version.outputs.version) }}
+          load: ${{ env.PUBLISH_CANDIDATE != 'true' }}
+          push: ${{ env.PUBLISH_CANDIDATE == 'true' }}
+          tags: ${{ env.PUBLISH_CANDIDATE == 'true' && format('ghcr.io/xwordsman/nextbuf:{0}-{1}', steps.image.outputs.candidate, matrix.architecture) || format('nextbuf-smoke:{0}', steps.version.outputs.version) }}
           build-args: |
             NEXTBUF_VERSION=${{ steps.version.outputs.version }}
             NEXTBUF_COMMIT=${{ github.sha }}
             NEXTBUF_BUILD_TIME=${{ steps.build-metadata.outputs.build-time }}
           cache-from: type=gha,scope=image-${{ matrix.architecture }}
           cache-to: type=gha,mode=max,scope=image-${{ matrix.architecture }}
-          provenance: ${{ startsWith(github.ref, 'refs/tags/v') && 'mode=max' || 'false' }}
-          sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          provenance: ${{ env.GENERATE_RELEASE_ATTESTATIONS == 'true' && 'mode=max' || 'false' }}
+          sbom: ${{ env.GENERATE_RELEASE_ATTESTATIONS == 'true' }}
 
       - name: Resolve the tested architecture image identity
-        if: github.event_name == 'push'
+        if: env.PUBLISH_CANDIDATE == 'true'
         id: candidate-identity
         shell: bash
         run: |
@@ -311,7 +330,7 @@ jobs:
           echo "source_digest=$source_digest" >> "$GITHUB_OUTPUT"
 
       - name: Load published architecture image for smoke tests
-        if: github.event_name == 'push'
+        if: env.PUBLISH_CANDIDATE == 'true'
         shell: bash
         run: |
           image="ghcr.io/xwordsman/nextbuf@${{ steps.candidate-identity.outputs.runtime_digest }}"
@@ -338,7 +357,7 @@ jobs:
           timeout --signal=TERM --kill-after=30s 20m tests/smoke/docker-upgrade-smoke.sh "${{ matrix.architecture }}"
 
       - name: Record the tested architecture image identity
-        if: github.event_name == 'push'
+        if: env.PUBLISH_CANDIDATE == 'true'
         shell: bash
         run: |
           node scripts/tested-image-identity.mjs write \
@@ -349,17 +368,17 @@ jobs:
             "$GITHUB_SHA" "${{ steps.version.outputs.version }}"
 
       - name: Upload the tested architecture image identity
-        if: github.event_name == 'push'
+        if: env.PUBLISH_CANDIDATE == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: nextbuf-tested-image-${{ github.run_id }}-${{ matrix.architecture }}
           path: tested-image-${{ matrix.architecture }}.json
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 14
           overwrite: true
 
   archive-build:
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_rehearsal)
     needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -414,6 +433,23 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      - name: Resolve archive identity
+        id: archive-identity
+        shell: bash
+        run: |
+          version=$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version")
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $version" >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/tags/v* ]]; then
+            artifact_name="nextbuf-release-$GITHUB_REF_NAME"
+          else
+            artifact_name="nextbuf-release-rehearsal-$GITHUB_RUN_ID"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
       - name: Install and build
         run: |
           pnpm install --frozen-lockfile
@@ -421,11 +457,7 @@ jobs:
 
       - name: Build and smoke-test release archive
         run: |
-          version=$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version")
-          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != "v$version" ]]; then
-            echo "Tag $GITHUB_REF_NAME does not match package version $version" >&2
-            exit 1
-          fi
+          version="${{ steps.archive-identity.outputs.version }}"
           commit="$GITHUB_SHA"
           build_time=$(git show -s --format=%cI "$GITHUB_SHA")
           NEXTBUF_COMMIT="$commit" NEXTBUF_BUILD_TIME="$build_time" \
@@ -439,24 +471,24 @@ jobs:
               "release/nextbuf-$version" "$version" "$commit" "$build_time"
 
       - name: Generate source SBOM
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.release_rehearsal)
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: .
           format: spdx-json
-          output-file: release/nextbuf-${{ github.ref_name }}-sbom.spdx.json
+          output-file: release/nextbuf-v${{ steps.archive-identity.outputs.version }}-sbom.spdx.json
 
       - name: Upload verified release files
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.release_rehearsal)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: nextbuf-release-${{ github.ref_name }}
+          name: ${{ steps.archive-identity.outputs.artifact_name }}
           path: |
             release/*.tar.gz
             release/*.sha256
             release/*.spdx.json
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 14
           overwrite: true
 
   publish-main-image:
@@ -549,14 +581,24 @@ jobs:
               echo "::error::Candidate source $source_digest does not contain only tested $platform content" >&2
               return 1
             fi
+            attestations=$(docker buildx imagetools inspect "$reference" --raw \
+              | node scripts/oci-platform-members.mjs --attestations)
+            if ! printf '%s\n' "$attestations" \
+              | grep -Eq "^${runtime_digest}=sha256:[0-9a-f]{64}$"; then
+              echo "::error::Candidate source $source_digest is missing the tested $platform attestation" >&2
+              return 1
+            fi
+            printf '%s\n' "$attestations" >> "$RUNNER_TEMP/nextbuf-main-attestations"
             docker buildx imagetools inspect "$reference" --raw \
               | node scripts/oci-platform-members.mjs --descriptors
           }
+          : > "$RUNNER_TEMP/nextbuf-main-attestations"
           expected_descriptors=$( \
             source_descriptors "$amd64_source" "$amd64_digest" linux/amd64
             source_descriptors "$arm64_source" "$arm64_digest" linux/arm64
           )
           expected_descriptors=$(printf '%s\n' "$expected_descriptors" | sort -u)
+          expected_attestations=$(sort -u "$RUNNER_TEMP/nextbuf-main-attestations")
           manifest_state=$(sh scripts/inspect-registry-manifest.sh "$image:$immutable_tag")
           if [[ "$manifest_state" == present ]]; then
             actual_members=$(platform_members "$image:$immutable_tag")
@@ -581,10 +623,17 @@ jobs:
           fi
           actual_descriptors=$(docker buildx imagetools inspect "$image:$immutable_tag" --raw \
             | node scripts/oci-platform-members.mjs --descriptors)
-          if [[ "$actual_descriptors" != "$expected_descriptors" ]]; then
-            echo "::error::Immutable main manifest $image:$immutable_tag did not preserve tested source descriptors"
+          actual_attestations=$(docker buildx imagetools inspect "$image:$immutable_tag" --raw \
+            | node scripts/oci-platform-members.mjs --attestations)
+          if [[ "$actual_descriptors" != "$expected_descriptors" \
+            || "$actual_attestations" != "$expected_attestations" ]]; then
+            echo "::error::Immutable main manifest $image:$immutable_tag did not preserve tested source attestations"
             exit 1
           fi
+          index_digest=$(docker buildx imagetools inspect "$image:$immutable_tag" \
+            --format '{{.Manifest.Digest}}')
+          sh scripts/verify-oci-image-identity.sh \
+            "$image:$immutable_tag" "$index_digest" "$amd64_digest" "$arm64_digest"
 
           head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')
           if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
@@ -597,7 +646,7 @@ jobs:
           docker buildx imagetools inspect "$image:edge"
 
   publish-release-image:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.release_rehearsal)
     needs: [image-smoke, archive-build]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -619,6 +668,13 @@ jobs:
           path: tested-images
           merge-multiple: true
 
+      - name: Download verified release files for body preflight
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: nextbuf-release-${{ github.ref_name }}
+          path: release
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
@@ -629,12 +685,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish tested immutable release manifest
+      - name: Verify staged and publish immutable release manifest
         id: release-image-identity
         shell: bash
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          package_version=$(node -p "require('./package.json').version")
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            publish_semver=true
+          else
+            version="$package_version"
+            publish_semver=false
+          fi
           image=ghcr.io/xwordsman/nextbuf
+          candidate_reference="$image:sha-${GITHUB_SHA}"
+          staging_tag="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}-release-index"
+          staging_reference="$image:$staging_tag"
+          release_reference="$image:$version"
           tested_identities=$(node scripts/tested-image-identity.mjs verify \
             tested-images "$image" "$GITHUB_SHA" "$version")
           amd64_digest=$(printf '%s\n' "$tested_identities" | awk -F= \
@@ -680,47 +747,102 @@ jobs:
           )
           expected_descriptors=$(printf '%s\n' "$expected_descriptors" | sort -u)
           expected_attestations=$(sort -u "$RUNNER_TEMP/nextbuf-expected-attestations")
-          manifest_state=$(sh scripts/inspect-registry-manifest.sh "$image:$version")
+
+          verified_index_digest=
+          verify_release_index() {
+            reference=$1
+            description=$2
+            actual_members=$(platform_members "$reference")
+            if [[ "$actual_members" != "$expected_members" ]]; then
+              echo "::error::$description $reference has different platform content"
+              return 1
+            fi
+            actual_descriptors=$(docker buildx imagetools inspect "$reference" --raw \
+              | node scripts/oci-platform-members.mjs --descriptors)
+            actual_attestations=$(docker buildx imagetools inspect "$reference" --raw \
+              | node scripts/oci-platform-members.mjs --attestations)
+            if [[ "$actual_descriptors" != "$expected_descriptors" \
+              || "$actual_attestations" != "$expected_attestations" ]]; then
+              echo "::error::$description $reference did not preserve candidate attestations"
+              return 1
+            fi
+            verified_index_digest=$(docker buildx imagetools inspect "$reference" \
+              --format '{{.Manifest.Digest}}')
+            sh scripts/verify-oci-image-identity.sh \
+              "$reference" "$verified_index_digest" "$amd64_digest" "$arm64_digest" \
+              >/dev/null
+          }
+
+          candidate_state=$(sh scripts/inspect-registry-manifest.sh "$candidate_reference")
+          if [[ "$candidate_state" != present ]]; then
+            echo "::error::Accepted immutable candidate $candidate_reference is unavailable: $candidate_state"
+            exit 1
+          fi
+          verify_release_index "$candidate_reference" "Accepted immutable candidate"
+          candidate_index_digest=$verified_index_digest
+
+          manifest_state=$(sh scripts/inspect-registry-manifest.sh "$staging_reference")
           if [[ "$manifest_state" == present ]]; then
-            echo "Reusing the matching immutable release manifest $image:$version."
+            echo "Reusing staged release manifest $staging_reference."
+          elif [[ "$manifest_state" == absent ]]; then
+            docker buildx imagetools create \
+              -t "$staging_reference" \
+              "$image@$candidate_index_digest"
+          else
+            echo "::error::Unexpected staged release manifest state: $manifest_state"
+            exit 1
+          fi
+          verify_release_index "$staging_reference" "Staged release manifest"
+          staging_index_digest=$verified_index_digest
+          if [[ "$staging_index_digest" != "$candidate_index_digest" ]]; then
+            echo "::error::Staged release manifest does not match accepted candidate $candidate_index_digest"
+            exit 1
+          fi
+
+          if [[ "$publish_semver" != true ]]; then
+            echo "Release rehearsal verified $staging_reference at $staging_index_digest."
+            {
+              echo "## Release OCI rehearsal"
+              echo
+              echo "Verified staging index: \`$staging_reference@$staging_index_digest\`"
+              echo
+              echo "No SemVer or stable channel tag was written."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "oci_index_digest=$staging_index_digest" >> "$GITHUB_OUTPUT"
+            echo "oci_amd64_digest=$amd64_digest" >> "$GITHUB_OUTPUT"
+            echo "oci_arm64_digest=$arm64_digest" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          OCI_INDEX_DIGEST="$staging_index_digest" \
+          OCI_AMD64_DIGEST="$amd64_digest" \
+          OCI_ARM64_DIGEST="$arm64_digest" \
+            node scripts/prepare-github-release-body.mjs \
+              docs release "$RUNNER_TEMP/nextbuf-release-body.md"
+
+          manifest_state=$(sh scripts/inspect-registry-manifest.sh "$release_reference")
+          if [[ "$manifest_state" == present ]]; then
+            echo "Reusing the matching immutable release manifest $release_reference."
           elif [[ "$manifest_state" == absent ]]; then
             docker buildx imagetools create \
               -t "$image:$version" \
-              "$image@$amd64_source" \
-              "$image@$arm64_source"
+              "$image@$staging_index_digest"
           else
             echo "::error::Unexpected release manifest state: $manifest_state"
             exit 1
           fi
-          reference="$image:$version"
-          actual_members=$(platform_members "$reference")
-          if [[ "$actual_members" != "$expected_members" ]]; then
-            echo "::error::Immutable release manifest $reference has different platform content"
+          verify_release_index "$release_reference" "Immutable release manifest"
+          index_digest=$verified_index_digest
+          if [[ "$index_digest" != "$staging_index_digest" ]]; then
+            echo "::error::Immutable release manifest $release_reference does not match verified staged release index $staging_index_digest"
             exit 1
           fi
-          actual_descriptors=$(docker buildx imagetools inspect "$reference" --raw \
-            | node scripts/oci-platform-members.mjs --descriptors)
-          actual_attestations=$(docker buildx imagetools inspect "$reference" --raw \
-            | node scripts/oci-platform-members.mjs --attestations)
-          if [[ "$actual_descriptors" != "$expected_descriptors" \
-            || "$actual_attestations" != "$expected_attestations" ]]; then
-            echo "::error::Immutable release manifest $reference did not preserve candidate attestations"
-            exit 1
-          fi
-          index_digest=$(docker buildx imagetools inspect "$reference" \
-            --format '{{.Manifest.Digest}}')
-          amd64_digest=$(printf '%s\n' "$actual_members" | awk -F= \
-            '$1 == "linux/amd64" { print $2 }')
-          arm64_digest=$(printf '%s\n' "$actual_members" | awk -F= \
-            '$1 == "linux/arm64" { print $2 }')
-          sh scripts/verify-oci-image-identity.sh \
-            "$reference" "$index_digest" "$amd64_digest" "$arm64_digest"
           echo "oci_index_digest=$index_digest" >> "$GITHUB_OUTPUT"
           echo "oci_amd64_digest=$amd64_digest" >> "$GITHUB_OUTPUT"
           echo "oci_arm64_digest=$arm64_digest" >> "$GITHUB_OUTPUT"
 
   release-assets:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [archive-build, publish-release-image]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -779,11 +901,21 @@ jobs:
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Prepare validated GitHub Release body
+        if: steps.existing-release.outputs.complete != 'true'
+        env:
+          OCI_INDEX_DIGEST: ${{ needs.publish-release-image.outputs.oci_index_digest }}
+          OCI_AMD64_DIGEST: ${{ needs.publish-release-image.outputs.oci_amd64_digest }}
+          OCI_ARM64_DIGEST: ${{ needs.publish-release-image.outputs.oci_arm64_digest }}
+        shell: bash
+        run: node scripts/prepare-github-release-body.mjs docs release release/release-body.md
+
       - name: Publish GitHub Release assets
         if: steps.existing-release.outputs.complete != 'true'
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
-          generate_release_notes: true
+          body_path: release/release-body.md
+          generate_release_notes: false
           prerelease: ${{ steps.release-channel.outputs.prerelease }}
           files: |
             release/*.tar.gz
@@ -817,6 +949,23 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Synchronize the expected GitHub Release body
+        id: release-body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OCI_INDEX_DIGEST: ${{ needs.release-assets.outputs.oci_index_digest }}
+          OCI_AMD64_DIGEST: ${{ needs.release-assets.outputs.oci_amd64_digest }}
+          OCI_ARM64_DIGEST: ${{ needs.release-assets.outputs.oci_arm64_digest }}
+        shell: bash
+        run: |
+          node scripts/prepare-github-release-body.mjs \
+            docs release release/release-body.md
+          release_body_sha256=$(sha256sum -- release/release-body.md | awk '{print $1}')
+          echo "sha256=$release_body_sha256" >> "$GITHUB_OUTPUT"
+          gh release edit "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --notes-file release/release-body.md
 
       - name: Inspect this Release completion receipt
         id: current-receipt
@@ -888,6 +1037,7 @@ jobs:
           OCI_INDEX_DIGEST: ${{ needs.release-assets.outputs.oci_index_digest }}
           OCI_AMD64_DIGEST: ${{ needs.release-assets.outputs.oci_amd64_digest }}
           OCI_ARM64_DIGEST: ${{ needs.release-assets.outputs.oci_arm64_digest }}
+          RELEASE_BODY_SHA256: ${{ steps.release-body.outputs.sha256 }}
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -910,6 +1060,7 @@ jobs:
             printf 'oci_index_digest=%s\n' "$OCI_INDEX_DIGEST"
             printf 'oci_linux_amd64_digest=%s\n' "$OCI_AMD64_DIGEST"
             printf 'oci_linux_arm64_digest=%s\n' "$OCI_ARM64_DIGEST"
+            printf 'release_body_sha256=%s\n' "$RELEASE_BODY_SHA256"
             (cd release && sha256sum -- \
               "nextbuf-$version-linux-x64.tar.gz" \
               "nextbuf-$version-linux-x64.tar.gz.sha256" \

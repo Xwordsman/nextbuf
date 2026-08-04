@@ -23,6 +23,15 @@ assets_job=$(sed -n '/^  release-assets:/,/^  complete-release:/p' "$workflow")
 completion_job=$(sed -n '/^  complete-release:/,/^  reconcile-stable:/p' "$workflow")
 reconciliation_job=$(sed -n '/^  reconcile-stable:/,$p' "$workflow")
 workflow_header=$(sed -n '1,/^jobs:/p' "$workflow")
+check_job=$(sed -n '/^  check:/,/^  image-smoke:/p' "$workflow")
+
+printf '%s\n' "$workflow_header" | grep -F -- 'release_rehearsal:' >/dev/null \
+  || fail 'workflow dispatch must expose an explicit release rehearsal input'
+printf '%s\n' "$workflow_header" \
+  | grep -F -- 'Build and verify the release OCI index without writing a SemVer tag' >/dev/null \
+  || fail 'the release rehearsal input must promise that it does not write SemVer'
+printf '%s\n' "$check_job" | grep -F -- 'run: pnpm docs:check' >/dev/null \
+  || fail 'CI must block broken documentation links'
 
 printf '%s\n' "$workflow_header" | grep -F -- '${{ github.ref }}' >/dev/null \
   || fail 'workflow concurrency must remain ref-scoped so one tag cannot cancel another tag completion'
@@ -37,8 +46,10 @@ printf '%s\n' "$main_job" | grep -F -- 'tested-image-identity.mjs verify' >/dev/
   || fail 'main manifests must use the identities captured by architecture smoke tests'
 printf '%s\n' "$main_job" | grep -F -- '"$image@$amd64_source"' >/dev/null \
   || fail 'main manifests must merge content-addressed tested source images'
-printf '%s\n' "$main_job" | grep -F -- 'did not preserve tested source descriptors' >/dev/null \
-  || fail 'main manifests must preserve the exact tested source descriptors'
+printf '%s\n' "$main_job" | grep -F -- 'did not preserve tested source attestations' >/dev/null \
+  || fail 'main manifests must preserve the exact tested source attestations'
+printf '%s\n' "$main_job" | grep -F -- 'scripts/verify-oci-image-identity.sh' >/dev/null \
+  || fail 'the immutable sha-* candidate must pass full OCI identity verification'
 printf '%s\n' "$main_job" | grep -F -- 'scripts/inspect-registry-manifest.sh' >/dev/null \
   || fail 'main must distinguish an absent sha-* manifest from Registry failure'
 if printf '%s\n' "$main_job" | grep -F -- '$image:latest' >/dev/null; then
@@ -73,16 +84,63 @@ done
 
 printf '%s\n' "$release_job" | grep -F -- '-t "$image:$version"' >/dev/null \
   || fail 'version tags must publish an immutable SemVer manifest'
+printf '%s\n' "$release_job" \
+  | grep -F -- 'if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/tags/v* ]]' >/dev/null \
+  || fail 'only a tag push may enable immutable SemVer publication'
+printf '%s\n' "$release_job" | grep -F -- 'if [[ "$publish_semver" != true ]]' >/dev/null \
+  || fail 'release rehearsal must stop after staging verification'
+printf '%s\n' "$release_job" | grep -F -- 'No SemVer or stable channel tag was written.' >/dev/null \
+  || fail 'release rehearsal must explicitly report that no public tag was written'
 printf '%s\n' "$release_job" | grep -F -- 'oci_index_digest=$index_digest' >/dev/null \
   || fail 'the SemVer job must export the tested OCI index digest'
 printf '%s\n' "$release_job" | grep -F -- 'tested-image-identity.mjs verify' >/dev/null \
   || fail 'the SemVer job must consume persisted smoke-test identities'
-printf '%s\n' "$release_job" | grep -F -- '"$image@$amd64_source"' >/dev/null \
-  || fail 'the SemVer manifest must merge content-addressed tested source images'
+printf '%s\n' "$release_job" | grep -F -- 'candidate_reference="$image:sha-${GITHUB_SHA}"' >/dev/null \
+  || fail 'release publication must start from the accepted immutable sha-* candidate'
+printf '%s\n' "$release_job" \
+  | grep -F -- 'verify_release_index "$candidate_reference" "Accepted immutable candidate"' >/dev/null \
+  || fail 'the accepted sha-* candidate must pass the complete release identity verifier'
 printf '%s\n' "$release_job" | grep -F -- 'oci-platform-members.mjs --attestations' >/dev/null \
   || fail 'the SemVer manifest must verify attestation linkage before and after merging'
 printf '%s\n' "$release_job" | grep -F -- 'did not preserve candidate attestations' >/dev/null \
   || fail 'the SemVer manifest must preserve candidate attestations exactly'
+printf '%s\n' "$release_job" \
+  | grep -F -- 'ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}-release-index' >/dev/null \
+  || fail 'each release attempt must use a unique staging manifest tag'
+printf '%s\n' "$release_job" | grep -F -- '-t "$staging_reference"' >/dev/null \
+  || fail 'the accepted candidate must first be copied to a staging manifest'
+printf '%s\n' "$release_job" | grep -F -- '"$image@$candidate_index_digest"' >/dev/null \
+  || fail 'the staging manifest must be copied from the accepted candidate digest'
+printf '%s\n' "$release_job" \
+  | grep -F -- 'verify_release_index "$staging_reference"' >/dev/null \
+  || fail 'the staging manifest must pass the complete release identity verification'
+printf '%s\n' "$release_job" | grep -F -- 'scripts/verify-oci-image-identity.sh' >/dev/null \
+  || fail 'the staging manifest must pass the full OCI identity and attestation verifier'
+printf '%s\n' "$release_job" | grep -F -- '"$image@$staging_index_digest"' >/dev/null \
+  || fail 'the immutable SemVer manifest must be created only from the verified staging digest'
+printf '%s\n' "$release_job" \
+  | grep -F -- 'does not match verified staged release index' >/dev/null \
+  || fail 'the final SemVer index digest must equal the verified staging index digest'
+printf '%s\n' "$release_job" \
+  | grep -F -- 'Staged release manifest does not match accepted candidate' >/dev/null \
+  || fail 'the staged release digest must equal the manually accepted sha-* candidate'
+staging_create_line=$(printf '%s\n' "$release_job" | grep -nF -- '-t "$staging_reference"' \
+  | head -n 1 | cut -d: -f1)
+candidate_verify_line=$(printf '%s\n' "$release_job" \
+  | grep -nF -- 'verify_release_index "$candidate_reference"' | head -n 1 | cut -d: -f1)
+staging_verify_line=$(printf '%s\n' "$release_job" \
+  | grep -nF -- 'verify_release_index "$staging_reference"' | head -n 1 | cut -d: -f1)
+release_create_line=$(printf '%s\n' "$release_job" | grep -nF -- '-t "$image:$version"' \
+  | head -n 1 | cut -d: -f1)
+release_body_preflight_line=$(printf '%s\n' "$release_job" \
+  | grep -nF -- 'node scripts/prepare-github-release-body.mjs' | head -n 1 | cut -d: -f1)
+[ -n "$candidate_verify_line" ] && [ -n "$staging_create_line" ] && [ -n "$staging_verify_line" ] \
+  && [ -n "$release_body_preflight_line" ] && [ -n "$release_create_line" ] \
+  && [ "$candidate_verify_line" -lt "$staging_create_line" ] \
+  && [ "$staging_create_line" -lt "$staging_verify_line" ] \
+  && [ "$staging_verify_line" -lt "$release_body_preflight_line" ] \
+  && [ "$release_body_preflight_line" -lt "$release_create_line" ] \
+  || fail 'staging and the real Release body/assets must be verified before any immutable SemVer write'
 if printf '%s\n' "$release_job" | grep -F -- '$image:latest' >/dev/null; then
   fail 'the immutable SemVer job must not move latest before Release assets succeed'
 fi
@@ -117,6 +175,16 @@ fi
 
 printf '%s\n' "$image_job" | grep -F -- 'Resolve the tested architecture image identity' >/dev/null \
   || fail 'each architecture digest must be frozen before content-addressed smoke tests'
+printf '%s\n' "$image_job" | grep -F -- 'candidate="sha-${GITHUB_SHA}"' >/dev/null \
+  || fail 'main, rehearsal and tag runs must reuse one commit-addressed architecture candidate'
+printf '%s\n' "$image_job" | grep -F -- 'REQUIRE_FROZEN_CANDIDATE:' >/dev/null \
+  || fail 'release runs must require the architecture candidates accepted on main'
+printf '%s\n' "$image_job" \
+  | grep -F -- 'release runs never rebuild it' >/dev/null \
+  || fail 'a missing accepted release candidate must fail instead of rebuilding'
+attestation_gate=$(printf '%s\n' "$image_job" | sed -n '/GENERATE_RELEASE_ATTESTATIONS:/p')
+printf '%s\n' "$attestation_gate" | grep -F -- "github.event_name == 'push'" >/dev/null \
+  || fail 'main candidates must include the attestations later promoted by the release'
 printf '%s\n' "$image_job" | grep -F -- 'source_digest=$source_digest' >/dev/null \
   || fail 'each tested identity must retain the immutable top-level source digest'
 printf '%s\n' "$image_job" | grep -F -- 'outputs.runtime_digest' >/dev/null \
@@ -126,13 +194,27 @@ printf '%s\n' "$image_job" | grep -F -- 'nextbuf-tested-image-${{ github.run_id 
 printf '%s\n' "$image_job" | grep -F -- 'overwrite: true' >/dev/null \
   || fail 'tested architecture identity artifacts must support complete workflow reruns'
 
-if grep -Fq 'GITHUB_RUN_ATTEMPT' "$workflow"; then
+if printf '%s\n' "$image_job" | grep -Fq 'GITHUB_RUN_ATTEMPT'; then
   fail 'candidate architecture tags must survive failed-job reruns'
 fi
 printf '%s\n' "$archive_job" | grep -F -- 'overwrite: true' >/dev/null \
   || fail 'release artifacts must support a complete workflow rerun'
+printf '%s\n' "$archive_job" \
+  | grep -F -- 'artifact_name="nextbuf-release-rehearsal-$GITHUB_RUN_ID"' >/dev/null \
+  || fail 'release rehearsal must retain its archive evidence under a run-scoped artifact name'
+archive_rehearsal_conditions=$(printf '%s\n' "$archive_job" \
+  | grep -Fc -- "github.event_name == 'workflow_dispatch' && inputs.release_rehearsal")
+[ "$archive_rehearsal_conditions" -ge 3 ] \
+  || fail 'release rehearsal must build, SBOM and upload the verified standalone archive'
+retention_count=$(grep -Ec '^[[:space:]]+retention-days:' "$workflow" || :)
+[ "$retention_count" -ge 2 ] \
+  || fail 'tested identities and release files must declare an artifact retention period'
+if grep -E '^[[:space:]]+retention-days:' "$workflow" \
+  | grep -Fv -- 'retention-days: 14' >/dev/null; then
+  fail 'all release evidence artifacts must be retained for 14 days'
+fi
 grep -Fq 'Reuse a candidate from an earlier workflow attempt' "$workflow" \
-  || fail 'reruns must reuse already pushed architecture candidates'
+  || fail 'main, rehearsal and tag runs must reuse already pushed architecture candidates'
 printf '%s\n' "$release_job" | grep -F -- 'Reusing the matching immutable release manifest' >/dev/null \
   || fail 'a matching SemVer manifest must be reusable after a downstream release failure'
 printf '%s\n' "$release_job" | grep -F -- 'oci-platform-members.mjs' >/dev/null \
@@ -160,6 +242,19 @@ printf '%s\n' "$completion_job" | grep -F -- 'oci_linux_amd64_digest=%s' >/dev/n
   || fail 'the completion receipt must bind the tested amd64 digest'
 printf '%s\n' "$completion_job" | grep -F -- 'oci_linux_arm64_digest=%s' >/dev/null \
   || fail 'the completion receipt must bind the tested arm64 digest'
+printf '%s\n' "$completion_job" | grep -F -- 'Synchronize the expected GitHub Release body' >/dev/null \
+  || fail 'completion must regenerate and synchronize the expected Release body'
+printf '%s\n' "$completion_job" | grep -F -- '--notes-file release/release-body.md' >/dev/null \
+  || fail 'completion must update the remote Release from the validated body file'
+printf '%s\n' "$completion_job" | grep -F -- 'release_body_sha256=%s' >/dev/null \
+  || fail 'the completion receipt must bind the exact GitHub Release body'
+body_sync_line=$(printf '%s\n' "$completion_job" \
+  | grep -nF -- 'Synchronize the expected GitHub Release body' | head -n 1 | cut -d: -f1)
+receipt_inspection_line=$(printf '%s\n' "$completion_job" \
+  | grep -nF -- 'Inspect this Release completion receipt' | head -n 1 | cut -d: -f1)
+[ -n "$body_sync_line" ] && [ -n "$receipt_inspection_line" ] \
+  && [ "$body_sync_line" -lt "$receipt_inspection_line" ] \
+  || fail 'the expected Release body must be synchronized before any receipt is reused'
 printf '%s\n' "$completion_job" | grep -F -- 'Verify an existing completion receipt' >/dev/null \
   || fail 'an existing completion receipt must be verified before Release reuse'
 completion_receipt_verifications=$(printf '%s\n' "$completion_job" \
@@ -204,8 +299,25 @@ highest_checks=$(printf '%s\n' "$reconciliation_job" | grep -Fc -- 'highest_stab
 
 printf '%s\n' "$assets_job" | grep -F -- 'steps.release-channel.outputs.prerelease' >/dev/null \
   || fail 'GitHub Release prerelease state must use the same stable classification'
+printf '%s\n' "$assets_job" \
+  | grep -F -- "if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')" >/dev/null \
+  || fail 'workflow dispatch rehearsal must never create or update a GitHub Release'
 printf '%s\n' "$assets_job" | grep -F -- "$stable_pattern" >/dev/null \
   || fail 'GitHub Release classification must exclude v0, invalid and prerelease versions'
+printf '%s\n' "$assets_job" | grep -F -- 'Prepare validated GitHub Release body' >/dev/null \
+  || fail 'GitHub Releases must use the validated project release notes'
+printf '%s\n' "$assets_job" \
+  | grep -F -- 'node scripts/prepare-github-release-body.mjs' >/dev/null \
+  || fail 'GitHub Releases must execute the tested Release body generator'
+printf '%s\n' "$assets_job" | grep -F -- 'body_path: release/release-body.md' >/dev/null \
+  || fail 'GitHub Releases must publish the validated release body'
+for release_evidence in 'OCI_INDEX_DIGEST' 'OCI_AMD64_DIGEST' 'OCI_ARM64_DIGEST'; do
+  printf '%s\n' "$assets_job" | grep -F -- "$release_evidence" >/dev/null \
+    || fail "the release body must include dynamic evidence from $release_evidence"
+done
+if printf '%s\n' "$assets_job" | grep -F -- 'generate_release_notes: true' >/dev/null; then
+  fail 'GitHub-generated notes must not replace the validated project release notes'
+fi
 
 if grep -Eq '^\s*uses: [^ ]+@v[0-9]' "$workflow"; then
   fail 'third-party Actions must be pinned to full commit SHAs'

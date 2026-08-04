@@ -10,6 +10,7 @@ const [
   expectedOciIndexDigest,
   expectedAmd64Digest,
   expectedArm64Digest,
+  releaseBodyPath,
 ] = process.argv.slice(2);
 
 if (
@@ -19,10 +20,11 @@ if (
   !expectedOciImage ||
   !expectedOciIndexDigest ||
   !expectedAmd64Digest ||
-  !expectedArm64Digest
+  !expectedArm64Digest ||
+  !releaseBodyPath
 ) {
   throw new Error(
-    "Usage: node scripts/verify-release-receipt.mjs <directory> <v-version> <commit> <oci-image> <index-digest> <amd64-digest> <arm64-digest>",
+    "Usage: node scripts/verify-release-receipt.mjs <directory> <v-version> <commit> <oci-image> <index-digest> <amd64-digest> <arm64-digest> <release-body-file>",
   );
 }
 if (!/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/u.test(tag)) {
@@ -51,7 +53,7 @@ const expectedAssets = [archiveName, checksumName, sbomName].sort();
 const receipt = await readFile(path.join(directory, receiptName), "utf8");
 const receiptLines = receipt.split(/\r?\n/u);
 if (receiptLines.at(-1) === "") receiptLines.pop();
-if (receiptLines.length !== expectedAssets.length + 6) {
+if (receiptLines.length !== expectedAssets.length + 7) {
   throw new Error("Release completion receipt has an unexpected number of lines");
 }
 if (receiptLines[0] !== `version=${version}`) {
@@ -73,8 +75,14 @@ if (receiptLines[5] !== `oci_linux_arm64_digest=${expectedArm64Digest}`) {
   throw new Error("Release completion receipt arm64 digest does not match");
 }
 
+const releaseBody = await readFile(path.resolve(releaseBodyPath));
+const releaseBodySha256 = createHash("sha256").update(releaseBody).digest("hex");
+if (receiptLines[6] !== `release_body_sha256=${releaseBodySha256}`) {
+  throw new Error("Release body SHA-256 does not match the completion receipt");
+}
+
 const recordedDigests = new Map();
-for (const line of receiptLines.slice(6)) {
+for (const line of receiptLines.slice(7)) {
   const match = /^([0-9a-f]{64})  (.+)$/u.exec(line);
   if (!match) throw new Error("Release completion receipt contains an invalid SHA-256 line");
 

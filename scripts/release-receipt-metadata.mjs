@@ -14,6 +14,7 @@ const fields = [
   ["oci_index_digest", /^sha256:[0-9a-f]{64}$/u],
   ["oci_linux_amd64_digest", /^sha256:[0-9a-f]{64}$/u],
   ["oci_linux_arm64_digest", /^sha256:[0-9a-f]{64}$/u],
+  ["release_body_sha256", /^[0-9a-f]{64}$/u],
 ];
 const metadata = {};
 for (const [index, [key, pattern]] of fields.entries()) {

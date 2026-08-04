@@ -23,24 +23,25 @@ GHCR `ghcr.io/xwordsman/nextbuf` 使用以下合同：
 | `edge` | 可移动 | 最近一个仍是远程 HEAD、并通过完整主线检查和 amd64/arm64 镜像冒烟的 `main` 提交 | 预发布验证，不作为生产支持版本 |
 | `sha-<完整提交>` | 不可变 | 与同一次 `edge` 候选完全相同的多架构 manifest | 精确主线身份、复现和受控测试 |
 | `<MAJOR.MINOR.PATCH>` 或合法预发布版本 | 不可变 | 与 `package.json` 完全匹配的 `v<版本>` 标签 | 精确 Release 身份；是否受支持由 `SUPPORT.md` 决定 |
-| `ci-<运行>-<提交>-<架构>` | 可回收 | 工作流内部单架构候选；同一工作流重跑复用 | 非部署 API |
+| `sha-<完整提交>-<架构>` | 不可变 | 主线首次构建并完成该架构冒烟的带证明源索引；演练和标签复用 | 工作流内部来源，非部署 API |
+| `ci-<运行>-<次数>-<提交>-release-index` | 可回收 | 演练/标签发布前对已验收 `sha-*` 的临时只读副本 | 非部署 API |
 
 `latest` 不是“最新提交”，而是最新稳定补丁。`v0.x`、`v1.0.0-rc.N` 等预发布标签可以生成不可变 SemVer 镜像和标记为 prerelease 的 GitHub Release，但不得更新 `latest`。
 
 ### 2. 主分支发布顺序
 
-每次 `main` push 必须先通过格式、Lint、类型、单元测试、真实服务集成、生产构建、E2E、归档启动及两个原生架构的镜像冒烟。amd64 还必须从当前公开升级基线运行真实 `nextbufctl upgrade --verify-objects`，在候选 Web/Worker 启动前完成停写比较和附件对象校验。空卷恢复与依赖故障注入仍留在定时、手动和标签深度运行，这些通道及正式标签重跑同一升级。每个架构在冒烟前固定实际拉取的运行时平台 Digest，成功后上传同时绑定候选顶层 Digest、commit、版本和平台的短期 Actions artifact。随后工作流确认该提交仍是远程 `main` HEAD，才从这两个内容地址创建：
+每次 `main` push 必须先通过格式、Lint、类型、单元测试、真实服务集成、生产构建、E2E、归档启动及两个原生架构的镜像冒烟。amd64 还必须从当前公开升级基线运行真实 `nextbufctl upgrade --verify-objects`，在候选 Web/Worker 启动前完成停写比较和附件对象校验。空卷恢复与依赖故障注入仍留在定时、手动和标签深度运行，这些通道及正式标签重跑同一升级。主线为每个架构只创建一次不可变 `sha-<完整提交>-<架构>` 源索引，包含运行时 manifest、一个 SPDX SBOM layer 和一个 SLSA provenance layer；在冒烟前固定实际拉取的运行时 Digest，成功后上传同时绑定源索引 Digest、commit、版本和平台的短期 Actions artifact。随后工作流确认该提交仍是远程 `main` HEAD，才从这两个内容地址创建并完整验证：
 
 1. 不可变 `sha-<完整提交>`；
 2. 指向同一 manifest 的可移动 `edge`。
 
-过期、失败或取消的运行不得移动 `edge`，`main` 在任何情况下都不得写入 `latest`。部署者使用 `edge` 时必须记录完整 commit 与 Digest；普通容器重启不会主动拉取新内容。
+完整验证包括精确的 amd64/arm64 运行时成员、两个 attestation 描述符、layer predicate annotation 以及 OCI 运行时引用关系。过期、失败或取消的运行不得移动 `edge`，`main` 在任何情况下都不得写入 `latest`。部署者使用 `edge` 时必须记录完整 commit 与 Digest；普通容器重启不会主动拉取新内容。
 
 ### 3. 标签发布与稳定提升
 
-`v*` 标签必须与源码版本完全匹配，并从同一次已测试的 amd64/arm64 候选顶层 Digest 创建不可变 SemVer manifest。发布前分别证明每个顶层候选只包含 artifact 记录的运行时平台，并带有指回该平台的 attestation；合并或复用后再精确比较运行时成员、全部描述符 Digest 和 attestation 关联，避免只合并运行时 manifest 时丢失 SBOM/provenance。若该 SemVer 已存在，完全一致时按同一发布的幂等重跑复用，不一致时失败，任何情况都不覆盖不可变 SemVer 身份。Registry 查询只有明确返回 `manifest unknown`、`name unknown` 或 `not found` 时才允许创建候选、`sha-*` 或 SemVer 标签；超时、5xx、限流、认证及其他不明确失败必须终止发布，不能按“标签不存在”走覆盖路径。运行时平台等价判断与 Release 回执记录 amd64/arm64 Digest，顶层 index Digest 同时覆盖证明描述符；既有 SemVer 上的证明清单保持不可变。候选标签不包含 Actions 重跑次数；重跑先复用本次工作流已经推送的候选，而不重新生成可能带有不同构建元数据的证明清单，使失败架构可以与另一架构的既有候选重新汇合。同名 Actions artifact 允许覆盖本次工作流自己的临时上传。
+`v*` 标签必须与源码版本完全匹配，并且对应 commit 已存在通过主线门槛的不可变 `sha-<完整提交>`。标签和显式发布演练都复用 `sha-<完整提交>-<架构>`，拉取同一运行时执行镜像、升级和深度冒烟，不重新构建；发布任务先完整验证已验收 `sha-*`，再按其 Digest 创建 run-scoped staging 引用并证明 Digest 完全相同。演练到此停止，不写 SemVer、GitHub Release、完成回执或 `latest`；正式 tag push 才从同一 staging Digest 创建不可变 SemVer，因此 SemVer、人工验收候选和 `sha-*` 的 OCI index Digest 必须相同。若 SemVer 已存在，完全一致时按同一发布的幂等重跑复用，不一致时失败，任何情况都不覆盖不可变身份。Registry 查询只有明确返回 `manifest unknown`、`name unknown` 或 `not found` 时才允许创建候选、`sha-*`、staging 或 SemVer 标签；超时、5xx、限流、认证及其他不明确失败必须终止发布。运行时平台等价判断与 Release 回执记录 amd64/arm64 Digest，顶层 index Digest 同时覆盖证明描述符；既有 SemVer 上的证明清单保持不可变。同名 Actions artifact 只允许覆盖本次工作流自己的临时上传。
 
-GitHub Release 的归档、旁路 SHA-256、SBOM 和其他要求资产全部成功发布后，每个标签自己的完成任务重新解析轻量/注释标签的最终 commit，再上传包含版本、commit、OCI index/amd64/arm64 Digest 和资产哈希的完成回执。标签完成不进入跨标签并发锁，因此另一个标签的调和任务不能替换尚未写完的回执。首次上传后以及后续复用完成状态或提升 `latest` 前，都必须从 GitHub Release 下载完成回执与三项必需资产，并严格核对版本、commit、OCI 身份、全部资产 SHA-256 和旁路归档校验和；首次远端验证失败时立即删除完成回执，使部分或混合资产不能保留“已完成”标记。只有文件名而内容不匹配的 Release 不构成完成证据。只有当前标签的完成回执成功且再次验证通过后，才启动后续稳定通道调和：
+GitHub Release 的归档、旁路 SHA-256、SBOM 和其他要求资产全部成功发布后，每个标签自己的完成任务重新解析轻量/注释标签的最终 commit，基于已验证资产和 OCI 身份重新生成并同步预期 Release 正文，再上传包含版本、commit、OCI index/amd64/arm64 Digest、Release 正文 SHA-256 和资产哈希的完成回执。标签完成不进入跨标签并发锁，因此另一个标签的调和任务不能替换尚未写完的回执。首次上传后以及后续复用完成状态或提升 `latest` 前，都必须从 GitHub Release 下载完成回执与三项必需资产、通过 GitHub API 重新读取实际正文，并严格核对版本、commit、OCI 身份、正文 SHA-256、全部资产 SHA-256 和旁路归档校验和；首次远端验证失败时立即删除完成回执，使部分或混合资产不能保留“已完成”标记。旧格式、伪造正文哈希或只有文件名而内容不匹配的 Release 不构成完成证据。只有当前标签的完成回执成功且再次验证通过后，才启动后续稳定通道调和：
 
 - 版本必须是无预发布后缀、无构建元数据且 `MAJOR >= 1` 的精确 `MAJOR.MINOR.PATCH`；
 - 版本必须是仓库全部非草稿、非预发布且同时具备约定归档、旁路 SHA-256、SBOM 和完成回执的 GitHub Release 中最高稳定 SemVer；只有裸标签、Release 仍失败或资产未完成的高版本不参与选择，较旧 Release 补推或重跑不能使 `latest` 倒退；
