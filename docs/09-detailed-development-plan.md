@@ -458,12 +458,14 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 - 完成首次安装竞态栅栏：PostgreSQL claim 所有权、Better Auth credential 当前密码证明和最终事务共同保证迟到请求不能授予首管、覆盖密码或删除后继 claim，证明过程不创建 Session/Cookie。
 - 完成 Outbox durable completion：Handler、失败解决、`ProcessedJob` 与 `processed_at` 原子提交，处理租约在提交前栅栏；已发布未处理事件可在 Redis 丢失及 replay 后再次丢失时恢复，新最终失败重新等待人工重放。
 - 完成 SMTP 外部副作用栅栏：每次投递持久化 attempt token/generation；只有明确未接受的临时故障自动重试，永久拒绝终结，结果未知持久化为独立状态并要求管理员确认重复风险；replay 同时检查 PostgreSQL 处理租约，失租旧 Worker 的迟到回调不得覆盖新 attempt。
+- 完成宝塔生产迁移门槛：`nextbufctl backup --baota` 核对实际编排、环境、四容器和三类卷，在同一停写窗口导出兼容 `nextbuf-backup-v1` 的数据库、local 附件或 S3 清单、配置与来源镜像身份；受控恢复通过 `--keep-stopped` 在 Web/Worker 启动前隔离域名、SMTP、OAuth、代理和存储 Provider，S3 完整性继续绑定 Provider 快照/版本。
 
 发布门槛：
 
 - 注册、登录、资料、发帖、回复、互动、通知、举报和后台主链路通过。
 - Web/Worker 独立重启不导致已提交数据或关键任务丢失。
 - 从最后一个 Beta 到 v1.0.0 的升级和恢复演练通过。
+- 官方宝塔现网能完整导出并恢复到独立受控 Compose；归档内部/外部校验、来源 image config 身份和 Provider 启动前隔离均通过。
 - 所有必需环境变量、卷、端口和 Provider 都与文档一致。
 - 升级前必须至少保留 1 位可接管管理员：`admin/site`、`active`、邮箱已验证、无注销申请或计划、无有效 suspend/ban，且有密码非空的 `credential` Account；生产实例优先准备 2 位或以上。Doctor 为 0 位连续性失败时不得继续升级。
 - 最终注销、管理员交接、SMTP attempt/结果未知重放、墓碑公开页、认证阻断、setup 密码竞态、Outbox `processed_at` 回填、Redis/replay 恢复及升级后的连续性诊断均须通过真实 PostgreSQL/Redis/Mailpit 验证。`v1.0.0` 在这些候选验证和 Release 资产完成前仍是候选版本，不记为已发布证据。

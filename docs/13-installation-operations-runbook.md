@@ -44,7 +44,8 @@ nextbuf-release/
 ./nextbufctl logs [web|worker|postgres|redis]
 ./nextbufctl doctor
 ./nextbufctl backup
-./nextbufctl restore <backup-file>
+./nextbufctl backup --baota <deployed-compose.baota.yml>
+./nextbufctl restore <backup-file> [--keep-stopped]
 ./nextbufctl upgrade <version>
 ```
 
@@ -55,12 +56,15 @@ nextbuf-release/
 - 64 位 Linux，amd64 或 arm64。
 - Docker Engine 和 Compose v2。
 - util-linux `flock`（多数发行版默认安装），用于串行化启动、停止、备份、恢复和升级。
+- `tar`、`sha256sum` 和至少能容纳数据库与附件两倍大小再加 100 MiB 余量的备份目录。
 - 一个解析到服务器的域名。
 - 可用的 80/443 端口或已有反向代理。
 - SMTP 服务；正式开放注册前必须验证邮件。
 - 足够的磁盘用于 PostgreSQL、附件、日志和备份。
 
 最低 2 vCPU、4 GiB RAM 和 40 GiB 可用 SSD；公开站点建议 4 vCPU、8 GiB RAM 起步。完整档位、连接计算和图片处理边界见[部署与运维](./05-deployment-operations.md#15-最低资源与容量)。
+
+预标签候选验收还需要 Git、curl、Node.js 24 和 Docker Buildx（`docker buildx version`）；它们用于核对冻结 commit、等待 loopback Registry、按 Digest 复制完整 OCI index和验证双架构/attestation，不是普通稳定版安装依赖。开始验收前逐项执行 `git --version`、`curl --version`、`node --version`、`docker buildx version` 和 `docker compose version`，并确认 Node 主版本为 24；任一命令失败都先补齐工具，不能在复制镜像中途临时改流程。
 
 ## 3. Docker 首次安装
 
@@ -240,9 +244,53 @@ nextbuf-redis     Redis
 
 ### 4.3 宝塔升级
 
-`compose.baota.yml` 固定使用默认稳定 `latest` 通道，后续无需修改版本号。升级前先确认 GitHub Release 已完整发布、阅读目标版本的迁移与回退说明，并通过宝塔或外部备份方案备份 PostgreSQL 和附件卷；然后在面板拉取 `ghcr.io/xwordsman/nextbuf:latest` 并重建 Web/Worker，Web 会在进入健康状态前执行幂等迁移和 preflight。
+`compose.baota.yml` 固定使用默认稳定 `latest` 通道，后续无需修改版本号。升级前先确认 GitHub Release 已完整发布、阅读目标版本的迁移与回退说明，并使用同版本 Release 中的 `nextbufctl backup --baota` 生成第 4.4 节定义的完整归档；不能把仅有 PostgreSQL、仅有面板卷快照或没有校验清单的文件称为完整 NextBuf 备份。验证归档后，在面板拉取 `ghcr.io/xwordsman/nextbuf:latest` 并重建 Web/Worker，Web 会在进入健康状态前执行幂等迁移和 preflight。
 
 `latest` 只在最新稳定标签的不可变 SemVer 镜像和 GitHub Release 资产全部成功后更新，不会让已经运行的容器自行变化；`v0.x` 与带后缀的预发布标签不会移动它。每次宝塔升级后记录精确 SemVer、镜像 Digest 与 `/api/version` 返回的 commit；若需要精确回滚点、原子备份和恢复校验，改用 `compose.yml + .env + nextbufctl` 受控入口，或临时固定为已记录的正式 SemVer/`sha-<提交>`。数据库迁移成功后不能仅拉取旧镜像回滚，仍遵守第 7 节恢复边界。
+
+### 4.4 宝塔生产导出到受控 Compose
+
+宝塔面板中当前实际使用的编排全文先导出为服务器上的权限 600 文件，例如 `/root/nextbuf-live-compose.yml`。必须是带真实配置、能解析到当前四个固定容器的文件，不是仓库中的占位模板。随后从与当前目标 Release 或冻结候选 commit 匹配的干净目录执行：
+
+```bash
+chmod 600 /root/nextbuf-live-compose.yml
+NEXTBUF_BACKUP_DIR=/root/nextbuf-restricted-backups \
+  ./nextbufctl backup --baota /root/nextbuf-live-compose.yml
+```
+
+该命令只支持官方单实例固定容器名，并执行以下门槛：
+
+1. 实际编排先复制为权限受限的不可变操作快照；后续解析、身份核对和归档只使用同一快照。该快照经 `docker compose config` 解析后必须且只能包含 `nextbuf`、`worker`、`postgres`、`redis` 四个服务，并精确解析到 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis`，四者开始时都健康；额外写进程不会被猜测或静默忽略。
+2. 解析后的 Compose 声明环境必须与运行容器逐项相同；Web/Worker 还必须完整匹配 NextBuf 受管环境（包括 `.env.example` 键和 `NODE_ENV`），而镜像自带的 `PATH`、Node 版本等基础元数据不作为部署漂移。数据库/Redis 的身份与密码合同也必须匹配；数据库和 Redis URL 必须指向该编排中的 `postgres` 与 `redis`，local 存储必须使用 `/app/data/uploads`。Web/Worker 必须共享同一个附件命名卷，PostgreSQL 与 Redis 必须使用带当前 Compose 项目/逻辑卷标签的各自预期挂载点。文件过期、容器被其他编排重建、外部数据库、附件路径或卷归属漂移都会中止。
+3. 从实际应用 image config 读取 SemVer、完整 commit 和构建时间，原样记录 RepoTags/RepoDigests、四个容器 config ID、Compose 项目和卷名。RepoDigest 仍只是原样事实，不能冒充 OCI index 证明。
+4. 先停止 Worker，再停止 Web，并再次证明两者均未运行；随后在同一停写窗口生成 PostgreSQL custom dump 和 local 附件归档/逐对象 SHA-256。S3 模式只记录 Provider 清单，必须另有同一维护窗口的 Bucket 版本/快照身份。
+5. 生成可供受控 `compose.yml` 使用的 `config.env`、源 `compose.baota.yml`、`source-deployment.json`、`manifest.json` 和内部 `SHA256SUMS`，以临时文件原子完成归档，并为归档本身生成 `.sha256`。Compose 与运行容器同时不存在的受管变量在 `config.env` 中继续省略，不从 `.env.example` 重新注入示例值；已删除的 `SETUP_TOKEN` 因而保持删除，未显式配置的选项继续使用同一运行时默认值。`AUTH_SECRET` 及历史密钥中的空格、Tab、`$`、`#`、反斜线和单双引号按 Compose dotenv 语义转义并无损保留；换行、NUL 和其他不受支持的控制字节会使导出失败。
+6. 成功或失败后只恢复原本由命令停止的 Web/Worker；成功返回前两者必须重新健康。收到中断信号时，工具会先等待可能仍在 Docker daemon 中执行的 stop，再进行有界启动重试；若最终仍未恢复，会明确报告容器状态并以失败退出。若恢复失败，完整归档仍保留，但必须立即处理线上服务状态。helper 文件通过临时容器的 `docker cp` 交换，不依赖宿主 UID/GID bind mount 或 SELinux 标签。
+
+归档及其 `.sha256` 必须复制到异机加密受限目录。先执行：
+
+```bash
+cd /root/nextbuf-restricted-backups
+sha256sum -c nextbuf-<version>-<time>-<pid>.tar.gz.sha256
+tar -tzf nextbuf-<version>-<time>-<pid>.tar.gz
+```
+
+正式 `v1.0.0` 验收不在宝塔现网直接升级。把归档复制到独立主机/daemon 的受控发布目录，持续设置专用项目名，然后恢复但保持写进程停止：
+
+```bash
+export COMPOSE_PROJECT_NAME=nextbuf-v1-production-copy
+./nextbufctl restore /restricted/nextbuf-<version>-<time>-<pid>.tar.gz \
+  --empty-install --restore-config --keep-stopped
+```
+
+此时 PostgreSQL 数据库与附件已恢复，空 Redis 已重建并启动，幂等 setup 已完成，Web/Worker 尚未启动。立即编辑恢复出的 `.env`：
+
+- `APP_URL`、`WEB_PORT`、`AUTH_TRUSTED_ORIGINS` 和 `AUTH_TRUSTED_PROXIES` 指向隔离域名/代理。
+- SMTP 指向 Mailpit 或专用验收收件域，GitHub OAuth 清空或改为验收应用；不能保留生产邮件投递能力。
+- local 存储继续使用恢复卷；S3 改为从同一快照复制出的隔离 Endpoint/Bucket/凭据，并禁止写生产 Bucket。
+- 保留 `AUTH_SECRET`、`TOPIC_VIEW_PREVIOUS_AUTH_SECRETS`、`MAIL_PAYLOAD_KEY`、来源 `NEXTBUF_VERSION` 以及当前恢复卷对应的 PostgreSQL/Redis 凭据。密钥连续性是登录、Session、邮件载荷和验收 HMAC 的一部分；恢复器通过 Compose 解码后的值校验连续性，不比较 dotenv 引号的表面写法。
+
+保存隔离 `.env` 的 SHA-256 到受限证据目录，执行 `docker compose --env-file .env -f compose.yml config --quiet`，确认网络出口和 Provider 已隔离后才运行 `./nextbufctl start`。先核对来源版本、登录、UID、内容、附件和 Worker，再按公开路径执行 `0.13.8 -> 0.13.10`；中间版本重新完整备份后，才进入本手册的候选 Registry 和 `0.13.10 -> 1.0.0` 流程。原始宝塔归档保持不变，不用编辑归档内文件来伪造隔离配置。
 
 ## 5. 反向代理合同
 
@@ -298,13 +346,17 @@ docker compose restart worker
 - Compose、应用版本和迁移版本信息。
 - 备份元数据和校验和。
 
-Redis 不作为主要数据备份。Outbox 保证关键任务可以从 PostgreSQL 恢复投递：已发布、`processed_at` 为空且没有未重放最终失败的事件在默认 5 分钟等待窗口后，由每分钟 Worker 维护任务以稳定 Job ID 自动重新确认入队；已完成历史不再参与扫描，已执行旧重放记录不阻断后续 Redis 丢失恢复，新最终失败则重新阻断。恢复 Redis 或清空队列后无需手工修改 `published_at`，应保持 Worker 运行并观察 Outbox、Queue 和失败任务积压下降。
+Redis 不作为主要数据备份。Outbox 保证关键任务可以从 PostgreSQL 恢复投递：已发布、`processed_at` 为空且没有未重放最终失败的事件在默认 5 分钟等待窗口后，由每分钟 Worker 维护任务以稳定 Job ID 自动重新确认入队；已完成历史不再参与扫描，已执行旧重放记录不阻断后续 Redis 丢失恢复，新最终失败则重新阻断。重建空 Redis 或清空队列后无需手工修改 `published_at`，应保持 Worker 运行并观察 Outbox、Queue 和失败任务积压下降。
 
 ### 7.2 执行
 
 ```bash
 ./nextbufctl backup
 # 输出 backups/nextbuf-<version>-<UTC timestamp>-<process id>.tar.gz
+
+# 官方宝塔四容器入口；参数必须是面板当前实际使用的完整编排
+./nextbufctl backup --baota /root/nextbuf-live-compose.yml
+# 额外输出同名 .tar.gz.sha256
 ```
 
 `nextbufctl` 使用发布目录中的 `.nextbufctl.lock` 获取非阻塞内核文件锁；另一个启动、停止、备份、恢复或升级仍在运行时，新操作会立即退出，不会与数据库转储或附件归档交错。锁随进程退出自动释放，锁文件本身保留是正常现象。
@@ -319,6 +371,8 @@ Redis 不作为主要数据备份。Outbox 保证关键任务可以从 PostgreSQ
 6. 临时文件失败时清理，不把半成品标成成功。
 
 归档内 `config.env` 包含认证、邮件、数据库和对象存储秘密，文件权限为 600，但仍应在复制到异机前再次加密。S3 模式的工具只记录 Bucket/Endpoint 清单，`attachmentsIncluded=false`；必须另外启用 Bucket 版本控制、Provider 快照或对象复制，不能把该归档单独视为完整附件备份。
+
+宝塔导出生成相同的 `nextbuf-backup-v1` 主格式，并额外包含源编排与 `source-deployment.json`。后者记录实际版本、commit、image config ID、RepoDigest 原样值、Compose 项目、四个容器及三个命名卷，不包含环境变量秘密；真实配置在同一加密归档的 `config.env` 与 `source-compose.baota.yml` 中。源编排与运行环境、容器/卷归属任一不一致时不会生成归档。
 
 生产建议把备份复制到与应用服务器不同的存储，并设置保留策略。只在同一磁盘保留备份不能应对磁盘损坏。
 
@@ -350,15 +404,24 @@ Redis 不作为主要数据备份。Outbox 保证关键任务可以从 PostgreSQ
 ./nextbufctl restore /path/to/backup.tar.gz --empty-install --restore-config
 ```
 
+从生产备份建立隔离副本时必须增加：
+
+```bash
+./nextbufctl restore /path/to/backup.tar.gz \
+  --empty-install --restore-config --keep-stopped
+```
+
+`--keep-stopped` 在恢复 PostgreSQL 与附件、重建并启动空 Redis、完成幂等 setup 后返回，但不创建/启动 Web 与 Worker。它用于先替换生产 `APP_URL`、SMTP、OAuth、代理和 S3 Provider，再由运维显式执行 `./nextbufctl start`；不带该参数的普通灾难恢复继续在恢复后等待 Web/Worker 健康。
+
 该命令必须人工输入 `YES`；自动化测试只可在隔离项目中使用 `NEXTBUFCTL_ASSUME_YES=1`。默认不覆盖当前 `.env`，并要求 `AUTH_SECRET`、`TOPIC_VIEW_PREVIOUS_AUTH_SECRETS`、`MAIL_PAYLOAD_KEY`、存储 driver（以及 S3 Bucket）与备份一致；旧备份缺少历史列表时按 `[]` 解释。只有与 `--empty-install` 同时使用的 `--restore-config` 才恢复全部配置和密钥，避免现有 PostgreSQL 卷密码与环境文件分叉。标准恢复流程：
 
 1. 在隔离或维护状态停止 Web 和 Worker。
 2. 备份当前残留状态，以便误操作回退。
 3. 恢复 PostgreSQL。
-4. 恢复附件和正确的 `ENCRYPTION_KEY`。
+4. 恢复 local 附件或同窗口 S3 Provider 快照，并保持 `AUTH_SECRET`、`TOPIC_VIEW_PREVIOUS_AUTH_SECRETS`、`MAIL_PAYLOAD_KEY` 与存储配置连续。
 5. 使用与备份兼容的精确应用版本启动；`NEXTBUF_VERSION` 不匹配时 preflight 拒绝。
 6. 必要时按版本顺序执行迁移。
-7. 检查登录、主题、附件、邮件和 Worker。
+7. 隔离恢复先确认 Provider 已改到隔离资源，再启动 Web/Worker；检查登录、主题、附件、邮件和 Worker。
 
 禁止把较新数据库直接交给不兼容的旧应用镜像启动。
 
@@ -402,6 +465,140 @@ Redis 不作为主要数据备份。Outbox 保证关键任务可以从 PostgreSQ
 
 `--verify-objects` 会逐个读取数据库引用的 local/S3 原始附件，核对数据库 SHA-256，并确认派生对象存在；社区较大时会延长停写窗口。普通升级仍生成数据库不变量快照，但省略逐对象 I/O。正式版真实数据副本验收必须启用该选项。
 
+#### 未公开 SemVer 候选的隔离 Registry
+
+正式 SemVer 标签创建前，远端 Registry 中还没有 `1.0.0`。只在 Docker 本地创建同名 tag 不构成可执行或可复核的候选：`nextbufctl start`、`acceptance capture/compare` 和 `upgrade` 都会先执行 `docker compose pull`，远端标签缺失时会失败；忽略拉取失败还会失去不可变 Digest 约束。
+
+在已经完成 `0.13.8 -> 0.13.10`、准备执行候选验收的隔离主机上，启动只绑定 loopback 的临时 Registry，把当前 `0.13.10` 基线和已冻结候选的完整 OCI index 都从记录的 Digest 复制进去。必须复制当前基线，因为 `nextbufctl upgrade` 在切换目标版本前会用当前版本的 setup 容器创建备份。命令从冻结候选 commit 的干净仓库检出根目录执行，以使用同一 commit 的 OCI 身份验证脚本；正式 Release 的精简归档不包含该维护脚本。仓库只提供验证器，镜像仍必须来自下面记录的 Digest，不能从检出源码构建：
+
+```bash
+set -eu
+
+SOURCE_IMAGE=ghcr.io/xwordsman/nextbuf
+LOCAL_REGISTRY=127.0.0.1:5510
+LOCAL_IMAGE=$LOCAL_REGISTRY/nextbuf
+REGISTRY_CONTAINER=nextbuf-v1-acceptance-registry
+CANDIDATE_COMMIT=CANDIDATE_FULL_GIT_COMMIT
+
+BASELINE_VERSION=0.13.10
+BASELINE_INDEX_DIGEST=sha256:BASELINE_INDEX_DIGEST
+CANDIDATE_VERSION=1.0.0
+CANDIDATE_INDEX_DIGEST=sha256:CANDIDATE_INDEX_DIGEST
+CANDIDATE_AMD64_DIGEST=sha256:CANDIDATE_AMD64_DIGEST
+CANDIDATE_ARM64_DIGEST=sha256:CANDIDATE_ARM64_DIGEST
+
+[ "$(git rev-parse HEAD)" = "$CANDIDATE_COMMIT" ]
+[ -z "$(git status --porcelain)" ]
+
+docker run -d \
+  --name "$REGISTRY_CONTAINER" \
+  --restart unless-stopped \
+  -p 127.0.0.1:5510:5000 \
+  registry:2.8.3
+
+attempt=0
+until curl --fail --silent "http://$LOCAL_REGISTRY/v2/" >/dev/null; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 60 ] || {
+    docker logs "$REGISTRY_CONTAINER"
+    exit 1
+  }
+  sleep 1
+done
+
+copy_exact_index() {
+  version=$1
+  expected_digest=$2
+  source_actual=$(docker buildx imagetools inspect \
+    "$SOURCE_IMAGE@$expected_digest" --format '{{.Manifest.Digest}}')
+  [ "$source_actual" = "$expected_digest" ] || {
+    printf 'source digest mismatch for %s: %s\n' "$version" "$source_actual" >&2
+    return 1
+  }
+
+  docker buildx imagetools create \
+    --tag "$LOCAL_IMAGE:$version" \
+    "$SOURCE_IMAGE@$expected_digest"
+
+  local_actual=$(docker buildx imagetools inspect \
+    "$LOCAL_IMAGE:$version" --format '{{.Manifest.Digest}}')
+  [ "$local_actual" = "$expected_digest" ] || {
+    printf 'local digest mismatch for %s: %s\n' "$version" "$local_actual" >&2
+    return 1
+  }
+}
+
+copy_exact_index "$BASELINE_VERSION" "$BASELINE_INDEX_DIGEST"
+copy_exact_index "$CANDIDATE_VERSION" "$CANDIDATE_INDEX_DIGEST"
+
+sh scripts/verify-oci-image-identity.sh \
+  "$LOCAL_IMAGE:$CANDIDATE_VERSION" \
+  "$CANDIDATE_INDEX_DIGEST" \
+  "$CANDIDATE_AMD64_DIGEST" \
+  "$CANDIDATE_ARM64_DIGEST"
+
+docker pull "$LOCAL_IMAGE:$BASELINE_VERSION"
+docker pull "$LOCAL_IMAGE:$CANDIDATE_VERSION"
+
+SERVER_ARCH=$(docker version --format '{{.Server.Arch}}')
+case "$SERVER_ARCH" in
+  amd64) CANDIDATE_PLATFORM_DIGEST=$CANDIDATE_AMD64_DIGEST ;;
+  arm64) CANDIDATE_PLATFORM_DIGEST=$CANDIDATE_ARM64_DIGEST ;;
+  *) printf 'unsupported acceptance architecture: %s\n' "$SERVER_ARCH" >&2; exit 1 ;;
+esac
+CANDIDATE_CONFIG_DIGEST=$(docker buildx imagetools inspect \
+  "$LOCAL_IMAGE@$CANDIDATE_PLATFORM_DIGEST" --raw |
+  node -e 'const fs=require("node:fs"); const value=JSON.parse(fs.readFileSync(0,"utf8")); if (!value.config?.digest) process.exit(1); process.stdout.write(value.config.digest)')
+LOCAL_CONFIG_ID=$(docker image inspect \
+  --format '{{.Id}}' "$LOCAL_IMAGE:$CANDIDATE_VERSION")
+[ "$LOCAL_CONFIG_ID" = "$CANDIDATE_CONFIG_DIGEST" ]
+```
+
+最后两次 pull 必须都成功；它们证明当前 Docker Engine 可以从 loopback Registry 取得本机架构的完整配置和层，而不只是读取顶层 index。复制成功后，在隔离实例 `.env` 中设置：
+
+```dotenv
+NEXTBUF_IMAGE=127.0.0.1:5510/nextbuf
+NEXTBUF_VERSION=0.13.10
+```
+
+全新安装、生产恢复和合成覆盖副本必须使用三个独立工作目录。若它们共享一个 Docker daemon，每个目录在执行任何 `nextbufctl` 或 `docker compose` 命令前都要持续导出各自唯一的项目名，例如：
+
+全新安装目录：
+
+```bash
+export COMPOSE_PROJECT_NAME=nextbuf-v1-fresh
+```
+
+生产恢复目录：
+
+```bash
+export COMPOSE_PROJECT_NAME=nextbuf-v1-production-copy
+```
+
+合成覆盖目录：
+
+```bash
+export COMPOSE_PROJECT_NAME=nextbuf-v1-synthetic
+```
+
+三个值分别在各自工作目录使用，不能在同一目录轮换或同一个 Shell 中连续执行。`COMPOSE_PROJECT_NAME` 的优先级高于 Compose 文件内的 `name: nextbuf`，并由 `nextbufctl` 继承；每次重新登录或自动化执行都必须恢复同一个值。开始验收前用 `docker compose --env-file .env -f compose.yml config | sed -n 's/^name: //p'` 核对项目名，并分别用 `docker volume ls --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME"` 与 `docker network ls --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME"` 保存隔离证据。任何两个副本共享项目标签、命名卷或网络时立即停止。宝塔模板固定 `container_name`，其候选验收必须放在没有同名容器的独立 Docker daemon/主机，不能与上述副本或线上实例共用 daemon。
+
+先运行 `docker compose --env-file .env config --images`，确认五个应用入口都解析到本地 Registry，再正常执行：
+
+```bash
+./nextbufctl upgrade 1.0.0 --verify-objects
+
+for service in web worker; do
+  container_id=$(docker compose --env-file .env -f compose.yml ps -q "$service")
+  running_config_id=$(docker inspect --format '{{.Image}}' "$container_id")
+  [ "$running_config_id" = "$CANDIDATE_CONFIG_DIGEST" ]
+done
+```
+
+全新安装候选时使用同一个本地 Registry，但新实例的 `NEXTBUF_VERSION` 直接设为 `1.0.0`。实际运行容器的证据应同时记录：原候选 OCI index Digest、当前架构 manifest Digest、本地 Registry 中保持一致的 index Digest，以及容器 image config ID；不能把重标记后的单个 `RepoDigest` 当成完整候选身份。
+
+临时 Registry 必须保留到全新安装、升级、失败恢复和证据重采集全部结束。若 `restore --restore-config` 恢复了升级工具生成的备份，其 `config.env` 已包含本地 `NEXTBUF_IMAGE`；若恢复的是更早的生产备份，应先按公开版本路径恢复并升级到 `0.13.10`，再切换本地 Registry、重新备份并开始候选升级。全部验收结束后才执行 `docker rm -f nextbuf-v1-acceptance-registry`。
+
 需要在已经停止 Web/Worker 的隔离实例单独采集或重做比较时：
 
 ```bash
@@ -411,7 +608,7 @@ Redis 不作为主要数据备份。Outbox 保证关键任务可以从 PostgreSQ
   backups/acceptance-1.0.0-<time>-<pid>.json
 ```
 
-`capture` 要求 PostgreSQL 正在运行且 Web/Worker 已停止，避免真实写入被误判为迁移差异。它和 `compare` 都使用目标精确 SemVer 镜像并在 `backups/` 生成权限 600 的 JSON 与 SHA-256；文件不含原始会员资料，但仍会暴露规模、状态计数和跨快照关联摘要，应只放在加密、受限的验收目录，不提交仓库。未公开 SemVer 前验证不可变 `sha-*` 候选时，先按已记录 Digest 拉取该镜像并在隔离主机本地标记为 `NEXTBUF_IMAGE:1.0.0`；不得用另一次构建冒充候选。
+`capture` 要求 PostgreSQL 正在运行且 Web/Worker 已停止，避免真实写入被误判为迁移差异。它和 `compare` 都使用目标精确 SemVer 镜像并在 `backups/` 生成权限 600 的 JSON 与 SHA-256；文件不含原始会员资料，但仍会暴露规模、状态计数和跨快照关联摘要，应只放在加密、受限的验收目录，不提交仓库。未公开 SemVer 前必须使用上面的隔离 Registry 流程，不能只创建本地 tag、跳过 pull 或用另一次构建冒充候选。
 
 PostgreSQL 和 Redis 不因每次应用补丁自动升级主版本。基础服务主版本升级使用独立指南和备份恢复测试。
 

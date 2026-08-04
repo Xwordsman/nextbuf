@@ -113,6 +113,12 @@ env_get() {
   sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1
 }
 
+env_get_file() {
+  key=$1
+  file=$2
+  sed -n "s/^$key=//p" "$file" | tail -n 1
+}
+
 env_set() {
   key=$1
   value=$2
@@ -170,6 +176,30 @@ service_is_running() {
   id=$(compose ps -q "$service" 2>/dev/null || true)
   [ -n "$id" ] || return 1
   [ "$(docker inspect --format '{{.State.Running}}' "$id" 2>/dev/null || true)" = true ]
+}
+
+container_is_running() {
+  [ "$(docker inspect --format '{{.State.Running}}' "$1" 2>/dev/null || true)" = true ]
+}
+
+container_is_healthy() {
+  [ "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}unknown{{end}}' "$1" 2>/dev/null || true)" = healthy ]
+}
+
+wait_for_container() {
+  container=$1
+  timeout=${2:-120}
+  started=$(date +%s)
+  while :; do
+    status=$(docker inspect \
+      --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+      "$container" 2>/dev/null || true)
+    [ "$status" = healthy ] && return 0
+    [ "$status" = exited ] && die "$container exited before becoming healthy"
+    now=$(date +%s)
+    [ $((now - started)) -lt "$timeout" ] || die "timed out waiting for $container"
+    sleep 2
+  done
 }
 
 resume_app_services() {
@@ -418,6 +448,307 @@ do_acceptance() {
   esac
 }
 
+baota_export_helper() {
+  for candidate in \
+    "$ROOT/scripts/prepare-baota-backup.mjs" \
+    "$ROOT/runtime/scripts/prepare-baota-backup.mjs"; do
+    if [ -f "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  die "missing scripts/prepare-baota-backup.mjs; use the matching source checkout or release archive"
+}
+
+resume_baota_container_after_interrupted_stop() {
+  container=$1
+
+  # A terminated docker client can leave the daemon-side stop in flight. If the
+  # container still looks running, wait through the configured stop timeout
+  # before deciding that it never stopped.
+  if container_is_running "$container"; then
+    settle_attempt=0
+    while [ "$settle_attempt" -lt 50 ] && container_is_running "$container"; do
+      settle_attempt=$((settle_attempt + 1))
+      sleep 1
+    done
+    if container_is_running "$container" && container_is_healthy "$container"; then return 0; fi
+  fi
+
+  start_attempt=0
+  while [ "$start_attempt" -lt 90 ]; do
+    start_attempt=$((start_attempt + 1))
+    docker start "$container" >/dev/null 2>&1 || true
+    if container_is_running "$container" && container_is_healthy "$container"; then return 0; fi
+    sleep 2
+  done
+
+  state=$(docker inspect \
+    --format '{{if .State.Health}}{{.State.Status}}/{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+    "$container" 2>/dev/null || printf 'missing')
+  printf 'nextbufctl: failed to restore %s after interrupted BaoTa backup (state: %s)\n' \
+    "$container" "$state" >&2
+  return 1
+}
+
+resume_baota_services_best_effort() {
+  failed=0
+  if [ "${baota_web_stopped:-0}" = 1 ]; then
+    resume_baota_container_after_interrupted_stop nextbuf || failed=1
+  fi
+  if [ "${baota_worker_stopped:-0}" = 1 ]; then
+    resume_baota_container_after_interrupted_stop nextbuf-worker || failed=1
+  fi
+  return "$failed"
+}
+
+resume_baota_services() {
+  if [ "$baota_web_stopped" = 1 ]; then
+    docker start nextbuf >/dev/null
+    wait_for_container nextbuf 180
+    baota_web_stopped=0
+  fi
+  if [ "$baota_worker_stopped" = 1 ]; then
+    docker start nextbuf-worker >/dev/null
+    wait_for_container nextbuf-worker 180
+    baota_worker_stopped=0
+  fi
+}
+
+do_baota_backup() {
+  source_compose=${1:-}
+  [ "$#" -eq 1 ] && [ -n "$source_compose" ] ||
+    die "usage: ./nextbufctl backup --baota <deployed-compose.baota.yml>"
+  [ -f "$source_compose" ] || die "BaoTa Compose file not found: $source_compose"
+  [ -f "$ROOT/compose.yml" ] || die "missing $ROOT/compose.yml"
+  [ -f "$ROOT/.env.example" ] || die "missing $ROOT/.env.example"
+  require_command tar
+  require_command sha256sum
+  helper=$(baota_export_helper)
+
+  docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required"
+  mkdir -p "$BACKUP_DIR"
+  chmod 700 "$BACKUP_DIR"
+  temp=$(mktemp -d "$BACKUP_DIR/.nextbuf-baota-backup.XXXXXX")
+  partial=
+  archive=
+  checksum_partial=
+  archive_complete=0
+  helper_container=
+  baota_web_stopped=0
+  baota_worker_stopped=0
+  baota_backup_abort() {
+    status=$?
+    [ "$status" -ne 0 ] || status=1
+    trap - EXIT
+    trap '' HUP INT TERM
+    if [ -n "$helper_container" ]; then
+      docker rm -f "$helper_container" >/dev/null 2>&1 ||
+        printf 'nextbufctl: failed to remove temporary BaoTa helper container %s\n' \
+          "$helper_container" >&2
+    fi
+    if ! resume_baota_services_best_effort; then status=1; fi
+    rm -rf "$temp"
+    if [ -n "$partial" ]; then rm -f "$partial"; fi
+    if [ -n "$checksum_partial" ]; then rm -f "$checksum_partial"; fi
+    if [ "$archive_complete" != 1 ] && [ -n "$archive" ]; then
+      rm -f "$archive" "$archive.sha256"
+    fi
+    exit "$status"
+  }
+  trap baota_backup_abort EXIT HUP INT TERM
+
+  source_compose_snapshot="$temp/source-compose.baota.yml"
+  cp "$source_compose" "$source_compose_snapshot"
+  chmod 600 "$source_compose_snapshot"
+  docker compose -f "$source_compose_snapshot" config --quiet
+  for mapping in \
+    nextbuf:nextbuf \
+    worker:nextbuf-worker \
+    postgres:nextbuf-postgres \
+    redis:nextbuf-redis; do
+    service=${mapping%%:*}
+    container=${mapping#*:}
+    expected_id=$(docker inspect --format '{{.Id}}' "$container" 2>/dev/null || true)
+    actual_id=$(docker compose -f "$source_compose_snapshot" ps -q "$service" 2>/dev/null || true)
+    [ -n "$expected_id" ] && [ "$actual_id" = "$expected_id" ] ||
+      die "$source_compose does not resolve service $service to running container $container"
+    health=$(docker inspect \
+      --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+      "$container" 2>/dev/null || true)
+    [ "$health" = healthy ] || die "$container must be healthy before a BaoTa backup (current: $health)"
+  done
+
+  app_image_id=$(docker inspect --format '{{.Image}}' nextbuf)
+  printf '%s\n' "$app_image_id" | grep -Eq '^sha256:[0-9a-f]{64}$' ||
+    die "running NextBuf container has an invalid image config ID: $app_image_id"
+
+  docker compose -f "$source_compose_snapshot" config --format json \
+    >"$temp/source-compose.rendered.json"
+  docker inspect nextbuf nextbuf-worker nextbuf-postgres nextbuf-redis \
+    >"$temp/source-containers.json"
+  volume_names_raw=$(docker inspect \
+    --format '{{range .Mounts}}{{if eq .Type "volume"}}{{println .Name}}{{end}}{{end}}' \
+    nextbuf nextbuf-worker nextbuf-postgres nextbuf-redis)
+  printf '%s\n' "$volume_names_raw" | sed '/^$/d' >"$temp/source-volume-names"
+  LC_ALL=C sort -u "$temp/source-volume-names" >"$temp/source-volume-names.sorted"
+  volume_names=$(cat "$temp/source-volume-names.sorted")
+  rm -f "$temp/source-volume-names" "$temp/source-volume-names.sorted"
+  # Docker volume names cannot contain whitespace, so positional arguments preserve each name.
+  # shellcheck disable=SC2086
+  set -- $volume_names
+  [ "$#" -eq 3 ] || die "BaoTa deployment must use exactly three named volumes (found: $#)"
+  docker volume inspect "$@" >"$temp/source-volumes.json"
+  docker image inspect "$app_image_id" >"$temp/source-image.json"
+  helper_container=$(docker create \
+    --user 0:0 \
+    --entrypoint node \
+    "$app_image_id" \
+    /tmp/prepare-baota-backup.mjs \
+    /tmp/source-compose.rendered.json \
+    /tmp/source-containers.json \
+    /tmp/source-volumes.json \
+    /tmp/source-image.json \
+    /tmp/.env.example \
+    /tmp/config.env \
+    /tmp/source-deployment.json)
+  docker cp "$helper" "$helper_container:/tmp/prepare-baota-backup.mjs"
+  docker cp "$ROOT/.env.example" "$helper_container:/tmp/.env.example"
+  docker cp "$temp/source-compose.rendered.json" \
+    "$helper_container:/tmp/source-compose.rendered.json"
+  docker cp "$temp/source-containers.json" "$helper_container:/tmp/source-containers.json"
+  docker cp "$temp/source-volumes.json" "$helper_container:/tmp/source-volumes.json"
+  docker cp "$temp/source-image.json" "$helper_container:/tmp/source-image.json"
+  docker start --attach "$helper_container"
+  docker cp "$helper_container:/tmp/config.env" "$temp/config.env"
+  docker cp "$helper_container:/tmp/source-deployment.json" "$temp/source-deployment.json"
+  docker rm "$helper_container" >/dev/null
+  helper_container=
+  rm -f \
+    "$temp/source-compose.rendered.json" \
+    "$temp/source-containers.json" \
+    "$temp/source-volumes.json" \
+    "$temp/source-image.json"
+  cp "$ROOT/compose.yml" "$temp/compose.yml"
+  chmod 600 \
+    "$temp/config.env" \
+    "$temp/source-deployment.json" \
+    "$temp/source-compose.baota.yml" \
+    "$temp/compose.yml"
+
+  NEXTBUF_ENV_FILE="$temp/config.env" docker compose \
+    --env-file "$temp/config.env" -f "$ROOT/compose.yml" config --quiet
+  version=$(env_get_file NEXTBUF_VERSION "$temp/config.env")
+  is_exact_semver "$version" || die "BaoTa image reports an invalid application version: $version"
+
+  database_kb_raw=$(docker exec nextbuf-postgres sh -ec \
+    'exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT CEIL(pg_database_size(current_database()) / 1024.0)::bigint"')
+  database_kb=$(printf '%s' "$database_kb_raw" | tr -d '\r')
+  printf '%s\n' "$database_kb" | grep -Eq '^[0-9]+$' ||
+    die "PostgreSQL returned an invalid database size: $database_kb"
+  storage_driver=$(env_get_file STORAGE_DRIVER "$temp/config.env")
+  if [ "$storage_driver" = local ]; then
+    uploads_usage=$(docker run --rm --volumes-from nextbuf --entrypoint sh "$app_image_id" \
+      -ec 'exec du -sk /app/data/uploads')
+    uploads_kb=$(printf '%s\n' "$uploads_usage" | awk 'NR == 1 { print $1 }')
+    printf '%s\n' "$uploads_kb" | grep -Eq '^[0-9]+$' ||
+      die "local storage returned an invalid size: $uploads_kb"
+  else
+    uploads_kb=0
+  fi
+  disk_usage=$(df -Pk "$BACKUP_DIR")
+  available_kb=$(printf '%s\n' "$disk_usage" | awk 'NR == 2 { print $4 }')
+  printf '%s\n' "$available_kb" | grep -Eq '^[0-9]+$' ||
+    die "filesystem returned an invalid free-space value: $available_kb"
+  required_kb=$(((database_kb + uploads_kb) * 2 + 102400))
+  [ "$available_kb" -gt "$required_kb" ] ||
+    die "insufficient free space for BaoTa backup: need at least ${required_kb} KiB"
+
+  info "stopping BaoTa Worker and Web to create a database/attachment-consistent backup"
+  baota_worker_stopped=1
+  if docker stop --time 45 nextbuf-worker >/dev/null; then
+    :
+  else
+    die "failed to stop nextbuf-worker"
+  fi
+  baota_web_stopped=1
+  if docker stop --time 30 nextbuf >/dev/null; then
+    :
+  else
+    die "failed to stop nextbuf"
+  fi
+  if container_is_running nextbuf || container_is_running nextbuf-worker; then
+    die "BaoTa Web or Worker is still running; consistency backup aborted"
+  fi
+
+  info "creating BaoTa PostgreSQL dump"
+  docker exec nextbuf-postgres sh -ec \
+    'exec pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --no-owner --no-privileges' \
+    >"$temp/database.dump"
+  docker exec -i nextbuf-postgres sh -ec 'exec pg_restore --list' \
+    <"$temp/database.dump" >"$temp/database.list"
+  [ -s "$temp/database.list" ] || die "PostgreSQL dump validation produced an empty object list"
+
+  if [ "$storage_driver" = local ]; then
+    docker run --rm --volumes-from nextbuf --entrypoint sh "$app_image_id" \
+      -ec 'tar -C /app/data/uploads -czf - .' >"$temp/uploads.tar.gz"
+    tar -tzf "$temp/uploads.tar.gz" >"$temp/uploads.list"
+    docker run --rm --volumes-from nextbuf --entrypoint sh "$app_image_id" \
+      -ec 'cd /app/data/uploads; find . -type f -print0 >/tmp/nextbuf-upload-files; LC_ALL=C sort -z /tmp/nextbuf-upload-files >/tmp/nextbuf-upload-files.sorted; xargs -0 -r sha256sum </tmp/nextbuf-upload-files.sorted' \
+      >"$temp/uploads.SHA256SUMS"
+    attachments=true
+    attachment_files="uploads.tar.gz uploads.list uploads.SHA256SUMS"
+  else
+    printf 'driver=s3\nbucket=%s\nendpoint=%s\n' \
+      "$(env_get_file S3_BUCKET "$temp/config.env")" \
+      "$(env_get_file S3_ENDPOINT "$temp/config.env")" >"$temp/storage-s3.txt"
+    attachments=false
+    attachment_files=storage-s3.txt
+  fi
+
+  if container_is_running nextbuf || container_is_running nextbuf-worker; then
+    die "BaoTa Web or Worker restarted during backup; consistency cannot be proven"
+  fi
+  postgres_version_raw=$(docker exec nextbuf-postgres sh -ec \
+    'exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SHOW server_version"')
+  postgres_version=$(printf '%s' "$postgres_version_raw" | tr -d '\r')
+  printf '%s\n' "$postgres_version" | grep -Eq '^[0-9A-Za-z._+ -]+$' ||
+    die "PostgreSQL returned an invalid server version: $postgres_version"
+  migration_raw=$(docker exec nextbuf-postgres sh -ec \
+    'exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY finished_at DESC LIMIT 1"')
+  migration=$(printf '%s' "$migration_raw" | tr -d '\r')
+  printf '%s\n' "$migration" | grep -Eq '^[0-9A-Za-z_.-]+$' ||
+    die "PostgreSQL returned an invalid latest migration: $migration"
+  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+  cat >"$temp/manifest.json" <<EOF
+  {"format":"nextbuf-backup-v1","createdAt":"$stamp","applicationVersion":"$version","postgresVersion":"$postgres_version","latestMigration":"$migration","writeProcessesStopped":true,"databaseList":"database.list","attachmentsIncluded":$attachments,"sourceDeployment":"baota","sourceDeploymentIdentity":"source-deployment.json","sourceCompose":"source-compose.baota.yml"}
+EOF
+  base_files="database.dump database.list config.env compose.yml manifest.json source-deployment.json source-compose.baota.yml"
+  # shellcheck disable=SC2086
+  (cd "$temp" && sha256sum $base_files $attachment_files >SHA256SUMS)
+  archive="$BACKUP_DIR/nextbuf-$version-$stamp-$$.tar.gz"
+  partial="$archive.partial"
+  checksum_partial="$archive.sha256.partial"
+  tar -C "$temp" -czf "$partial" .
+  tar -tzf "$partial" >/dev/null
+  chmod 600 "$partial"
+  archive_checksum=$(sha256sum "$partial")
+  archive_digest=${archive_checksum%% *}
+  printf '%s\n' "$archive_digest" | grep -Eq '^[0-9a-f]{64}$' ||
+    die "archive checksum command returned an invalid SHA-256 digest"
+  printf '%s  %s\n' "$archive_digest" "$(basename "$archive")" >"$checksum_partial"
+  chmod 600 "$checksum_partial"
+  mv "$partial" "$archive"
+  partial=
+  mv "$checksum_partial" "$archive.sha256"
+  checksum_partial=
+  archive_complete=1
+  rm -rf "$temp"
+  resume_baota_services
+  trap - EXIT HUP INT TERM
+  info "BaoTa backup completed: $archive (checksum: $archive.sha256)"
+}
+
 do_backup() {
   keep_stopped=${1:-0}
   require_files
@@ -500,17 +831,72 @@ EOF
   info "backup completed: $archive"
 }
 
+verify_restore_environment_continuity() {
+  backup_environment=$1
+  current_config=$temp/current-restore-compose.json
+  backup_config=$temp/backup-restore-compose.json
+  config_bundle=$temp/restore-compose-configs.bin
+
+  NEXTBUF_ENV_FILE="$ENV_FILE" docker compose \
+    --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --format json >"$current_config"
+  NEXTBUF_ENV_FILE="$backup_environment" docker compose \
+    --env-file "$backup_environment" -f "$COMPOSE_FILE" config --format json >"$backup_config"
+  cat "$current_config" >"$config_bundle"
+  printf '\000' >>"$config_bundle"
+  cat "$backup_config" >>"$config_bundle"
+
+  if ! compose run --rm --no-deps -T --entrypoint node setup -e '
+    const fs = require("node:fs");
+    const input = fs.readFileSync(0);
+    const separator = input.indexOf(0);
+    if (separator <= 0 || separator === input.length - 1) {
+      console.error("restore environment comparison input is invalid");
+      process.exit(2);
+    }
+    const current = JSON.parse(input.subarray(0, separator).toString("utf8"));
+    const backup = JSON.parse(input.subarray(separator + 1).toString("utf8"));
+    const value = (config, key) => config.services?.setup?.environment?.[key];
+    const normalized = (config, key) => {
+      const candidate = value(config, key);
+      if (key === "TOPIC_VIEW_PREVIOUS_AUTH_SECRETS" && (candidate == null || candidate === "")) {
+        return "[]";
+      }
+      return candidate;
+    };
+    for (const key of [
+      "AUTH_SECRET",
+      "TOPIC_VIEW_PREVIOUS_AUTH_SECRETS",
+      "MAIL_PAYLOAD_KEY",
+      "STORAGE_DRIVER",
+    ]) {
+      if (normalized(current, key) !== normalized(backup, key)) {
+        console.error(`${key} differs from the backup; use an empty install with --restore-config`);
+        process.exit(3);
+      }
+    }
+    if (normalized(current, "STORAGE_DRIVER") === "s3" &&
+        normalized(current, "S3_BUCKET") !== normalized(backup, "S3_BUCKET")) {
+      console.error("S3_BUCKET differs from the backup");
+      process.exit(3);
+    }
+  ' <"$config_bundle"; then
+    die "backup configuration continuity check failed"
+  fi
+}
+
 do_restore() {
   require_files
   archive=${1:-}
-  [ -n "$archive" ] || die "usage: ./nextbufctl restore <backup-file> [--empty-install] [--restore-config] [--yes]"
+  [ -n "$archive" ] || die "usage: ./nextbufctl restore <backup-file> [--empty-install] [--restore-config] [--keep-stopped] [--yes]"
   shift || true
   empty=0
   restore_config=0
+  keep_stopped=0
   for option in "$@"; do
     case "$option" in
       --empty-install) empty=1 ;;
       --restore-config) restore_config=1 ;;
+      --keep-stopped) keep_stopped=1 ;;
       --yes) NEXTBUFCTL_ASSUME_YES=1 ;;
       *) die "unknown restore option: $option" ;;
     esac
@@ -534,20 +920,7 @@ do_restore() {
     die "--restore-config requires --empty-install so database service credentials cannot diverge from an existing volume"
   fi
   if [ "$restore_config" != 1 ]; then
-    for key in AUTH_SECRET TOPIC_VIEW_PREVIOUS_AUTH_SECRETS MAIL_PAYLOAD_KEY STORAGE_DRIVER; do
-      current_value=$(env_get "$key")
-      backup_value=$(sed -n "s/^$key=//p" "$temp/config.env" | tail -n 1)
-      if [ "$key" = TOPIC_VIEW_PREVIOUS_AUTH_SECRETS ]; then
-        [ -n "$current_value" ] || current_value='[]'
-        [ -n "$backup_value" ] || backup_value='[]'
-      fi
-      [ "$current_value" = "$backup_value" ] || die "$key differs from the backup; use an empty install with --restore-config"
-    done
-    if [ "$(env_get STORAGE_DRIVER)" = s3 ]; then
-      current_bucket=$(env_get S3_BUCKET)
-      backup_bucket=$(sed -n 's/^S3_BUCKET=//p' "$temp/config.env" | tail -n 1)
-      [ "$current_bucket" = "$backup_bucket" ] || die "S3_BUCKET differs from the backup"
-    fi
+    verify_restore_environment_continuity "$temp/config.env"
   fi
   confirm_destructive "Restore will replace the current NextBuf database and local attachments."
 
@@ -578,11 +951,15 @@ do_restore() {
     fi
   fi
   compose run --rm setup
+  rm -rf "$temp"
+  trap - EXIT HUP INT TERM
+  if [ "$keep_stopped" = 1 ]; then
+    info "restore completed; Web and Worker remain stopped for isolated configuration"
+    return 0
+  fi
   compose up -d --no-deps web worker
   wait_for_service web 180
   wait_for_service worker 180
-  rm -rf "$temp"
-  trap - EXIT HUP INT TERM
   info "restore completed"
 }
 
@@ -699,6 +1076,7 @@ if [ "$#" -gt 0 ]; then shift; fi
 case "$command_name" in
   help|-h|--help)
     printf '%s\n' 'Usage: ./nextbufctl <init|start|stop|status|logs|doctor|backup|restore|upgrade|acceptance>'
+    printf '%s\n' '       ./nextbufctl backup --baota <deployed-compose.baota.yml>'
     exit 0
     ;;
 esac
@@ -713,7 +1091,15 @@ case "$command_name" in
   status) do_status "$@" ;;
   logs) do_logs "$@" ;;
   doctor) do_doctor "$@" ;;
-  backup) [ "$#" -eq 0 ] || die "usage: ./nextbufctl backup"; do_backup 0 ;;
+  backup)
+    if [ "${1:-}" = --baota ]; then
+      shift
+      do_baota_backup "$@"
+    else
+      [ "$#" -eq 0 ] || die "usage: ./nextbufctl backup [--baota <deployed-compose.baota.yml>]"
+      do_backup 0
+    fi
+    ;;
   restore) do_restore "$@" ;;
   upgrade) do_upgrade "$@" ;;
   acceptance) do_acceptance "$@" ;;

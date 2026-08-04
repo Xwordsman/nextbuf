@@ -54,6 +54,8 @@ GitHub Release 的归档、旁路 SHA-256、SBOM 和其他要求资产全部成�
 
 生产记录至少保存精确 SemVer 和镜像 Digest；只记录 `latest`、`edge` 或源码版本字符串不足以定位产物。`/api/version`、doctor、备份清单和 Worker 身份继续记录 commit。
 
+正式 SemVer 尚未创建时，人工验收不能把远端 `sha-*` 简单本地重标记成目标 SemVer：`nextbufctl` 的启动、快照和升级入口都会执行 `compose pull`，本地 tag 不满足该合同。正式验收必须从候选冻结记录中的 Digest 把当前公开基线和候选完整 OCI index 复制到只绑定 loopback 的临时 Registry，核对复制前后 index 与平台 Digest，并让隔离实例正常拉取该 Registry 中的精确版本。这个临时引用不是公开通道，不改变 `sha-*`、SemVer、`edge` 或 `latest`；流程见[运行手册](../13-installation-operations-runbook.md#未公开-semver-候选的隔离-registry)。
+
 受控 `compose.yml + .env + nextbufctl` 始终使用精确 SemVer。宝塔单文件模板可以继续写 `latest`，但升级仍是显式的“备份、拉取、重建、验证”操作，不是无人值守自动更新。需要候选验证时，部署者显式把镜像临时固定为 `edge` 或 `sha-*`，不得把测试实例的通道选择解释为稳定支持。
 
 ### 5. 首个稳定版前的过渡

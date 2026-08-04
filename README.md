@@ -19,7 +19,7 @@ NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开
 - PostgreSQL FTS/`pg_trgm` 搜索与可替换 `SearchProvider`
 - 一个应用镜像，Web 与 Worker 分开运行
 - 生产 Dockerfile、面板友好的四容器 Compose、setup/preflight 门禁和 GHCR 多架构发布
-- `nextbufctl` 初始化、状态、日志、诊断、备份、恢复与升级
+- `nextbufctl` 初始化、状态、日志、诊断、标准/宝塔备份、保持停写恢复与升级
 - 事务性 Outbox、数据库内幂等任务和 Web/Worker 健康检查
 - 结构化通知、普通邮件偏好、持久化失败任务、手工重放和分布式周期调度
 - 举报案件、不可变处置审计、节点/全站禁言、暂停与封禁
@@ -54,7 +54,7 @@ cp .env.example .env
 
 ## Docker 部署
 
-宝塔面板用户可以直接粘贴 [`compose.baota.yml`](./compose.baota.yml)，首次替换其中的域名、密码、应用密钥和 SMTP 配置后启动。该模板使用默认稳定 `latest` 通道和 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis` 四个固定容器名；后续升级只需先备份，再在面板拉取新镜像并重建，不再编辑版本号。`v1.0.0` 尚未发布，因此过渡期的 `latest` 仍停留在最后一个经验证的 Beta，主线候选改由 `edge` 提供；通道合同见 [ADR-0020](./docs/adr/0020-stable-release-channels-and-lifecycle.md)。
+宝塔面板用户可以直接粘贴 [`compose.baota.yml`](./compose.baota.yml)，首次替换其中的域名、密码、应用密钥和 SMTP 配置后启动。该模板使用默认稳定 `latest` 通道和 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis` 四个固定容器名；后续升级先用 Release 中的 `./nextbufctl backup --baota <实际部署编排>` 生成可校验归档（S3 另需同一维护窗口的 Provider 快照/版本），再在面板拉取新镜像并重建，不再编辑版本号。生产归档恢复到隔离环境时使用 `--keep-stopped`，先切换域名、邮件和存储 Provider 再启动。`v1.0.0` 尚未发布，因此过渡期的 `latest` 仍停留在最后一个经验证的 Beta，主线候选改由 `edge` 提供；通道合同见 [ADR-0020](./docs/adr/0020-stable-release-channels-and-lifecycle.md)。
 
 需要 `nextbufctl` 精确升级、备份和恢复的用户使用正式 Release：
 

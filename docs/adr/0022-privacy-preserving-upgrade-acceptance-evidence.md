@@ -15,7 +15,9 @@ NextBuf 已有真实公开 Beta 用户。合成升级夹具可以证明已知迁
 
 ### 1. 生产只提供来源，破坏性验收在隔离副本执行
 
-生产实例只在计划维护窗口生成完整备份、运行健康检查和必要的只读采集。恢复、升级、删卷、Redis 清空、故障注入、邮件重放和账号最终注销测试必须在该备份恢复出的独立 Compose 项目执行。原始备份、配置、数据库输出、邮件和浏览器状态保存在加密受限位置，不提交仓库或公开 Release。
+生产实例只在计划维护窗口生成完整备份、运行健康检查和必要的只读采集。生产备份恢复副本负责恢复、升级和真实既有事实核对；删卷、Redis 清空、故障注入、邮件重放和账号最终注销测试只在另一个合成覆盖副本执行。全新安装、生产恢复和合成覆盖使用独立工作目录；共享 Docker daemon 时必须持续设置三个不同的 `COMPOSE_PROJECT_NAME` 并证明 Compose 项目、命名卷和网络标签不重叠，固定容器名的宝塔验收使用独立 daemon。原始备份、配置、数据库输出、邮件和浏览器状态保存在加密受限位置，不提交仓库或公开 Release。
+
+生产使用官方宝塔单文件入口时，完整备份必须由 `nextbufctl backup --baota <实际部署编排>` 生成：来源编排与运行环境、容器/卷身份必须一致，实际 SemVer、commit、image config ID 和 RepoDigest 原样进入受限身份记录，PostgreSQL 与 local 附件在同一停写窗口导出。恢复到生产副本使用 `--empty-install --restore-config --keep-stopped`；在 Web/Worker 启动前把 APP_URL、SMTP、OAuth、代理和存储写入切换到隔离资源，同时保留验收 HMAC、Session 与加密载荷所需密钥。S3 来源还必须绑定同一维护窗口的 Provider 快照/版本，数据库对象键本身不构成媒体备份。
 
 ### 2. 目标镜像生成只读快照
 
@@ -51,6 +53,8 @@ Worker 心跳、积压、发送状态等运行态只报告计数，不作为停�
 ### 5. `nextbufctl upgrade` 在启动写进程前强制比较
 
 受控升级顺序为：验证目标镜像、创建一致性备份并停止 Web/Worker、用目标镜像采集 before、设置目标版本并运行 setup/迁移、在 Web/Worker 尚未启动时采集 after、比较、再启动并等待健康。快照、比较报告和 SHA-256 与升级日志放在 `backups/`。
+
+正式 SemVer 尚未发布时，目标镜像仍须经过正常 pull 获得。验收主机把当前基线与已记录候选的完整 OCI index 从源 Digest 复制到只绑定 loopback 的临时 Registry，验证复制前后 Digest 后再把受控 Compose 指向该 Registry；只创建本地 tag、忽略 pull 失败或从源码重建都不能绑定已演练候选。临时 Registry 保留到升级、恢复和证据重采集结束，具体命令见[运行手册](../13-installation-operations-runbook.md#未公开-semver-候选的隔离-registry)。
 
 比较要求：同一候选版本/commit和 HMAC key；来源迁移是目标迁移的 checksum 精确前缀；目标迁移等于目标镜像冻结清单；目标 Schema 能力与后置检查全部通过；所有适用完整性检查为零；稳定表和总摘要相同；管理员至少有一位可接管。只有一位管理员时升级可以完成但报告明确警告，正式 Release 验收仍要求配置第二位管理员。
 

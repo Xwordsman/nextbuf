@@ -4,6 +4,14 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 workflow=${1:-$ROOT/.github/workflows/ci.yml}
 upgrade_smoke=$ROOT/tests/smoke/docker-upgrade-smoke.sh
+docker_smoke=$ROOT/tests/smoke/docker-smoke.sh
+release_archive_smoke=$ROOT/tests/smoke/release-archive-smoke.sh
+nextbufctl=$ROOT/nextbufctl
+operations_runbook=$ROOT/docs/13-installation-operations-runbook.md
+release_channel_adr=$ROOT/docs/adr/0020-stable-release-channels-and-lifecycle.md
+acceptance_evidence_adr=$ROOT/docs/adr/0022-privacy-preserving-upgrade-acceptance-evidence.md
+release_readiness=$ROOT/docs/19-v1.0.0-release-readiness.md
+manual_acceptance=$ROOT/docs/21-v1.0.0-manual-acceptance.md
 stable_pattern='^[1-9][0-9]*\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 
 fail() {
@@ -67,6 +75,102 @@ printf '%s\n' "$upgrade_step" | grep -F -- 'steps.version.outputs.version != env
   || fail 'the upgrade gate must skip candidates that equal the configured public baseline'
 grep -F -- './nextbufctl upgrade "$TARGET_VERSION" --verify-objects' "$upgrade_smoke" >/dev/null \
   || fail 'the upgrade gate must use the acceptance comparison and attachment object verification'
+grep -F -- '#### 未公开 SemVer 候选的隔离 Registry' "$operations_runbook" >/dev/null \
+  || fail 'the operations runbook must document pre-tag candidate staging'
+grep -F -- 'registry:2.8.3' "$operations_runbook" >/dev/null \
+  || fail 'pre-tag acceptance must use an explicit local Registry'
+grep -F -- '-p 127.0.0.1:5510:5000' "$operations_runbook" >/dev/null \
+  || fail 'the acceptance Registry must bind only to loopback'
+grep -F -- 'docker buildx imagetools create' "$operations_runbook" >/dev/null \
+  || fail 'pre-tag acceptance must copy complete OCI indexes'
+grep -F -- '"$SOURCE_IMAGE@$expected_digest"' "$operations_runbook" >/dev/null \
+  || fail 'pre-tag acceptance must copy candidates by immutable digest'
+grep -F -- '"$(git rev-parse HEAD)" = "$CANDIDATE_COMMIT"' "$operations_runbook" >/dev/null \
+  || fail 'candidate verification helpers must come from the frozen candidate commit'
+grep -F -- 'copy_exact_index "$BASELINE_VERSION" "$BASELINE_INDEX_DIGEST"' \
+  "$operations_runbook" >/dev/null \
+  || fail 'pre-tag acceptance must stage the current baseline image'
+grep -F -- 'copy_exact_index "$CANDIDATE_VERSION" "$CANDIDATE_INDEX_DIGEST"' \
+  "$operations_runbook" >/dev/null \
+  || fail 'pre-tag acceptance must stage the accepted candidate image'
+grep -F -- 'NEXTBUF_IMAGE=127.0.0.1:5510/nextbuf' "$operations_runbook" >/dev/null \
+  || fail 'the isolated instance must pull from the loopback Registry'
+grep -F -- '"$local_actual" = "$expected_digest"' "$operations_runbook" >/dev/null \
+  || fail 'the copied local index must retain the accepted digest'
+grep -F -- 'sh scripts/verify-oci-image-identity.sh' "$operations_runbook" >/dev/null \
+  || fail 'the copied candidate must pass complete OCI identity verification'
+grep -F -- 'docker pull "$LOCAL_IMAGE:$BASELINE_VERSION"' "$operations_runbook" >/dev/null \
+  || fail 'pre-tag acceptance must prove the baseline is pullable from the local Registry'
+grep -F -- 'docker pull "$LOCAL_IMAGE:$CANDIDATE_VERSION"' "$operations_runbook" >/dev/null \
+  || fail 'pre-tag acceptance must prove the candidate is pullable from the local Registry'
+grep -F -- 'if (!value.config?.digest) process.exit(1)' "$operations_runbook" >/dev/null \
+  || fail 'acceptance must resolve the current platform manifest config digest'
+grep -F -- '"$LOCAL_CONFIG_ID" = "$CANDIDATE_CONFIG_DIGEST"' "$operations_runbook" >/dev/null \
+  || fail 'the pulled candidate image config must match the platform manifest'
+grep -F -- '"$running_config_id" = "$CANDIDATE_CONFIG_DIGEST"' "$operations_runbook" >/dev/null \
+  || fail 'running Web and Worker must match the accepted platform image config'
+for prerequisite in 'git --version' 'curl --version' 'node --version' \
+  'docker buildx version' 'docker compose version'; do
+  grep -F -- "$prerequisite" "$operations_runbook" >/dev/null \
+    || fail "candidate acceptance must preflight $prerequisite"
+done
+grep -F -- 'Node 主版本为 24' "$operations_runbook" >/dev/null \
+  || fail 'candidate acceptance must require Node.js 24'
+for project_name in nextbuf-v1-fresh nextbuf-v1-production-copy nextbuf-v1-synthetic; do
+  grep -F -- "COMPOSE_PROJECT_NAME=$project_name" "$operations_runbook" >/dev/null \
+    || fail "acceptance must isolate the $project_name Compose project"
+done
+grep -F -- 'label=com.docker.compose.project=$COMPOSE_PROJECT_NAME' \
+  "$operations_runbook" >/dev/null \
+  || fail 'acceptance must verify project-scoped volume and network labels'
+grep -F -- '独立 Docker daemon/主机' "$operations_runbook" >/dev/null \
+  || fail 'the fixed-name BaoTa candidate must use an isolated Docker daemon'
+grep -F -- '生产备份恢复副本只执行恢复、两段升级和真实既有事实核对' \
+  "$release_readiness" >/dev/null \
+  || fail 'the production recovery copy must remain read-only apart from recovery and upgrades'
+grep -F -- '只在独立合成覆盖副本执行' "$release_readiness" >/dev/null \
+  || fail 'destructive acceptance must remain confined to the synthetic copy'
+grep -F -- 'backup --baota' "$nextbufctl" >/dev/null \
+  || fail 'nextbufctl must retain the BaoTa production export entry point'
+grep -F -- '--keep-stopped' "$nextbufctl" >/dev/null \
+  || fail 'nextbufctl restore must retain the isolated keep-stopped mode'
+grep -F -- './nextbufctl backup --baota "$PANEL_COMPOSE"' "$docker_smoke" >/dev/null \
+  || fail 'deep Docker smoke must exercise the BaoTa export path'
+grep -F -- '--restore-config --keep-stopped --yes' "$docker_smoke" >/dev/null \
+  || fail 'deep Docker smoke must prove isolated restore remains stopped'
+grep -F -- 'baota-checksum-failure.triggered' "$docker_smoke" >/dev/null \
+  || fail 'deep Docker smoke must prove failed BaoTa exports restore the write processes'
+grep -F -- 'baota-stop-signal.triggered' "$docker_smoke" >/dev/null \
+  || fail 'deep Docker smoke must cover interruption during a BaoTa stop'
+grep -F -- 'docker cp "$helper"' "$nextbufctl" >/dev/null \
+  || fail 'BaoTa helper must avoid host UID-dependent bind mounts'
+grep -F -- 'source_compose_snapshot="$temp/source-compose.baota.yml"' "$nextbufctl" >/dev/null \
+  || fail 'BaoTa export must freeze the supplied Compose before validation'
+grep -F -- 'docker compose -f "$source_compose_snapshot" config --format json' \
+  "$nextbufctl" >/dev/null \
+  || fail 'BaoTa evidence must be rendered from the archived Compose snapshot'
+grep -F -- 'smoke.baota-transfer' "$docker_smoke" >/dev/null \
+  || fail 'BaoTa transfer smoke must restore a unique PostgreSQL fact as well as attachments'
+grep -F -- 'prepare-baota-backup.mjs' "$release_archive_smoke" >/dev/null \
+  || fail 'the release archive must include the BaoTa export helper'
+grep -F -- '#未公开-semver-候选的隔离-registry' "$manual_acceptance" >/dev/null \
+  || fail 'manual acceptance must require the executable local Registry procedure'
+grep -F -- '#未公开-semver-候选的隔离-registry' "$release_readiness" >/dev/null \
+  || fail 'release readiness must require the executable local Registry procedure'
+grep -F -- '#未公开-semver-候选的隔离-registry' "$release_channel_adr" >/dev/null \
+  || fail 'the release channel ADR must preserve pre-tag candidate identity'
+grep -F -- '#未公开-semver-候选的隔离-registry' "$acceptance_evidence_adr" >/dev/null \
+  || fail 'the acceptance evidence ADR must preserve normal pull behavior'
+grep -F -- '当前架构 manifest Digest' "$manual_acceptance" >/dev/null \
+  || fail 'manual acceptance must distinguish the platform manifest from the OCI index'
+grep -F -- '运行 image config ID' "$manual_acceptance" >/dev/null \
+  || fail 'manual acceptance must bind the running container config identity'
+grep -F -- 'RepoDigest 原样留证但不单独用来区分' "$manual_acceptance" >/dev/null \
+  || fail 'manual acceptance must not conflate Docker RepoDigest with a platform manifest'
+if grep -F -- '在隔离主机本地标记为 `NEXTBUF_IMAGE:1.0.0`' \
+  "$operations_runbook" "$manual_acceptance" >/dev/null; then
+  fail 'documentation must not prescribe a local tag that compose pull cannot resolve'
+fi
 for recovery_gate in "$restore_gate" "$fault_gate"; do
   [ -n "$recovery_gate" ] || fail 'recovery and fault gates must remain explicit'
   printf '%s\n' "$recovery_gate" | grep -F -- "matrix.architecture == 'amd64'" >/dev/null \

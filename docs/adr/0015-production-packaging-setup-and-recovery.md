@@ -38,9 +38,11 @@ NextBuf 已经有独立 Web/Worker、迁移、setup 和 doctor 入口，但开�
 
 `nextbufctl` 对启动、停止、备份、恢复和升级持有同一个非阻塞内核文件锁，避免两个运维进程交错改变 Web/Worker 状态或覆盖同秒产物。`nextbufctl backup` 必须确认 Web/Worker 已停止，再生成 PostgreSQL custom-format 一致性转储，随后收集本地附件、逐文件 SHA-256、`.env` 配置副本、Compose、应用/数据库/迁移版本和总校验清单，最后以临时文件原子改名为 `nextbuf-backup-v1` tar.gz。半成品不标记为成功，归档权限为仅部署用户可读，文件名包含 UTC 时间与进程 ID。
 
+`v1.0.0` 稳定化为官方宝塔固定四容器入口增加 `nextbufctl backup --baota <实际部署编排>`。该命令不假定存在 `.env`、`web` 或 `setup` 服务，而是先把传入编排固化为权限受限快照，再以同一快照证明运行环境、Compose labels、四个固定容器及 PostgreSQL/Redis/附件命名卷属于同一实例并将其归档；任何配置或卷漂移都中止。它从实际应用 image config 记录 SemVer、commit、构建时间、config ID 和 RepoDigest 原样事实，停止 Worker/Web 后生成与受控恢复器兼容的 `nextbuf-backup-v1`，额外保存源编排、部署身份和外层归档 SHA-256，成功或失败后只恢复本次停止的服务。合法轮换密钥按 Compose dotenv 语义无损序列化，恢复连续性比较使用 Compose 解码值而不是源文本。中断信号触发清理时会等待 daemon 侧可能尚未完成的 stop，并以有界重试恢复容器；无法恢复会报告最终状态并保留失败退出码。helper 文件通过临时容器的 `docker cp` 交换，避免宿主 UID/GID bind mount 与 SELinux 标签差异。RepoDigest 不替代 OCI index/平台 manifest 的独立发布证据。
+
 Redis 不进入主要备份，因为 PostgreSQL Outbox、任务失败和调度事实可重建队列。S3 模式只记录 Bucket/Endpoint 清单；对象数据必须由 Provider 版本控制或独立对象备份覆盖，工具不会把“只有数据库键”宣称为完整附件备份。
 
-恢复默认保留当前配置并校验归档；只有显式 `--restore-config` 才恢复密钥。`--empty-install` 会在二次确认后删除当前 Compose 数据卷，供空服务器演练使用。恢复先停 Web/Worker，再恢复数据库和附件，运行当前版本 setup/迁移，最后等待两个进程健康。
+恢复默认保留当前配置并校验归档；只有显式 `--restore-config` 才恢复密钥。`--empty-install` 会在二次确认后删除当前 Compose 数据卷，供空服务器演练使用。恢复先停 Web/Worker，再恢复数据库和附件并运行当前版本 setup/迁移。默认随后等待两个进程健康；显式 `--keep-stopped` 则在 setup 后保持 Web/Worker 停止，供生产备份隔离恢复先替换域名、SMTP、OAuth、代理和存储 Provider，再由运维显式启动。隔离副本不得在生产 Provider 配置仍生效时启动写进程。
 
 ### 4. 升级不承诺无条件镜像回退
 

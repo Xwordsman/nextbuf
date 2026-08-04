@@ -14,6 +14,7 @@ SMOKE_COMMIT=${NEXTBUF_SMOKE_COMMIT:-}
 SMOKE_BUILD_TIME=${NEXTBUF_SMOKE_BUILD_TIME:-}
 ENV_FILE=.env.smoke
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/nextbuf-docker-smoke.XXXXXX")
+PANEL_COMPOSE=
 SMOKE_BACKUP_DIR="$TMP_ROOT/backups"
 COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml -f deploy/compose/compose.smoke.yml"
 BASE_COMPOSE="docker compose --env-file $ENV_FILE -f compose.yml"
@@ -54,6 +55,20 @@ wait_for_container_health() {
   while :; do
     id=$(NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE ps -q "$service")
     status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id" 2>/dev/null || true)
+    [ "$status" = healthy ] && return 0
+    [ "$(date +%s)" -lt "$deadline" ] || return 1
+    sleep 2
+  done
+}
+
+wait_for_named_container_health() {
+  container=$1
+  timeout=${2:-120}
+  deadline=$(( $(date +%s) + timeout ))
+  while :; do
+    status=$(docker inspect \
+      --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+      "$container" 2>/dev/null || true)
     [ "$status" = healthy ] && return 0
     [ "$(date +%s)" -lt "$deadline" ] || return 1
     sleep 2
@@ -123,6 +138,11 @@ diagnose_failure() {
   )
   printf '%s\n' "$diagnostics" >&2
 
+  if [ -n "${PANEL_COMPOSE:-}" ] && [ -f "$PANEL_COMPOSE" ]; then
+    docker compose -f "$PANEL_COMPOSE" ps -a >&2 2>&1 || true
+    docker compose -f "$PANEL_COMPOSE" logs --no-color --tail=80 >&2 2>&1 || true
+  fi
+
   if [ "${GITHUB_ACTIONS:-}" = true ]; then
     annotation=$(printf '%s' "$diagnostics" | tr '\n' ' ' | cut -c1-12000 | sed 's/%/%25/g')
     printf '::error title=NextBuf container smoke diagnostics::%s\n' "$annotation"
@@ -138,6 +158,9 @@ cleanup() {
   fi
   if [ "$status" -ne 0 ]; then
     diagnose_failure
+  fi
+  if [ -n "${PANEL_COMPOSE:-}" ] && [ -f "$PANEL_COMPOSE" ]; then
+    docker compose -f "$PANEL_COMPOSE" down -v --remove-orphans >/dev/null 2>&1 || true
   fi
   NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true
   rm -f "$ENV_FILE"
@@ -448,9 +471,32 @@ if [ "$RUN_RESTORE" = 1 ]; then
     exit 1
   fi
   grep -F 'TOPIC_VIEW_PREVIOUS_AUTH_SECRETS differs from the backup' "$mismatch_log" >/dev/null
+  semantically_quoted_env="$TMP_ROOT/restore-semantically-quoted.env"
+  semantic_compare_log="$TMP_ROOT/restore-semantic-compare.log"
+  sed 's/^AUTH_SECRET=\(.*\)$/AUTH_SECRET="\1"/' "$ENV_FILE" >"$semantically_quoted_env"
+  chmod 600 "$semantically_quoted_env"
+  if printf 'NO\n' | NEXTBUF_ENV_FILE="$semantically_quoted_env" NEXTBUF_COMPOSE_FILE=compose.yml NEXTBUF_BACKUP_DIR="$SMOKE_BACKUP_DIR" \
+    ./nextbufctl restore "$backup" >"$semantic_compare_log" 2>&1; then
+    printf 'Restore unexpectedly continued after a negative confirmation.\n' >&2
+    exit 1
+  fi
+  grep -F 'operation cancelled' "$semantic_compare_log" >/dev/null
+  if grep -F 'AUTH_SECRET differs from the backup' "$semantic_compare_log" >/dev/null; then
+    printf 'Restore compared dotenv source text instead of the parsed AUTH_SECRET.\n' >&2
+    exit 1
+  fi
   NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE rm -sf mailpit
   NEXTBUFCTL_ASSUME_YES=1 NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml NEXTBUF_BACKUP_DIR="$SMOKE_BACKUP_DIR" \
-    ./nextbufctl restore "$backup" --empty-install --restore-config --yes
+    ./nextbufctl restore "$backup" --empty-install --restore-config --keep-stopped --yes
+  if NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps --status running --services web worker | grep -q .; then
+    printf 'Restore --keep-stopped unexpectedly started Web or Worker.\n' >&2
+    exit 1
+  fi
+  NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d mailpit
+  wait_for_container_health mailpit 120
+  NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE up -d --no-deps web worker
+  wait_for_url http://127.0.0.1:3100/health/ready 180
+  wait_for_url http://127.0.0.1:3100/health/worker 180
   stage 'verify restored database and attachments'
   restore_proof="$TMP_ROOT/restore-proof.txt"
   NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup \
@@ -459,6 +505,188 @@ if [ "$RUN_RESTORE" = 1 ]; then
   restored_setup="$TMP_ROOT/restored-setup.json"
   curl --fail --silent http://127.0.0.1:3100/api/setup >"$restored_setup"
   grep -q '"complete":true' "$restored_setup"
+
+  stage 'export a BaoTa deployment and restore it into controlled Compose'
+  NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE down -v --remove-orphans
+  PANEL_COMPOSE="$TMP_ROOT/compose.baota.smoke.yml"
+  cp compose.baota.yml "$PANEL_COMPOSE"
+  panel_postgres_password=$(printf '%064d' 0 | tr 0 d)
+  panel_redis_password=$(printf '%064d' 0 | tr 0 e)
+  panel_auth_secret=$(printf '%064d' 0 | tr 0 a)
+  panel_setup_token=$(printf '%064d' 0 | tr 0 c)
+  sed -i \
+    -e "s|image: ghcr.io/xwordsman/nextbuf:latest|image: nextbuf-smoke:$SMOKE_VERSION|" \
+    -e 's|APP_URL: https://community.example.com|APP_URL: http://127.0.0.1:3100|' \
+    -e "s|AUTH_SECRET: replace-with-at-least-32-random-characters|AUTH_SECRET: $panel_auth_secret|" \
+    -e "s|SETUP_TOKEN: replace-with-at-least-32-random-characters|SETUP_TOKEN: $panel_setup_token|" \
+    -e 's|MAIL_PAYLOAD_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=|MAIL_PAYLOAD_KEY: SoxCSq6+35KG9qqH7JHtneowihiWs8hjtqqI37UhPQw=|' \
+    -e 's|SMTP_HOST: smtp.example.com|SMTP_HOST: 127.0.0.1|' \
+    -e 's|SMTP_PORT: "465"|SMTP_PORT: "1025"|' \
+    -e 's|SMTP_SECURE: "true"|SMTP_SECURE: "false"|' \
+    -e 's|SMTP_USER: replace-with-smtp-user|SMTP_USER: ""|' \
+    -e 's|SMTP_PASSWORD: replace-with-smtp-password|SMTP_PASSWORD: ""|' \
+    -e 's|SMTP_FROM: NextBuf <noreply@example.com>|SMTP_FROM: NextBuf Panel <noreply@nextbuf.test>|' \
+    -e "s|DATABASE_URL: postgresql://nextbuf:replace-with-64-hex-postgres-password@postgres:5432/nextbuf|DATABASE_URL: postgresql://nextbuf:$panel_postgres_password@postgres:5432/nextbuf|" \
+    -e "s|DATABASE_DIRECT_URL: postgresql://nextbuf:replace-with-64-hex-postgres-password@postgres:5432/nextbuf|DATABASE_DIRECT_URL: postgresql://nextbuf:$panel_postgres_password@postgres:5432/nextbuf|" \
+    -e "s|REDIS_URL: redis://:replace-with-64-hex-redis-password@redis:6379/0|REDIS_URL: redis://:$panel_redis_password@redis:6379/0|" \
+    -e "s|POSTGRES_PASSWORD: replace-with-64-hex-postgres-password|POSTGRES_PASSWORD: $panel_postgres_password|" \
+    -e "s|REDIS_PASSWORD: replace-with-64-hex-redis-password|REDIS_PASSWORD: $panel_redis_password|" \
+    -e 's|127.0.0.1:3000:3000|127.0.0.1:3100:3000|' \
+    "$PANEL_COMPOSE"
+  panel_auth_expected="$TMP_ROOT/panel-auth-secret.base64"
+  panel_previous_auth_expected="$TMP_ROOT/panel-previous-auth-secrets.base64"
+  node - "$PANEL_COMPOSE" "$panel_auth_expected" "$panel_previous_auth_expected" <<'NODE'
+const fs = require("node:fs");
+
+const [, , composePath, authOutput, previousOutput] = process.argv;
+const authSecret = ` "auth $NAME \${NAME} $$ # \\'"\tsecret ${"z".repeat(32)}" `;
+const previousAuthSecrets = JSON.stringify([
+  ` "old $OLD \${OLD} $$ # \\'"\tsecret ${"y".repeat(32)}" `,
+  `second-old-secret-${"x".repeat(32)}`,
+]);
+const yamlValue = (value) => JSON.stringify(value.replaceAll("$", "$$"));
+let compose = fs.readFileSync(composePath, "utf8");
+compose = compose.replace(/^    AUTH_SECRET:.*$/m, `    AUTH_SECRET: ${yamlValue(authSecret)}`);
+compose = compose.replace(
+  /^    TOPIC_VIEW_PREVIOUS_AUTH_SECRETS:.*$/m,
+  `    TOPIC_VIEW_PREVIOUS_AUTH_SECRETS: ${yamlValue(previousAuthSecrets)}`,
+);
+fs.writeFileSync(composePath, compose);
+fs.writeFileSync(authOutput, Buffer.from(authSecret).toString("base64"));
+fs.writeFileSync(previousOutput, Buffer.from(previousAuthSecrets).toString("base64"));
+NODE
+  docker compose -f "$PANEL_COMPOSE" config --quiet
+  docker compose -f "$PANEL_COMPOSE" up -d
+  wait_for_named_container_health nextbuf-postgres 180
+  wait_for_named_container_health nextbuf-redis 120
+  wait_for_named_container_health nextbuf 180
+  wait_for_named_container_health nextbuf-worker 180
+  for panel_container in nextbuf nextbuf-worker; do
+    docker exec "$panel_container" node -e \
+      'process.stdout.write(Buffer.from(process.env.AUTH_SECRET).toString("base64"))' \
+      >"$TMP_ROOT/$panel_container-auth-secret.base64"
+    cmp "$panel_auth_expected" "$TMP_ROOT/$panel_container-auth-secret.base64"
+    docker exec "$panel_container" node -e \
+      'process.stdout.write(Buffer.from(process.env.TOPIC_VIEW_PREVIOUS_AUTH_SECRETS).toString("base64"))' \
+      >"$TMP_ROOT/$panel_container-previous-auth-secrets.base64"
+    cmp "$panel_previous_auth_expected" \
+      "$TMP_ROOT/$panel_container-previous-auth-secrets.base64"
+  done
+  printf 'baota-transfer-%s\n' "$ARCH" | docker exec -i nextbuf sh -ec \
+    'cat > /app/data/uploads/baota-transfer-proof.txt'
+  panel_database_marker="baota-database-transfer-$ARCH"
+  printf "INSERT INTO system_state (key, value, created_at, updated_at) VALUES ('smoke.baota-transfer', jsonb_build_object('marker', '%s'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;\n" \
+    "$panel_database_marker" | docker exec -i nextbuf-postgres sh -ec \
+    'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+
+  stage 'restore BaoTa writers when interrupted during docker stop'
+  panel_signal_bin="$TMP_ROOT/baota-signal-bin"
+  mkdir -p "$panel_signal_bin"
+  real_docker=$(command -v docker)
+  cat >"$panel_signal_bin/docker" <<EOF
+#!/bin/sh
+if [ "\${1:-}" = stop ] && [ "\${2:-}" = --time ] && [ "\${3:-}" = 45 ] && [ "\${4:-}" = nextbuf-worker ] && [ ! -f "$TMP_ROOT/baota-stop-signal.triggered" ]; then
+  touch "$TMP_ROOT/baota-stop-signal.triggered"
+  ("$real_docker" "\$@" >/dev/null 2>&1 || true) &
+  kill -TERM "\$PPID"
+  exit 0
+fi
+exec "$real_docker" "\$@"
+EOF
+  chmod +x "$panel_signal_bin/docker"
+  panel_signal_backup_dir="$TMP_ROOT/baota-signal-backups"
+  mkdir -p "$panel_signal_backup_dir"
+  if PATH="$panel_signal_bin:$PATH" NEXTBUF_BACKUP_DIR="$panel_signal_backup_dir" \
+    ./nextbufctl backup --baota "$PANEL_COMPOSE" >"$TMP_ROOT/baota-signal-backup.log" 2>&1; then
+    printf 'BaoTa export unexpectedly survived the injected stop signal.\n' >&2
+    exit 1
+  fi
+  [ -f "$TMP_ROOT/baota-stop-signal.triggered" ]
+  wait_for_named_container_health nextbuf 180
+  wait_for_named_container_health nextbuf-worker 180
+  if find "$panel_signal_backup_dir" -mindepth 1 -print -quit | grep -q .; then
+    printf 'Interrupted BaoTa export left a temporary or final archive.\n' >&2
+    find "$panel_signal_backup_dir" -mindepth 1 -maxdepth 2 -print >&2
+    exit 1
+  fi
+
+  stage 'recover BaoTa services when an export fails after stopping writers'
+  panel_failure_bin="$TMP_ROOT/baota-failure-bin"
+  panel_failed_backup_dir="$TMP_ROOT/baota-failed-backups"
+  mkdir -p "$panel_failure_bin" "$panel_failed_backup_dir"
+  real_sha256sum=$(command -v sha256sum)
+  cat >"$panel_failure_bin/sha256sum" <<EOF
+#!/bin/sh
+case "\${1:-}" in
+  *.tar.gz.partial)
+    touch "$TMP_ROOT/baota-checksum-failure.triggered"
+    exit 73
+    ;;
+esac
+exec "$real_sha256sum" "\$@"
+EOF
+  chmod +x "$panel_failure_bin/sha256sum"
+  if PATH="$panel_failure_bin:$PATH" NEXTBUF_BACKUP_DIR="$panel_failed_backup_dir" \
+    ./nextbufctl backup --baota "$PANEL_COMPOSE" >"$TMP_ROOT/baota-failed-backup.log" 2>&1; then
+    printf 'BaoTa export unexpectedly succeeded with injected checksum failure.\n' >&2
+    exit 1
+  fi
+  [ -f "$TMP_ROOT/baota-checksum-failure.triggered" ]
+  wait_for_named_container_health nextbuf 180
+  wait_for_named_container_health nextbuf-worker 180
+  if find "$panel_failed_backup_dir" -mindepth 1 -print -quit | grep -q .; then
+    printf 'Failed BaoTa export left a temporary or final archive.\n' >&2
+    find "$panel_failed_backup_dir" -mindepth 1 -maxdepth 2 -print >&2
+    exit 1
+  fi
+
+  panel_backup_dir="$TMP_ROOT/baota-backups"
+  mkdir -p "$panel_backup_dir"
+  NEXTBUF_BACKUP_DIR="$panel_backup_dir" ./nextbufctl backup --baota "$PANEL_COMPOSE"
+  wait_for_named_container_health nextbuf 180
+  wait_for_named_container_health nextbuf-worker 180
+  panel_backup=$(find "$panel_backup_dir" -maxdepth 1 -name 'nextbuf-*.tar.gz' -print | sort | tail -n 1)
+  [ -n "$panel_backup" ]
+  (cd "$panel_backup_dir" && sha256sum -c "$(basename "$panel_backup").sha256")
+  panel_backup_listing="$TMP_ROOT/baota-backup.list"
+  tar -tzf "$panel_backup" >"$panel_backup_listing"
+  grep -Fxq './source-deployment.json' "$panel_backup_listing"
+  grep -Fxq './source-compose.baota.yml' "$panel_backup_listing"
+  grep -Fxq './uploads.SHA256SUMS' "$panel_backup_listing"
+  tar -xOf "$panel_backup" ./manifest.json | grep -q '"sourceDeployment":"baota"'
+
+  docker compose -f "$PANEL_COMPOSE" down -v --remove-orphans
+  NEXTBUFCTL_ASSUME_YES=1 NEXTBUF_ENV_FILE="$ENV_FILE" NEXTBUF_COMPOSE_FILE=compose.yml NEXTBUF_BACKUP_DIR="$panel_backup_dir" \
+    ./nextbufctl restore "$panel_backup" --empty-install --restore-config --keep-stopped --yes
+  if NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps --status running --services web worker | grep -q .; then
+    printf 'BaoTa transfer restore unexpectedly started Web or Worker.\n' >&2
+    exit 1
+  fi
+  panel_restore_proof="$TMP_ROOT/baota-transfer-proof.txt"
+  NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm --no-deps --entrypoint sh setup \
+    -ec 'cat /app/data/uploads/baota-transfer-proof.txt' >"$panel_restore_proof"
+  grep -Fxq "baota-transfer-$ARCH" "$panel_restore_proof"
+  restored_panel_database_marker=$(printf "%s\n" \
+    "SELECT value->>'marker' FROM system_state WHERE key = 'smoke.baota-transfer';" | \
+    NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
+      'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At' | tr -d '\r')
+  [ "$restored_panel_database_marker" = "$panel_database_marker" ]
+  NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE up -d --no-deps web worker
+  wait_for_url http://127.0.0.1:3100/health/ready 180
+  wait_for_url http://127.0.0.1:3100/health/worker 180
+  restored_web_container=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps -q web)
+  restored_worker_container=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE ps -q worker)
+  for restored_container in "$restored_web_container" "$restored_worker_container"; do
+    docker exec "$restored_container" node -e \
+      'process.stdout.write(Buffer.from(process.env.AUTH_SECRET).toString("base64"))' \
+      >"$TMP_ROOT/$restored_container-auth-secret.base64"
+    cmp "$panel_auth_expected" "$TMP_ROOT/$restored_container-auth-secret.base64"
+    docker exec "$restored_container" node -e \
+      'process.stdout.write(Buffer.from(process.env.TOPIC_VIEW_PREVIOUS_AUTH_SECRETS).toString("base64"))' \
+      >"$TMP_ROOT/$restored_container-previous-auth-secrets.base64"
+    cmp "$panel_previous_auth_expected" \
+      "$TMP_ROOT/$restored_container-previous-auth-secrets.base64"
+  done
 fi
 
 stage 'report final service state'

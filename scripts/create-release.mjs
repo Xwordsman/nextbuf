@@ -179,10 +179,9 @@ await cp(path.join(root, ".next", "standalone"), path.join(runtimeRoot, ".next",
 await cp(path.join(root, "dist"), path.join(runtimeRoot, "dist"), { recursive: true });
 await cp(path.join(root, "prisma"), path.join(runtimeRoot, "prisma"), { recursive: true });
 await cp(path.join(root, "prisma.config.ts"), path.join(runtimeRoot, "prisma.config.ts"));
-await cp(
-  path.join(root, "scripts", "start-standalone.mjs"),
-  path.join(runtimeRoot, "scripts", "start-standalone.mjs"),
-);
+for (const script of ["start-standalone.mjs", "prepare-baota-backup.mjs"]) {
+  await cp(path.join(root, "scripts", script), path.join(runtimeRoot, "scripts", script));
+}
 await cp(path.join(root, "deploy", "bin"), path.join(runtimeRoot, "deploy", "bin"), {
   recursive: true,
 });

@@ -123,12 +123,17 @@ stage 'verify archive layout and checksums'
 test -f "$RELEASE_ROOT/checksums.txt"
 test -x "$RUNTIME_ROOT/deploy/bin/nextbuf"
 test -x "$RUNTIME_ROOT/deploy/bin/nextbuf-service"
+test -r "$RUNTIME_ROOT/scripts/prepare-baota-backup.mjs"
+test -x "$RELEASE_ROOT/nextbufctl"
 test -r "$RUNTIME_ROOT/.nextbuf-build.env"
 test -f "$RELEASE_ROOT/deploy/systemd/nextbuf-web.service"
 test -f "$RELEASE_ROOT/deploy/systemd/nextbuf-worker.service"
 test -f "$RELEASE_ROOT/deploy/pm2/ecosystem.config.cjs"
 
 (cd "$RELEASE_ROOT" && sha256sum --check checksums.txt >/dev/null)
+
+stage 'verify archived BaoTa helper preflight'
+node "$SCRIPT_ROOT/release-archive-baota-helper-smoke.mjs" "$RELEASE_ROOT"
 
 stage 'verify standalone dependency closure'
 node - "$RUNTIME_ROOT/.next/standalone" <<'NODE'

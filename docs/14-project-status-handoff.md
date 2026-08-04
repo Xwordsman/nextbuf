@@ -6,7 +6,7 @@
 - 当前已发布版本：`v0.13.10`，最后一个完整发布的公开 Beta
 - 当前开发版本：已批准的 `v1.0.0` 稳定化；不增加 `v1.1.0` 产品功能
 - 发布例外：不可变 `v0.13.9` 标签的 Linux x64 standalone 归档因 pnpm 依赖链接被展平而无法启动，Release 资产未完成；它不是完整、受支持的发布，也不能设为升级基线
-- 下一动作：把最后一个完成全部主线门槛的 `main` HEAD 及其不可变、带证明的 `sha-<提交>` 镜像冻结为唯一正式候选，执行 `release_rehearsal` 并在受限验收目录记录 commit、CI、OCI Digest、归档/SBOM artifact；按正式版人工验收模板完成全新安装，并把生产维护窗口备份恢复到隔离副本。2026-08-03 对 `www.nextbuf.com` 的公开只读核对显示线上仍为 `0.13.8`，因此该副本必须先按已发布路径完成 `0.13.8 -> 0.13.10`，再执行 `0.13.10 -> 1.0.0`，逐项证明用户、UID、内容、Better Auth 凭据/Session、附件、Provider、备份恢复和双管理员连续性；人工验收后不再提交源码变更，直接在同一候选 commit 创建标签。生产实例不承担破坏性演练，`v1.0.0` 仍未发布，不混入 `v1.1.0` 功能
+- 下一动作：把最后一个完成全部主线门槛的 `main` HEAD 及其不可变、带证明的 `sha-<提交>` 镜像冻结为唯一正式候选，执行 `release_rehearsal` 并在受限验收目录记录 commit、CI、OCI Digest、归档/SBOM artifact；按正式版人工验收模板完成全新安装，并在生产维护窗口通过 `nextbufctl backup --baota` 把实际宝塔实例导出、以 `--keep-stopped` 恢复到 Provider 已隔离的受控副本。2026-08-03 对 `www.nextbuf.com` 的公开只读核对显示线上仍为 `0.13.8`，因此该副本必须先按已发布路径完成 `0.13.8 -> 0.13.10`；预标签候选再按运行手册把 `0.13.10` 与候选完整 OCI index 从记录的 Digest 复制到 loopback Registry，正常拉取并执行 `0.13.10 -> 1.0.0`，逐项证明用户、UID、内容、Better Auth 凭据/Session、附件、Provider、备份恢复和双管理员连续性。单纯本地 tag、忽略 pull 或另一次构建都不构成候选。人工验收后不再提交源码变更，直接在同一候选 commit 创建标签。生产实例不承担破坏性演练，`v1.0.0` 仍未发布，不混入 `v1.1.0` 功能
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -150,7 +150,7 @@
 - 根 `compose.yml` 提供 Web、Worker、PostgreSQL 18、Redis 8 四个常驻服务；setup 为一次性成功退出任务，PostgreSQL/Redis/本地附件使用独立命名卷，Web 只绑定 `127.0.0.1`。
 - `nextbufctl` 实现 init/start/stop/status/logs/doctor/backup/restore/upgrade，并保留等价 Compose 命令；升级只接受更高精确版本，迁移成功后不承诺盲目切回旧代码。
 - `/setup` 使用环境中的至少 32 位 `SETUP_TOKEN` 创建首位管理员；账号、密码哈希和邮箱验证仍由 Better Auth 管理，NextBuf 在受锁流程中授予首个站点管理员并写治理审计/安装完成状态。最终事务锁定 credential，并使用 Better Auth verifier 证明当前表单密码与已提交账号一致；该证明不创建 Session/Cookie，密码不一致时返回 `initial_administrator_password_mismatch`，不授予角色、不写完成状态也不覆盖密码哈希。完成前普通邮箱和 OAuth 新用户创建均被拒绝。
-- `nextbuf-backup-v1` 原子归档包含 PostgreSQL custom dump、本地附件、配置、Compose、版本/迁移清单和 SHA-256；恢复可显式覆盖配置或删除空安装卷，Redis 明确不是备份事实。S3 对象仍需 Provider 级版本/快照。
+- `nextbuf-backup-v1` 原子归档包含 PostgreSQL custom dump、本地附件、配置、Compose、版本/迁移清单和 SHA-256；恢复可显式覆盖配置、删除空安装卷或通过 `--keep-stopped` 在启动写进程前隔离 Provider，Redis 明确不是备份事实。`v1.0.0` 稳定化新增 `backup --baota`，核对实际四容器/环境/卷后生成兼容归档、来源身份与外层 SHA-256；S3 对象仍需 Provider 级版本/快照。
 - GitHub Actions 的日常主分支在完整检查后通过原生 amd64/arm64 Runner 验证 setup/首次管理员/Web/Worker 基础镜像冒烟，并在 amd64 从当前公开基线真实升级到候选，强制运行停写比较与附件对象校验；每个架构以短期 artifact 固定实际测试的运行时与带 SBOM/provenance 的不可变 `sha-<提交>-<架构>` 源索引 Digest，全部门槛通过且提交仍是远程 HEAD 后才合并并完整验证不可变 `sha-<提交>` 与 `edge`，不写入 `latest`。定时和普通手动运行不发布镜像；显式发布演练与正式标签复用同一 `sha-*` 来源，额外执行空卷恢复、故障注入和跨版本升级，不重新构建。演练只验证 run-scoped staging；正式标签从相同 Digest 创建精确 SemVer，再发布非 Docker x64 归档、Source SBOM 和 Release 资产；最新完整稳定 Release 成功后才提升同一 manifest 为 `latest`。
 - 发布资产包含 Nginx、宝塔、systemd 和 PM2 两进程示例；部署、初始化、升级、回滚和恢复边界见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)。
 
@@ -195,7 +195,8 @@ pnpm test:integration            PostgreSQL/Redis/Mailpit 真实集成测试
 pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 ./nextbufctl start               生产 Compose 初始化并启动四个常驻服务
 ./nextbufctl backup              备份 PostgreSQL、配置和本地附件
-./nextbufctl restore ...         校验并恢复备份
+./nextbufctl backup --baota ...  从官方宝塔四容器导出兼容备份
+./nextbufctl restore ...         校验并恢复备份；隔离副本使用 --keep-stopped
 ```
 
 开发 Compose 提供 PostgreSQL `5432`、Redis `6379`、Mailpit SMTP `1025` 和 Web `8025`。测试 Compose 使用 `55432`、`56379`、`11025` 和 `18025`，不得与开发或生产数据混用。

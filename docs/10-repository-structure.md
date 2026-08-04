@@ -76,6 +76,7 @@ NextBuf/
 ├─ public/                    浏览器可直接访问的静态资源
 ├─ scripts/
 │  ├─ prepare-standalone.mjs  整理本地/发布用 standalone 静态资源
+│  ├─ prepare-baota-backup.mjs 核对面板运行环境并生成受控恢复配置/身份
 │  └─ create-release.mjs      生成非 Docker x64 发布归档和校验和
 ├─ tests/
 │  ├─ unit/

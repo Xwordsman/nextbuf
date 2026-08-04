@@ -147,6 +147,7 @@ jobs:
           sh -n scripts/verify-github-tag-commit.sh
           sh -n scripts/verify-oci-image-identity.sh
           node --check scripts/prepare-github-release-body.mjs
+          node --check scripts/prepare-baota-backup.mjs
           node --check scripts/release-receipt-metadata.mjs
           node --check scripts/tested-image-identity.mjs
           node --check scripts/oci-platform-members.mjs
@@ -173,6 +174,7 @@ jobs:
           sh tests/smoke/release-channel-policy-smoke.sh
           sh tests/smoke/stable-image-channel-smoke.sh
           node tests/smoke/github-release-body-smoke.mjs
+          node tests/smoke/baota-backup-config-smoke.mjs
           node tests/smoke/tested-image-identity-smoke.mjs
 
       - name: Check formatting
