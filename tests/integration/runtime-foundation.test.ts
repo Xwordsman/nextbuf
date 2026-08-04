@@ -49,10 +49,66 @@ async function waitFor(assertion: () => Promise<boolean>, timeoutMs = 15_000): P
   throw new Error(`Condition was not met within ${timeoutMs}ms`);
 }
 
+type CleanupStep = {
+  label: string;
+  run: () => Promise<unknown>;
+};
+
+async function collectCleanupErrors(steps: CleanupStep[]): Promise<Error[]> {
+  const errors: Error[] = [];
+
+  for (const step of steps) {
+    try {
+      await step.run();
+    } catch (error) {
+      errors.push(new Error(`Integration cleanup failed: ${step.label}`, { cause: error }));
+    }
+  }
+
+  return errors;
+}
+
+async function runTestWithCleanup(
+  test: () => Promise<void>,
+  cleanup: () => CleanupStep[],
+): Promise<void> {
+  let primaryError: unknown;
+  let failed = false;
+
+  try {
+    await test();
+  } catch (error) {
+    failed = true;
+    primaryError = error;
+  }
+
+  const cleanupErrors = await collectCleanupErrors(cleanup());
+  if (failed) {
+    if (cleanupErrors.length > 0) {
+      console.error(
+        "Integration cleanup also failed after the primary test failure",
+        new AggregateError(cleanupErrors),
+      );
+    }
+    throw primaryError;
+  }
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, "Integration cleanup failed");
+  }
+}
+
 async function closeWorker(worker: ReturnType<typeof createOutboxWorker>): Promise<void> {
-  await worker.worker.close();
-  if (worker.connection.status !== "end") {
-    await worker.connection.quit();
+  const errors = await collectCleanupErrors([
+    { label: "close BullMQ Worker", run: () => worker.worker.close() },
+    {
+      label: "quit BullMQ Worker connection",
+      run: async () => {
+        if (worker.connection.status !== "end") await worker.connection.quit();
+      },
+    },
+  ]);
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "Closing the Outbox Worker failed");
   }
 }
 
@@ -145,51 +201,90 @@ describe("PostgreSQL, Redis, Outbox and Worker integration", () => {
   it("persists an Outbox intent and consumes it exactly once", async () => {
     const prisma = getPrismaClient();
     const worker = createOutboxWorker();
-    await worker.worker.waitUntilReady();
+    let eventId: string | undefined;
 
-    const event = await prisma.$transaction(async (transaction) => {
-      await transaction.systemState.create({
-        data: { key: "test.business_fact", value: { durable: true } },
-      });
+    await runTestWithCleanup(
+      async () => {
+        await worker.worker.waitUntilReady();
 
-      return createOutboxEvent(transaction, {
-        topic: RUNTIME_PROBE_TOPIC,
-        idempotencyKey: "test-runtime-probe-1",
-        payload: { source: "integration-test" },
-      });
-    });
+        const event = await prisma.$transaction(async (transaction) => {
+          await transaction.systemState.create({
+            data: { key: "test.business_fact", value: { durable: true } },
+          });
 
-    await expect(dispatchOutboxBatch("integration-dispatcher")).resolves.toEqual({
-      dispatched: 1,
-      failed: 0,
-    });
-    await expect(dispatchOutboxBatch("integration-dispatcher")).resolves.toEqual({
-      dispatched: 0,
-      failed: 0,
-    });
+          return createOutboxEvent(transaction, {
+            topic: RUNTIME_PROBE_TOPIC,
+            idempotencyKey: "test-runtime-probe-1",
+            payload: { source: "integration-test" },
+          });
+        });
+        eventId = event.id;
 
-    await waitFor(async () => {
-      const processed = await prisma.processedJob.count({
-        where: { idempotencyKey: `outbox-${event.id}` },
-      });
-      return processed === 1;
-    });
+        await expect(dispatchOutboxBatch("integration-dispatcher")).resolves.toEqual({
+          dispatched: 1,
+          failed: 0,
+        });
+        await expect(dispatchOutboxBatch("integration-dispatcher")).resolves.toEqual({
+          dispatched: 0,
+          failed: 0,
+        });
 
-    expect(
-      await prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } }),
-    ).toBe(1);
-    expect(await prisma.outboxEvent.findUnique({ where: { id: event.id } })).toMatchObject({
-      attempts: 1,
-      lockOwner: null,
-      processedAt: expect.any(Date),
-    });
+        await waitFor(async () => {
+          const [processedJobs, processedEvent] = await Promise.all([
+            prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } }),
+            prisma.outboxEvent.findUnique({ where: { id: event.id } }),
+          ]);
+          return (
+            processedJobs === 1 &&
+            processedEvent?.processedAt !== null &&
+            processedEvent?.lockedAt === null &&
+            processedEvent?.lockOwner === null
+          );
+        });
 
-    await redis.flushdb();
-    await expect(
-      prisma.systemState.findUnique({ where: { key: "test.business_fact" } }),
-    ).resolves.toMatchObject({ value: { durable: true } });
+        expect(
+          await prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } }),
+        ).toBe(1);
+        expect(await prisma.outboxEvent.findUnique({ where: { id: event.id } })).toMatchObject({
+          attempts: 1,
+          lockOwner: null,
+          processedAt: expect.any(Date),
+        });
 
-    await closeWorker(worker);
+        await redis.flushdb();
+        await expect(
+          prisma.systemState.findUnique({ where: { key: "test.business_fact" } }),
+        ).resolves.toMatchObject({ value: { durable: true } });
+      },
+      () => [
+        { label: "close exact-once Worker", run: () => closeWorker(worker) },
+        {
+          label: "remove exact-once queue job",
+          run: async () => {
+            if (eventId) await (await getSystemQueue().getJob(eventId))?.remove();
+          },
+        },
+        {
+          label: "remove exact-once ProcessedJob",
+          run: async () => {
+            if (!eventId) return;
+            await prisma.processedJob.deleteMany({
+              where: { queueName: SYSTEM_QUEUE_NAME, idempotencyKey: `outbox-${eventId}` },
+            });
+          },
+        },
+        {
+          label: "remove exact-once Outbox event",
+          run: async () => {
+            if (eventId) await prisma.outboxEvent.deleteMany({ where: { id: eventId } });
+          },
+        },
+        {
+          label: "remove exact-once business fact",
+          run: () => prisma.systemState.deleteMany({ where: { key: "test.business_fact" } }),
+        },
+      ],
+    );
   });
 
   it("does not revisit durable completed Outbox history during recovery", async () => {
@@ -300,85 +395,128 @@ describe("PostgreSQL, Redis, Outbox and Worker integration", () => {
       idempotencyKey: "test-runtime-redis-loss-recovery",
       payload: { source: "redis-loss-recovery-test" },
     });
+    let activeProcessing: Awaited<ReturnType<typeof acquireOutboxProcessingLease>> = null;
+    let worker: ReturnType<typeof createOutboxWorker> | undefined;
 
-    await expect(dispatchOutboxBatch("redis-loss-publisher")).resolves.toEqual({
-      dispatched: 1,
-      failed: 0,
-    });
-    await expect(
-      prisma.outboxEvent.findUniqueOrThrow({ where: { id: event.id } }),
-    ).resolves.toEqual(expect.objectContaining({ publishedAt: expect.any(Date), lockOwner: null }));
-    await expect(
-      prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } }),
-    ).resolves.toBe(0);
-    await expect(getSystemQueue().getJob(event.id)).resolves.toBeDefined();
+    await runTestWithCleanup(
+      async () => {
+        await expect(dispatchOutboxBatch("redis-loss-publisher")).resolves.toEqual({
+          dispatched: 1,
+          failed: 0,
+        });
+        await expect(
+          prisma.outboxEvent.findUniqueOrThrow({ where: { id: event.id } }),
+        ).resolves.toEqual(
+          expect.objectContaining({ publishedAt: expect.any(Date), lockOwner: null }),
+        );
+        await expect(
+          prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } }),
+        ).resolves.toBe(0);
+        await expect(getSystemQueue().getJob(event.id)).resolves.toBeDefined();
 
-    await redis.flushdb();
-    await expect(getSystemQueue().getJob(event.id)).resolves.toBeUndefined();
-    const activeProcessing = await acquireOutboxProcessingLease(event.id);
-    expect(activeProcessing).not.toBeNull();
-    await expect(acquireOutboxProcessingLease(event.id)).resolves.toBeNull();
-    await new Promise((resolve) => setTimeout(resolve, 1_100));
+        await redis.flushdb();
+        await expect(getSystemQueue().getJob(event.id)).resolves.toBeUndefined();
+        activeProcessing = await acquireOutboxProcessingLease(event.id);
+        expect(activeProcessing).not.toBeNull();
+        await expect(acquireOutboxProcessingLease(event.id)).resolves.toBeNull();
+        await new Promise((resolve) => setTimeout(resolve, 1_100));
 
-    await ensureWorkerScheduledTasks();
-    await prisma.workerScheduledTask.updateMany({
-      data: {
-        nextRunAt: new Date(Date.now() + 86_400_000),
-        lockedAt: null,
-        lockOwner: null,
+        await ensureWorkerScheduledTasks();
+        await prisma.workerScheduledTask.updateMany({
+          data: {
+            nextRunAt: new Date(Date.now() + 86_400_000),
+            lockedAt: null,
+            lockOwner: null,
+          },
+        });
+        await prisma.workerScheduledTask.update({
+          where: { name: WORKER_MAINTENANCE_TASK },
+          data: { nextRunAt: new Date(0) },
+        });
+        await expect(runScheduledTasks("redis-loss-while-active-worker")).resolves.toBe(1);
+        await expect(
+          prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } }),
+        ).resolves.toBe(0);
+        await expect(getSystemQueue().getJob(event.id)).resolves.toBeUndefined();
+
+        await activeProcessing?.release();
+        activeProcessing = null;
+        await prisma.workerScheduledTask.update({
+          where: { name: WORKER_MAINTENANCE_TASK },
+          data: { nextRunAt: new Date(0) },
+        });
+
+        worker = createOutboxWorker();
+        await worker.worker.waitUntilReady();
+        await expect(runScheduledTasks("redis-loss-recovery-worker")).resolves.toBe(1);
+        await waitFor(async () => {
+          const [processedJobs, recoveredEvent] = await Promise.all([
+            prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } }),
+            prisma.outboxEvent.findUnique({ where: { id: event.id } }),
+          ]);
+          return (
+            processedJobs === 1 &&
+            recoveredEvent?.processedAt !== null &&
+            recoveredEvent?.lockedAt === null &&
+            recoveredEvent?.lockOwner === null
+          );
+        });
+
+        await expect(
+          prisma.systemState.findUniqueOrThrow({
+            where: { key: `worker.last_task.${WORKER_MAINTENANCE_TASK}` },
+          }),
+        ).resolves.toMatchObject({
+          value: {
+            outboxRecovery: { alreadyQueued: 0, checked: 1, failed: 0, requeued: 1 },
+          },
+        });
+        await expect(
+          prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } }),
+        ).resolves.toBe(1);
+        await expect(
+          prisma.outboxEvent.findUniqueOrThrow({ where: { id: event.id } }),
+        ).resolves.toEqual(
+          expect.objectContaining({
+            attempts: 2,
+            lockOwner: null,
+            processedAt: expect.any(Date),
+            publishedAt: expect.any(Date),
+          }),
+        );
       },
-    });
-    await prisma.workerScheduledTask.update({
-      where: { name: WORKER_MAINTENANCE_TASK },
-      data: { nextRunAt: new Date(0) },
-    });
-    await expect(runScheduledTasks("redis-loss-while-active-worker")).resolves.toBe(1);
-    await expect(
-      prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } }),
-    ).resolves.toBe(0);
-    await expect(getSystemQueue().getJob(event.id)).resolves.toBeUndefined();
-
-    await activeProcessing?.release();
-    await prisma.workerScheduledTask.update({
-      where: { name: WORKER_MAINTENANCE_TASK },
-      data: { nextRunAt: new Date(0) },
-    });
-
-    const worker = createOutboxWorker();
-    await worker.worker.waitUntilReady();
-    await expect(runScheduledTasks("redis-loss-recovery-worker")).resolves.toBe(1);
-    await waitFor(async () => {
-      return (
-        (await prisma.processedJob.count({
-          where: { idempotencyKey: `outbox-${event.id}` },
-        })) === 1
-      );
-    });
-
-    await expect(
-      prisma.systemState.findUniqueOrThrow({
-        where: { key: `worker.last_task.${WORKER_MAINTENANCE_TASK}` },
-      }),
-    ).resolves.toMatchObject({
-      value: {
-        outboxRecovery: { alreadyQueued: 0, checked: 1, failed: 0, requeued: 1 },
-      },
-    });
-    await expect(
-      prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } }),
-    ).resolves.toBe(1);
-    await expect(
-      prisma.outboxEvent.findUniqueOrThrow({ where: { id: event.id } }),
-    ).resolves.toEqual(
-      expect.objectContaining({
-        attempts: 2,
-        lockOwner: null,
-        processedAt: expect.any(Date),
-        publishedAt: expect.any(Date),
-      }),
+      () => [
+        {
+          label: "close Redis-loss recovery Worker",
+          run: async () => {
+            if (worker) await closeWorker(worker);
+          },
+        },
+        {
+          label: "release Redis-loss processing lease",
+          run: async () => {
+            await activeProcessing?.release();
+          },
+        },
+        {
+          label: "remove Redis-loss queue job",
+          run: async () => {
+            await (await getSystemQueue().getJob(event.id))?.remove();
+          },
+        },
+        {
+          label: "remove Redis-loss ProcessedJob",
+          run: () =>
+            prisma.processedJob.deleteMany({
+              where: { queueName: SYSTEM_QUEUE_NAME, idempotencyKey: `outbox-${event.id}` },
+            }),
+        },
+        {
+          label: "remove Redis-loss Outbox event",
+          run: () => prisma.outboxEvent.deleteMany({ where: { id: event.id } }),
+        },
+      ],
     );
-
-    await closeWorker(worker);
   });
 
   it("replaces a terminal Redis job when PostgreSQL has no completed processing fact", async () => {
@@ -393,49 +531,77 @@ describe("PostgreSQL, Redis, Outbox and Worker integration", () => {
       connection,
       prefix: getRedisKeyspaces().queue,
     });
+    let worker: ReturnType<typeof createOutboxWorker> | undefined;
 
-    try {
-      await incompleteWorker.waitUntilReady();
-      await expect(dispatchOutboxBatch("terminal-job-publisher")).resolves.toMatchObject({
-        dispatched: 1,
-        failed: 0,
-      });
-      await waitFor(async () => {
-        const job = await getSystemQueue().getJob(event.id);
-        return (await job?.getState()) === "completed";
-      });
-      await incompleteWorker.close();
-      if (connection.status !== "end") await connection.quit();
+    await runTestWithCleanup(
+      async () => {
+        await incompleteWorker.waitUntilReady();
+        await expect(dispatchOutboxBatch("terminal-job-publisher")).resolves.toMatchObject({
+          dispatched: 1,
+          failed: 0,
+        });
+        await waitFor(async () => {
+          const job = await getSystemQueue().getJob(event.id);
+          return (await job?.getState()) === "completed";
+        });
+        await incompleteWorker.close();
+        if (connection.status !== "end") await connection.quit();
 
-      await expect(
-        recoverPublishedOutboxBatch("terminal-job-recovery", new Date(Date.now() + 2_000)),
-      ).resolves.toEqual({ alreadyQueued: 0, checked: 1, failed: 0, requeued: 1 });
-      await expect((await getSystemQueue().getJob(event.id))?.getState()).resolves.toBe("waiting");
+        await expect(
+          recoverPublishedOutboxBatch("terminal-job-recovery", new Date(Date.now() + 2_000)),
+        ).resolves.toEqual({ alreadyQueued: 0, checked: 1, failed: 0, requeued: 1 });
+        await expect((await getSystemQueue().getJob(event.id))?.getState()).resolves.toBe(
+          "waiting",
+        );
 
-      const worker = createOutboxWorker();
-      await worker.worker.waitUntilReady();
-      await waitFor(async () =>
-        Boolean(
-          await prisma.processedJob.findUnique({
-            where: {
-              queueName_idempotencyKey: {
-                queueName: SYSTEM_QUEUE_NAME,
-                idempotencyKey: `outbox-${event.id}`,
+        worker = createOutboxWorker();
+        await worker.worker.waitUntilReady();
+        await waitFor(async () =>
+          Boolean(
+            await prisma.processedJob.findUnique({
+              where: {
+                queueName_idempotencyKey: {
+                  queueName: SYSTEM_QUEUE_NAME,
+                  idempotencyKey: `outbox-${event.id}`,
+                },
               },
-            },
-          }),
-        ),
-      );
-      await closeWorker(worker);
-    } finally {
-      await incompleteWorker.close().catch(() => undefined);
-      if (connection.status !== "end") await connection.quit().catch(() => undefined);
-      await (await getSystemQueue().getJob(event.id))?.remove();
-      await prisma.processedJob.deleteMany({
-        where: { queueName: SYSTEM_QUEUE_NAME, idempotencyKey: `outbox-${event.id}` },
-      });
-      await prisma.outboxEvent.deleteMany({ where: { id: event.id } });
-    }
+            }),
+          ),
+        );
+      },
+      () => [
+        {
+          label: "close terminal-job recovery Worker",
+          run: async () => {
+            if (worker) await closeWorker(worker);
+          },
+        },
+        { label: "close incomplete terminal-job Worker", run: () => incompleteWorker.close() },
+        {
+          label: "quit incomplete terminal-job Worker connection",
+          run: async () => {
+            if (connection.status !== "end") await connection.quit();
+          },
+        },
+        {
+          label: "remove terminal-job recovery queue job",
+          run: async () => {
+            await (await getSystemQueue().getJob(event.id))?.remove();
+          },
+        },
+        {
+          label: "remove terminal-job recovery ProcessedJob",
+          run: () =>
+            prisma.processedJob.deleteMany({
+              where: { queueName: SYSTEM_QUEUE_NAME, idempotencyKey: `outbox-${event.id}` },
+            }),
+        },
+        {
+          label: "remove terminal-job recovery Outbox event",
+          run: () => prisma.outboxEvent.deleteMany({ where: { id: event.id } }),
+        },
+      ],
+    );
   });
 
   it("replaces a terminal Redis job during ordinary dispatch after replay resets publication", async () => {
@@ -1006,60 +1172,125 @@ describe("PostgreSQL, Redis, Outbox and Worker integration", () => {
       idempotencyKey: "test-runtime-probe-2",
       payload: { source: "worker-restart-test" },
     });
+    let worker: ReturnType<typeof createOutboxWorker> | undefined;
 
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    expect(
-      await prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } }),
-    ).toBe(0);
-    await expect(prisma.outboxEvent.findUnique({ where: { id: event.id } })).resolves.toMatchObject(
-      {
-        publishedAt: null,
+    await runTestWithCleanup(
+      async () => {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        expect(
+          await prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } }),
+        ).toBe(0);
+        await expect(
+          prisma.outboxEvent.findUnique({ where: { id: event.id } }),
+        ).resolves.toMatchObject({
+          publishedAt: null,
+        });
+
+        worker = createOutboxWorker();
+        await worker.worker.waitUntilReady();
+        await expect(dispatchOutboxBatch("integration-dispatcher")).resolves.toMatchObject({
+          dispatched: 1,
+        });
+        await waitFor(async () => {
+          const [processedJobs, processedEvent] = await Promise.all([
+            prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } }),
+            prisma.outboxEvent.findUnique({ where: { id: event.id } }),
+          ]);
+          return (
+            processedJobs === 1 &&
+            processedEvent?.processedAt !== null &&
+            processedEvent?.lockedAt === null &&
+            processedEvent?.lockOwner === null
+          );
+        });
       },
+      () => [
+        {
+          label: "close restarted Outbox Worker",
+          run: async () => {
+            if (worker) await closeWorker(worker);
+          },
+        },
+        {
+          label: "remove restarted Worker queue job",
+          run: async () => {
+            await (await getSystemQueue().getJob(event.id))?.remove();
+          },
+        },
+        {
+          label: "remove restarted Worker ProcessedJob",
+          run: () =>
+            prisma.processedJob.deleteMany({
+              where: { queueName: SYSTEM_QUEUE_NAME, idempotencyKey: `outbox-${event.id}` },
+            }),
+        },
+        {
+          label: "remove restarted Worker Outbox event",
+          run: () => prisma.outboxEvent.deleteMany({ where: { id: event.id } }),
+        },
+      ],
     );
-
-    const worker = createOutboxWorker();
-    await worker.worker.waitUntilReady();
-    await expect(dispatchOutboxBatch("integration-dispatcher")).resolves.toMatchObject({
-      dispatched: 1,
-    });
-    await waitFor(async () => {
-      return (
-        (await prisma.processedJob.count({ where: { idempotencyKey: `outbox-${event.id}` } })) === 1
-      );
-    });
-
-    await closeWorker(worker);
   });
 
   it("processes a representative Outbox batch within the Beta budget", async () => {
     const prisma = getPrismaClient();
     const worker = createOutboxWorker();
-    await worker.worker.waitUntilReady();
-    const events = await prisma.$transaction((transaction) =>
-      Promise.all(
-        Array.from({ length: 25 }, (_, index) =>
-          createOutboxEvent(transaction, {
-            topic: RUNTIME_PROBE_TOPIC,
-            idempotencyKey: `test-runtime-batch-${index}`,
-            payload: { source: "worker-capacity-test", index },
-          }),
-        ),
-      ),
+    let eventIds: string[] = [];
+
+    await runTestWithCleanup(
+      async () => {
+        await worker.worker.waitUntilReady();
+        const events = await prisma.$transaction((transaction) =>
+          Promise.all(
+            Array.from({ length: 25 }, (_, index) =>
+              createOutboxEvent(transaction, {
+                topic: RUNTIME_PROBE_TOPIC,
+                idempotencyKey: `test-runtime-batch-${index}`,
+                payload: { source: "worker-capacity-test", index },
+              }),
+            ),
+          ),
+        );
+        eventIds = events.map((event) => event.id);
+        const startedAt = performance.now();
+        await expect(dispatchOutboxBatch("integration-batch-dispatcher")).resolves.toMatchObject({
+          dispatched: 25,
+          failed: 0,
+        });
+        const processedKeys = events.map((event) => `outbox-${event.id}`);
+        await waitFor(async () => {
+          return (
+            (await prisma.processedJob.count({
+              where: { idempotencyKey: { in: processedKeys } },
+            })) === events.length
+          );
+        }, 10_000);
+        expect(performance.now() - startedAt).toBeLessThan(10_000);
+      },
+      () => [
+        { label: "close capacity-test Worker", run: () => closeWorker(worker) },
+        ...eventIds.map((eventId) => ({
+          label: `remove capacity-test queue job ${eventId}`,
+          run: async () => {
+            await (await getSystemQueue().getJob(eventId))?.remove();
+          },
+        })),
+        {
+          label: "remove capacity-test ProcessedJobs",
+          run: () =>
+            prisma.processedJob.deleteMany({
+              where: {
+                queueName: SYSTEM_QUEUE_NAME,
+                idempotencyKey: { in: eventIds.map((eventId) => `outbox-${eventId}`) },
+              },
+            }),
+        },
+        {
+          label: "remove capacity-test Outbox events",
+          run: () => prisma.outboxEvent.deleteMany({ where: { id: { in: eventIds } } }),
+        },
+      ],
     );
-    const startedAt = performance.now();
-    await expect(dispatchOutboxBatch("integration-batch-dispatcher")).resolves.toMatchObject({
-      dispatched: 25,
-      failed: 0,
-    });
-    const processedKeys = events.map((event) => `outbox-${event.id}`);
-    await waitFor(async () => {
-      return (
-        (await prisma.processedJob.count({ where: { idempotencyKey: { in: processedKeys } } })) ===
-        events.length
-      );
-    }, 10_000);
-    expect(performance.now() - startedAt).toBeLessThan(10_000);
-    await closeWorker(worker);
   });
 
   it("closes the BullMQ diagnostic queue when doctor finishes", async () => {
