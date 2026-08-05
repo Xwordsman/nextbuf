@@ -8,8 +8,9 @@ const work = await mkdtemp(path.join(os.tmpdir(), "nextbuf-compose-dollar-"));
 const composeCommand = process.env.NEXTBUF_COMPOSE_BIN || "docker";
 const composePrefix = process.env.NEXTBUF_COMPOSE_BIN ? [] : ["compose"];
 const composeEnvironment = { ...process.env };
-delete composeEnvironment.NAME;
-delete composeEnvironment.OLD;
+for (const key of ["AUTH_SECRET", "TOPIC_VIEW_PREVIOUS_AUTH_SECRETS", "NAME", "OLD"]) {
+  delete composeEnvironment[key];
+}
 
 const authSecret = ` "auth $NAME \${NAME} $$ # \\'"\tsecret ${"z".repeat(32)}" `;
 const previousAuthSecrets = JSON.stringify([
