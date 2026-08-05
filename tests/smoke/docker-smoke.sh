@@ -548,7 +548,7 @@ const previousAuthSecrets = JSON.stringify([
   ` "old $OLD \${OLD} $$ # \\'"\tsecret ${"y".repeat(32)}" `,
   `second-old-secret-${"x".repeat(32)}`,
 ]);
-const yamlValue = (value) => JSON.stringify(value.replaceAll("$", "$$"));
+const yamlValue = (value) => JSON.stringify(value.replaceAll("$", () => "$$"));
 let compose = fs.readFileSync(composePath, "utf8");
 compose = compose.replace(/^    AUTH_SECRET:.*$/m, `    AUTH_SECRET: ${yamlValue(authSecret)}`);
 compose = compose.replace(

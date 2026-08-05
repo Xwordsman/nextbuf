@@ -46,6 +46,10 @@ function environmentEntries(environment, extras = {}) {
   return Object.entries({ ...extras, ...environment }).map(([key, value]) => `${key}=${value}`);
 }
 
+function composeEnvironmentJson(value) {
+  return JSON.stringify(value.split("$").join("$$"));
+}
+
 function service(image, containerName, environment, volumeSource, volumeTarget) {
   return {
     image,
@@ -295,13 +299,11 @@ try {
   assert.equal(complexSecrets.result.status, 0, complexSecrets.result.stderr);
   const complexEnvironment = await readFile(complexSecrets.envOutput, "utf8");
   assert.ok(
-    complexEnvironment.includes(
-      `AUTH_SECRET=${JSON.stringify(complexAuthSecret.replaceAll("$", "$$"))}\n`,
-    ),
+    complexEnvironment.includes(`AUTH_SECRET=${composeEnvironmentJson(complexAuthSecret)}\n`),
   );
   assert.ok(
     complexEnvironment.includes(
-      `TOPIC_VIEW_PREVIOUS_AUTH_SECRETS=${JSON.stringify(complexPreviousSecrets.replaceAll("$", "$$"))}\n`,
+      `TOPIC_VIEW_PREVIOUS_AUTH_SECRETS=${composeEnvironmentJson(complexPreviousSecrets)}\n`,
     ),
   );
 

@@ -172,7 +172,8 @@ function serializeEnvironmentValue(key, value) {
     return value;
   }
   if (!/[#$\\"']/.test(value) && value === value.trim()) return value;
-  return JSON.stringify(value.replaceAll("$", "$$"));
+  // Compose consumes `$$` as a literal `$`; a callback avoids JavaScript's `$$` replacement token.
+  return JSON.stringify(value.replaceAll("$", () => "$$"));
 }
 
 function renderEnvironment(template, values) {
