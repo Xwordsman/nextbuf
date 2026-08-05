@@ -550,16 +550,43 @@ const previousAuthSecrets = JSON.stringify([
 ]);
 const yamlValue = (value) => JSON.stringify(value.replaceAll("$", () => "$$"));
 let compose = fs.readFileSync(composePath, "utf8");
-compose = compose.replace(/^    AUTH_SECRET:.*$/m, `    AUTH_SECRET: ${yamlValue(authSecret)}`);
+compose = compose.replace(
+  /^    AUTH_SECRET:.*$/m,
+  () => `    AUTH_SECRET: ${yamlValue(authSecret)}`,
+);
 compose = compose.replace(
   /^    TOPIC_VIEW_PREVIOUS_AUTH_SECRETS:.*$/m,
-  `    TOPIC_VIEW_PREVIOUS_AUTH_SECRETS: ${yamlValue(previousAuthSecrets)}`,
+  () => `    TOPIC_VIEW_PREVIOUS_AUTH_SECRETS: ${yamlValue(previousAuthSecrets)}`,
 );
 fs.writeFileSync(composePath, compose);
 fs.writeFileSync(authOutput, Buffer.from(authSecret).toString("base64"));
 fs.writeFileSync(previousOutput, Buffer.from(previousAuthSecrets).toString("base64"));
 NODE
-  docker compose -f "$PANEL_COMPOSE" config --quiet
+  panel_rendered_config="$TMP_ROOT/panel-compose.rendered.json"
+  docker compose -f "$PANEL_COMPOSE" config --format json >"$panel_rendered_config"
+  node - "$panel_rendered_config" "$panel_auth_expected" \
+    "$panel_previous_auth_expected" <<'NODE'
+const fs = require("node:fs");
+
+const [, , configPath, authPath, previousPath] = process.argv;
+const config = JSON.parse(fs.readFileSync(configPath, "utf8").split("$$").join("$"));
+const expectedAuth = fs.readFileSync(authPath, "utf8");
+const expectedPrevious = fs.readFileSync(previousPath, "utf8");
+for (const serviceName of ["nextbuf", "worker"]) {
+  const environment = config.services?.[serviceName]?.environment;
+  if (Buffer.from(environment?.AUTH_SECRET ?? "").toString("base64") !== expectedAuth) {
+    throw new Error(`${serviceName} rendered AUTH_SECRET differs from the source value`);
+  }
+  if (
+    Buffer.from(environment?.TOPIC_VIEW_PREVIOUS_AUTH_SECRETS ?? "").toString("base64") !==
+    expectedPrevious
+  ) {
+    throw new Error(
+      `${serviceName} rendered TOPIC_VIEW_PREVIOUS_AUTH_SECRETS differs from the source value`,
+    );
+  }
+}
+NODE
   docker compose -f "$PANEL_COMPOSE" up -d
   wait_for_named_container_health nextbuf-postgres 180
   wait_for_named_container_health nextbuf-redis 120

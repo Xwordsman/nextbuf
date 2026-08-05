@@ -28,6 +28,26 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function parseRenderedComposeConfig(serialized) {
+  // `docker compose config` doubles every dollar after JSON serialization so
+  // its output can be used as Compose input again. Docker inspect reports the
+  // actual single-layer value, so remove exactly that output-escaping layer.
+  const decoded = [];
+  for (let index = 0; index < serialized.length; index += 1) {
+    if (serialized[index] !== "$") {
+      decoded.push(serialized[index]);
+      continue;
+    }
+    assert(
+      serialized[index + 1] === "$",
+      "rendered Compose configuration contains an invalid dollar escape",
+    );
+    decoded.push("$");
+    index += 1;
+  }
+  return JSON.parse(decoded.join(""));
+}
+
 function object(value, label) {
   assert(value && typeof value === "object" && !Array.isArray(value), `${label} must be an object`);
   return value;
@@ -192,7 +212,7 @@ function renderEnvironment(template, values) {
 }
 
 const [compose, containers, volumes, images, template] = await Promise.all([
-  readFile(composePath, "utf8").then(JSON.parse),
+  readFile(composePath, "utf8").then(parseRenderedComposeConfig),
   readFile(containersPath, "utf8").then(JSON.parse),
   readFile(volumesPath, "utf8").then(JSON.parse),
   readFile(imagePath, "utf8").then(JSON.parse),

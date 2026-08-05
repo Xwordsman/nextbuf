@@ -50,6 +50,11 @@ function composeEnvironmentJson(value) {
   return JSON.stringify(value.split("$").join("$$"));
 }
 
+function renderedComposeJson(value) {
+  // Docker Compose escapes every dollar in `config --format json` output.
+  return JSON.stringify(value).split("$").join("$$");
+}
+
 function service(image, containerName, environment, volumeSource, volumeTarget) {
   return {
     image,
@@ -201,6 +206,7 @@ async function runFixture(
   fixtureCompose = compose,
   fixtureContainers = containers,
   fixtureVolumes = volumes,
+  serializeCompose = renderedComposeJson,
 ) {
   const directory = path.join(work, name);
   await import("node:fs/promises").then(({ mkdir }) => mkdir(directory, { recursive: true }));
@@ -211,7 +217,7 @@ async function runFixture(
   const envOutput = path.join(directory, "config.env");
   const identityOutput = path.join(directory, "identity.json");
   await Promise.all([
-    writeFile(composePath, JSON.stringify(fixtureCompose)),
+    writeFile(composePath, serializeCompose(fixtureCompose)),
     writeFile(containersPath, JSON.stringify(fixtureContainers)),
     writeFile(volumesPath, JSON.stringify(fixtureVolumes)),
     writeFile(imagePath, JSON.stringify(images)),
@@ -306,6 +312,17 @@ try {
       `TOPIC_VIEW_PREVIOUS_AUTH_SECRETS=${composeEnvironmentJson(complexPreviousSecrets)}\n`,
     ),
   );
+
+  const unescapedCompose = structuredClone(complexSecretCompose);
+  const unescapedRenderedConfig = await runFixture(
+    "unescaped-rendered-config",
+    unescapedCompose,
+    complexSecretContainers,
+    volumes,
+    JSON.stringify,
+  );
+  assert.notEqual(unescapedRenderedConfig.result.status, 0);
+  assert.match(unescapedRenderedConfig.result.stderr, /invalid dollar escape/);
 
   const controlByteCompose = structuredClone(compose);
   const controlByteContainers = structuredClone(containers);
