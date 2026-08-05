@@ -465,6 +465,10 @@ if [ "$RUN_RESTORE" = 1 ]; then
   cp "$ENV_FILE" "$mismatched_env"
   chmod 600 "$mismatched_env"
   sed -i 's#^TOPIC_VIEW_PREVIOUS_AUTH_SECRETS=.*#TOPIC_VIEW_PREVIOUS_AUTH_SECRETS=["nextbuf-mismatched-previous-auth-secret-at-least-32-characters"]#' "$mismatched_env"
+  grep -Fxq 'TOPIC_VIEW_PREVIOUS_AUTH_SECRETS=["nextbuf-mismatched-previous-auth-secret-at-least-32-characters"]' "$mismatched_env" || {
+    printf 'Restore mismatch fixture did not replace TOPIC_VIEW_PREVIOUS_AUTH_SECRETS.\n' >&2
+    exit 1
+  }
   if NEXTBUFCTL_ASSUME_YES=1 NEXTBUF_ENV_FILE="$mismatched_env" NEXTBUF_COMPOSE_FILE=compose.yml NEXTBUF_BACKUP_DIR="$SMOKE_BACKUP_DIR" \
     ./nextbufctl restore "$backup" --yes >"$mismatch_log" 2>&1; then
     printf 'Restore accepted a mismatched historical topic-view secret list.\n' >&2

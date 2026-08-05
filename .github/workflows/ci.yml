@@ -162,11 +162,13 @@ jobs:
           sh -n tests/smoke/verify-mailpit-user.sh
           sh -n tests/smoke/nextbufctl-semver-smoke.sh
           sh -n tests/smoke/nextbufctl-acceptance-smoke.sh
+          sh -n tests/smoke/nextbufctl-restore-continuity-smoke.sh
           sh -n tests/smoke/oci-image-identity-smoke.sh
           sh -n tests/smoke/release-channel-policy-smoke.sh
           sh -n tests/smoke/stable-image-channel-smoke.sh
           sh tests/smoke/nextbufctl-semver-smoke.sh
           sh tests/smoke/nextbufctl-acceptance-smoke.sh
+          sh tests/smoke/nextbufctl-restore-continuity-smoke.sh
           sh tests/smoke/oci-image-identity-smoke.sh
           sh tests/smoke/release-asset-cleanup-smoke.sh
           sh tests/smoke/release-receipt-smoke.sh

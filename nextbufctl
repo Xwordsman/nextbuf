@@ -835,12 +835,36 @@ verify_restore_environment_continuity() {
   backup_environment=$1
   current_config=$temp/current-restore-compose.json
   backup_config=$temp/backup-restore-compose.json
+  comparison_compose=$temp/restore-continuity.compose.yml
   config_bundle=$temp/restore-compose-configs.bin
 
-  NEXTBUF_ENV_FILE="$ENV_FILE" docker compose \
-    --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --format json >"$current_config"
-  NEXTBUF_ENV_FILE="$backup_environment" docker compose \
-    --env-file "$backup_environment" -f "$COMPOSE_FILE" config --format json >"$backup_config"
+  cat >"$comparison_compose" <<'EOF'
+services:
+  setup:
+    environment:
+      NEXTBUF_RESTORE_COMPARE_AUTH_SECRET: ${AUTH_SECRET}
+      NEXTBUF_RESTORE_COMPARE_TOPIC_VIEW_PREVIOUS_AUTH_SECRETS: ${TOPIC_VIEW_PREVIOUS_AUTH_SECRETS:-[]}
+      NEXTBUF_RESTORE_COMPARE_MAIL_PAYLOAD_KEY: ${MAIL_PAYLOAD_KEY}
+      NEXTBUF_RESTORE_COMPARE_STORAGE_DRIVER: ${STORAGE_DRIVER}
+      NEXTBUF_RESTORE_COMPARE_S3_BUCKET: ${S3_BUCKET:-}
+EOF
+
+  if ! (
+    unset AUTH_SECRET TOPIC_VIEW_PREVIOUS_AUTH_SECRETS MAIL_PAYLOAD_KEY STORAGE_DRIVER S3_BUCKET
+    NEXTBUF_ENV_FILE="$ENV_FILE" docker compose \
+      --profile tools --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$comparison_compose" \
+      config --format json
+  ) >"$current_config"; then
+    die "current environment could not be resolved for backup continuity validation"
+  fi
+  if ! (
+    unset AUTH_SECRET TOPIC_VIEW_PREVIOUS_AUTH_SECRETS MAIL_PAYLOAD_KEY STORAGE_DRIVER S3_BUCKET
+    NEXTBUF_ENV_FILE="$backup_environment" docker compose \
+      --profile tools --env-file "$backup_environment" -f "$COMPOSE_FILE" -f "$comparison_compose" \
+      config --format json
+  ) >"$backup_config"; then
+    die "backup environment could not be resolved for continuity validation"
+  fi
   cat "$current_config" >"$config_bundle"
   printf '\000' >>"$config_bundle"
   cat "$backup_config" >>"$config_bundle"
@@ -855,27 +879,52 @@ verify_restore_environment_continuity() {
     }
     const current = JSON.parse(input.subarray(0, separator).toString("utf8"));
     const backup = JSON.parse(input.subarray(separator + 1).toString("utf8"));
-    const value = (config, key) => config.services?.setup?.environment?.[key];
-    const normalized = (config, key) => {
-      const candidate = value(config, key);
-      if (key === "TOPIC_VIEW_PREVIOUS_AUTH_SECRETS" && (candidate == null || candidate === "")) {
-        return "[]";
+    const fields = [
+      ["AUTH_SECRET", "NEXTBUF_RESTORE_COMPARE_AUTH_SECRET"],
+      ["TOPIC_VIEW_PREVIOUS_AUTH_SECRETS", "NEXTBUF_RESTORE_COMPARE_TOPIC_VIEW_PREVIOUS_AUTH_SECRETS"],
+      ["MAIL_PAYLOAD_KEY", "NEXTBUF_RESTORE_COMPARE_MAIL_PAYLOAD_KEY"],
+      ["STORAGE_DRIVER", "NEXTBUF_RESTORE_COMPARE_STORAGE_DRIVER"],
+      ["S3_BUCKET", "NEXTBUF_RESTORE_COMPARE_S3_BUCKET"],
+    ];
+    const nonEmptyFields = new Set(["AUTH_SECRET", "MAIL_PAYLOAD_KEY", "STORAGE_DRIVER"]);
+    const read = (config, side) => {
+      const environment = config.services?.setup?.environment;
+      if (environment == null || typeof environment !== "object" || Array.isArray(environment)) {
+        console.error(`restore environment comparison data is missing from the ${side} configuration`);
+        process.exit(2);
       }
-      return candidate;
+      return Object.fromEntries(fields.map(([key, renderedKey]) => {
+        const renderedValue = environment[renderedKey];
+        if (!Object.prototype.hasOwnProperty.call(environment, renderedKey) ||
+            typeof renderedValue !== "string" ||
+            (nonEmptyFields.has(key) && renderedValue === "")) {
+          console.error(`${key} could not be resolved from the ${side} configuration`);
+          process.exit(2);
+        }
+        return [key, renderedValue];
+      }));
     };
+    const currentValues = read(current, "current");
+    const backupValues = read(backup, "backup");
+    for (const [values, side] of [[currentValues, "current"], [backupValues, "backup"]]) {
+      if (values.STORAGE_DRIVER === "s3" && values.S3_BUCKET === "") {
+        console.error(`S3_BUCKET could not be resolved from the ${side} configuration`);
+        process.exit(2);
+      }
+    }
     for (const key of [
       "AUTH_SECRET",
       "TOPIC_VIEW_PREVIOUS_AUTH_SECRETS",
       "MAIL_PAYLOAD_KEY",
       "STORAGE_DRIVER",
     ]) {
-      if (normalized(current, key) !== normalized(backup, key)) {
+      if (currentValues[key] !== backupValues[key]) {
         console.error(`${key} differs from the backup; use an empty install with --restore-config`);
         process.exit(3);
       }
     }
-    if (normalized(current, "STORAGE_DRIVER") === "s3" &&
-        normalized(current, "S3_BUCKET") !== normalized(backup, "S3_BUCKET")) {
+    if (currentValues.STORAGE_DRIVER === "s3" &&
+        currentValues.S3_BUCKET !== backupValues.S3_BUCKET) {
       console.error("S3_BUCKET differs from the backup");
       process.exit(3);
     }
