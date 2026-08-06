@@ -482,7 +482,7 @@ if NEXTBUF_VERSION="$TARGET_VERSION" NEXTBUF_ENV_FILE="$ENV_FILE" \
   printf 'Candidate migration unexpectedly accepted a drifted v0.13.10 checksum\n' >&2
   exit 1
 fi
-grep -q 'not an exact prefix of the immutable v1.0.0 candidate' "$CHECKSUM_REPORT"
+grep -q 'not an exact prefix of the immutable v1.0.0 release migration manifest' "$CHECKSUM_REPORT"
 checkpoint 'verify checksum rejection left candidate Schema absent'
 candidate_column_count=$(NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''users'\'' AND column_name = '\''deletion_finalized_at'\''"' | tr -d '\r')
@@ -574,7 +574,7 @@ if NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE run --rm setup migrate \
   printf 'Candidate resolver accepted a drifted failed migration checksum\n' >&2
   exit 1
 fi
-grep -q 'checksum that differs from the immutable v1.0.0 candidate' "$CHECKSUM_REPORT"
+grep -q 'checksum that differs from the immutable v1.0.0 release migration manifest' "$CHECKSUM_REPORT"
 NEXTBUF_ENV_FILE="$ENV_FILE" $BASE_COMPOSE exec -T postgres sh -ec \
   "psql -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -c \"UPDATE _prisma_migrations SET checksum = '$FINAL_CANDIDATE_CHECKSUM' WHERE migration_name = '20260731180000_email_delivery_attempt_fencing' AND finished_at IS NULL AND rolled_back_at IS NULL\"" >/dev/null
 checkpoint 'verify committed Schema markers cannot be declared rolled back'

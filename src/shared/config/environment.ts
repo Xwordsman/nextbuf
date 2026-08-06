@@ -70,6 +70,45 @@ const trustedProxies = z
     );
   }, "must contain only IP addresses or CIDR ranges");
 
+const trustedOrigins = z
+  .string()
+  .default("")
+  .transform((value, context) => {
+    const origins: string[] = [];
+    for (const entry of value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)) {
+      let url: URL;
+      try {
+        url = new URL(entry);
+      } catch {
+        context.addIssue({ code: "custom", message: "must contain only absolute HTTP(S) origins" });
+        continue;
+      }
+      if (
+        !["http:", "https:"].includes(url.protocol) ||
+        url.username ||
+        url.password ||
+        url.pathname !== "/" ||
+        url.search ||
+        url.hash ||
+        entry.includes("*") ||
+        entry.includes("?") ||
+        entry.includes("#")
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "must contain only exact HTTP(S) origins without credentials, paths or wildcards",
+        });
+        continue;
+      }
+      origins.push(url.origin);
+    }
+    return [...new Set(origins)];
+  });
+
 function isLoopbackUrl(value: string): boolean {
   return loopbackHosts.has(new URL(value).hostname);
 }
@@ -90,7 +129,7 @@ const environmentSchema = z.object({
   TZ: z.string().min(1).default("Asia/Shanghai"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   LOG_FORMAT: z.enum(["pretty", "json"]).default("pretty"),
-  NEXTBUF_VERSION: z.string().min(1).default("1.0.0"),
+  NEXTBUF_VERSION: z.string().min(1).default("1.0.1"),
   NEXTBUF_COMMIT: z.string().min(1).default("development"),
   NEXTBUF_BUILD_TIME: z.string().default(""),
   DATABASE_URL: optionalUrl,
@@ -122,7 +161,7 @@ const environmentSchema = z.object({
   AUTH_SESSION_UPDATE_AGE_SECONDS: z.coerce.number().int().min(60).default(86_400),
   AUTH_VERIFICATION_EXPIRES_IN_SECONDS: z.coerce.number().int().min(300).default(86_400),
   AUTH_PASSWORD_RESET_EXPIRES_IN_SECONDS: z.coerce.number().int().min(300).default(3_600),
-  AUTH_TRUSTED_ORIGINS: z.string().default(""),
+  AUTH_TRUSTED_ORIGINS: trustedOrigins,
   AUTH_TRUSTED_PROXIES: trustedProxies,
   MAIL_PAYLOAD_KEY: optionalString,
   SMTP_HOST: optionalString,
@@ -260,6 +299,15 @@ const authEnvironmentSchema = serviceEnvironmentSchema
           message: "must use https in production unless APP_URL is loopback",
         });
       }
+      for (const origin of environment.AUTH_TRUSTED_ORIGINS) {
+        if (new URL(origin).protocol !== "https:" && !isLoopbackUrl(origin)) {
+          context.addIssue({
+            code: "custom",
+            path: ["AUTH_TRUSTED_ORIGINS"],
+            message: "must use https in production unless the trusted origin is loopback",
+          });
+        }
+      }
       if (environment.AUTH_SECRET === exampleAuthSecret) {
         context.addIssue({
           code: "custom",
@@ -296,6 +344,12 @@ export type DatabaseEnvironment = z.infer<typeof databaseEnvironmentSchema>;
 export type RedisEnvironment = z.infer<typeof redisEnvironmentSchema>;
 export type ServiceEnvironment = z.infer<typeof serviceEnvironmentSchema>;
 export type AuthEnvironment = z.infer<typeof authEnvironmentSchema>;
+
+export function getTrustedOrigins(
+  environment: Pick<AuthEnvironment, "APP_URL" | "AUTH_TRUSTED_ORIGINS">,
+): string[] {
+  return [...new Set([new URL(environment.APP_URL).origin, ...environment.AUTH_TRUSTED_ORIGINS])];
+}
 
 function parse<T>(schema: z.ZodType<T>, input: NodeJS.ProcessEnv): T {
   const result = schema.safeParse(input);

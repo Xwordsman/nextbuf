@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getTrustedOrigins,
   parseDatabaseEnvironment,
   parseAuthEnvironment,
   parseEnvironment,
@@ -59,6 +60,70 @@ describe("environment configuration", () => {
       SMTP_GREETING_TIMEOUT_MS: 15_000,
       SMTP_SOCKET_TIMEOUT_MS: 60_000,
     });
+  });
+
+  it("normalizes exact trusted origins for every authentication and mutation endpoint", () => {
+    const environment = parseAuthEnvironment({
+      NODE_ENV: "test",
+      APP_URL: "https://community.example.com/app",
+      DATABASE_URL: "postgresql://nextbuf:secret@localhost:5432/nextbuf",
+      REDIS_URL: "redis://localhost:6379/0",
+      AUTH_SECRET: "nextbuf-test-auth-secret-at-least-32-characters",
+      AUTH_TRUSTED_ORIGINS: " https://EXAMPLE.com:443/,https://example.com,http://localhost:80/ ",
+      MAIL_PAYLOAD_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+      SMTP_HOST: "localhost",
+    });
+
+    expect(environment.AUTH_TRUSTED_ORIGINS).toEqual(["https://example.com", "http://localhost"]);
+    expect(getTrustedOrigins(environment)).toEqual([
+      "https://community.example.com",
+      "https://example.com",
+      "http://localhost",
+    ]);
+  });
+
+  it.each([
+    "example.com",
+    "ftp://example.com",
+    "https://user:secret@example.com",
+    "https://example.com/path",
+    "https://example.com?query=value",
+    "https://example.com#",
+    "https://example.com/#fragment",
+    "https://*.example.com",
+  ])("rejects unsafe trusted origin %s", (trustedOrigin) => {
+    expect(() =>
+      parseAuthEnvironment({
+        NODE_ENV: "test",
+        DATABASE_URL: "postgresql://nextbuf:secret@localhost:5432/nextbuf",
+        REDIS_URL: "redis://localhost:6379/0",
+        AUTH_SECRET: "nextbuf-test-auth-secret-at-least-32-characters",
+        AUTH_TRUSTED_ORIGINS: trustedOrigin,
+        MAIL_PAYLOAD_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        SMTP_HOST: "localhost",
+      }),
+    ).toThrow("AUTH_TRUSTED_ORIGINS");
+  });
+
+  it("requires HTTPS for non-loopback trusted origins in production", () => {
+    const base = {
+      NODE_ENV: "production",
+      APP_URL: "https://community.example.com",
+      DATABASE_URL: "postgresql://nextbuf:secret@localhost:5432/nextbuf",
+      REDIS_URL: "redis://localhost:6379/0",
+      AUTH_SECRET: "nextbuf-production-auth-secret-at-least-32-characters",
+      MAIL_PAYLOAD_KEY: "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=",
+      SMTP_HOST: "smtp.example.com",
+      SMTP_FROM: "NextBuf <noreply@example.com>",
+    } satisfies NodeJS.ProcessEnv;
+
+    expect(() =>
+      parseAuthEnvironment({ ...base, AUTH_TRUSTED_ORIGINS: "http://example.com" }),
+    ).toThrow("must use https in production");
+    expect(
+      parseAuthEnvironment({ ...base, AUTH_TRUSTED_ORIGINS: "http://localhost:3000" })
+        .AUTH_TRUSTED_ORIGINS,
+    ).toEqual(["http://localhost:3000"]);
   });
 
   it("validates previous authentication secrets used only for topic-view cleanup", () => {

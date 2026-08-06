@@ -4,7 +4,7 @@
 
 本文定义 NextBuf 环境变量的目标合同。`v0.1.0` 必须建立统一配置 Schema，`v0.12.0` 前必须让 `.env.example`、Compose、安装向导、Web、Worker、CLI 与本文完全一致。
 
-> 当前实现状态：已发布 `v0.13.10` 让共享 Zod Schema、根 `.env.example`、生产 Compose、宝塔单文件 Compose、Web、Worker、CLI、setup、doctor 和发布包继续使用同一合同。可信代理只接受明确 IP/CIDR，非 Docker Web 固定绑定回环；站点名称、注册策略、发布开关和每小时限额由 PostgreSQL `site_settings` 管理，Provider 密钥不在线保存或回显。
+> 当前实现状态：已发布 `v1.0.0` 让共享 Zod Schema、根 `.env.example`、生产 Compose、宝塔单文件 Compose、Web、Worker、CLI、setup、doctor 和发布包使用同一合同。`v1.0.1` 进一步统一 Better Auth 与 NextBuf 自有写接口的可信 Origin 解析。可信代理只接受明确 IP/CIDR，非 Docker Web 固定绑定回环；站点名称、注册策略、发布开关和每小时限额由 PostgreSQL `site_settings` 管理，Provider 密钥不在线保存或回显。
 
 ## 1. 配置规则
 
@@ -82,7 +82,7 @@ Redis 服务必须兼容 BullMQ 所需命令。业务事实不能只存在 Redis
 | `AUTH_SESSION_UPDATE_AGE_SECONDS` | 否 | `86400` | Web | 否 | 会话刷新周期，默认 1 天 |
 | `AUTH_VERIFICATION_EXPIRES_IN_SECONDS` | 否 | `86400` | Web | 否 | 邮箱验证链接有效期 |
 | `AUTH_PASSWORD_RESET_EXPIRES_IN_SECONDS` | 否 | `3600` | Web | 否 | 密码重置链接有效期 |
-| `AUTH_TRUSTED_ORIGINS` | 否 | 空 | Web | 否 | 逗号分隔的附加可信 Origin；`APP_URL` 自动包含 |
+| `AUTH_TRUSTED_ORIGINS` | 否 | 空 | Web | 否 | 逗号分隔的附加精确 HTTP(S) Origin；`APP_URL` 自动包含，不允许路径、凭据、查询、片段或通配符；生产公网值必须 HTTPS |
 | `AUTH_TRUSTED_PROXIES` | 否 | 空 | Web | 否 | 逗号分隔的可信代理 IP/CIDR；多跳 `X-Forwarded-For` 只从右侧剥离这些代理，拒绝 `/0` 和任意公网来源 |
 | `MAIL_PAYLOAD_KEY` | 是 | 无 | Web、Worker | 是 | Base64 编码的精确 32 字节 AES-256-GCM 密钥 |
 
@@ -212,7 +212,7 @@ SMTP、对象存储和 GitHub OAuth 的主机、Bucket、Client ID 等非秘密�
 
 Compose 应根据这些值构造应用 `DATABASE_URL` 和 `REDIS_URL`，用户不需要重复维护两套密码。
 
-`compose.baota.yml` 不读取 `.env`，也不需要 `NEXTBUF_IMAGE`、`NEXTBUF_VERSION` 或 `NEXTBUF_ENV_FILE`。它将镜像固定为只随完整稳定 Release 更新的 `latest` 通道，并把应用、PostgreSQL 和 Redis 所需值直接写在同一个 Compose；`main` 候选使用 `edge`，不会覆盖该默认标签。`v1.0.0` 发布前的过渡期，既有 `latest` 可能仍是最后一个经验证的 `v0.13.x` Beta，不表示稳定版已发布。重复出现的数据库/Redis 密码必须保持一致；所有 `replace-` 值、示例域名和示例 `MAIL_PAYLOAD_KEY` 都必须在首次启动前替换。镜像内部的 `NEXTBUF_VERSION` 是源码 SemVer，精确身份由 `NEXTBUF_COMMIT` 与镜像 Digest 提供，不能在面板模板中覆盖。该单实例入口固定四个容器名，因此同一 Docker 主机不能同时启动两套未改名的宝塔模板；多实例部署使用受控 Compose。`nextbufctl backup --baota` 会从实际运行环境生成受控恢复所需的 `config.env`，但不会修改面板编排；其中包含全部实例秘密，只能保存在加密受限归档。通道合同见 [ADR-0020](./adr/0020-stable-release-channels-and-lifecycle.md)。
+`compose.baota.yml` 不读取 `.env`，也不需要 `NEXTBUF_IMAGE`、`NEXTBUF_VERSION` 或 `NEXTBUF_ENV_FILE`。它将镜像固定为只随完整稳定 Release 更新的 `latest` 通道，并把应用、PostgreSQL 和 Redis 所需值直接写在同一个 Compose；`main` 候选使用 `edge`，不会覆盖该默认标签。重复出现的数据库/Redis 密码必须保持一致；所有 `replace-` 值、示例域名和示例 `MAIL_PAYLOAD_KEY` 都必须在首次启动前替换。镜像内部的 `NEXTBUF_VERSION` 是源码 SemVer，精确身份由 `NEXTBUF_COMMIT` 与镜像 Digest 提供，不能在面板模板中覆盖。该单实例入口固定四个容器名，因此同一 Docker 主机不能同时启动两套未改名的宝塔模板；多实例部署使用受控 Compose。`nextbufctl backup --baota` 会从实际运行环境生成受控恢复所需的 `config.env`，但不会修改面板编排；其中包含全部实例秘密，只能保存在加密受限归档。通道合同见 [ADR-0020](./adr/0020-stable-release-channels-and-lifecycle.md)。
 
 ## 13. 配置优先级
 

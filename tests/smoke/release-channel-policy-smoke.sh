@@ -3,7 +3,8 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 workflow=${1:-$ROOT/.github/workflows/ci.yml}
-upgrade_smoke=$ROOT/tests/smoke/docker-upgrade-smoke.sh
+patch_upgrade_smoke=$ROOT/tests/smoke/docker-patch-upgrade-smoke.sh
+historical_upgrade_smoke=$ROOT/tests/smoke/docker-upgrade-smoke.sh
 docker_smoke=$ROOT/tests/smoke/docker-smoke.sh
 release_archive_smoke=$ROOT/tests/smoke/release-archive-smoke.sh
 nextbufctl=$ROOT/nextbufctl
@@ -73,8 +74,17 @@ printf '%s\n' "$upgrade_step" | grep -F -- "matrix.architecture == 'amd64'" >/de
   || fail 'the main upgrade gate must run once on amd64 rather than duplicate the destructive fixture'
 printf '%s\n' "$upgrade_step" | grep -F -- 'steps.version.outputs.version != env.NEXTBUF_UPGRADE_BASELINE' >/dev/null \
   || fail 'the upgrade gate must skip candidates that equal the configured public baseline'
-grep -F -- './nextbufctl upgrade "$TARGET_VERSION" --verify-objects' "$upgrade_smoke" >/dev/null \
+upgrade_baselines=$(grep -Fc -- 'NEXTBUF_UPGRADE_BASELINE: 1.0.0' "$workflow" || :)
+[ "$upgrade_baselines" -eq 1 ] \
+  || fail 'the v1.0.1 upgrade gate must use the released v1.0.0 baseline exactly once'
+printf '%s\n' "$upgrade_step" | grep -F -- 'tests/smoke/docker-patch-upgrade-smoke.sh' >/dev/null \
+  || fail 'the v1.0.1 workflow must run the no-migration patch upgrade smoke'
+grep -F -- './nextbufctl upgrade "$TARGET_VERSION" --verify-objects' "$patch_upgrade_smoke" >/dev/null \
   || fail 'the upgrade gate must use the acceptance comparison and attachment object verification'
+grep -F -- 'BASELINE_MIGRATION_COUNT=16' "$patch_upgrade_smoke" >/dev/null \
+  || fail 'the patch upgrade must start from the complete v1.0.0 migration set'
+grep -F -- 'BASELINE_VERSION=${NEXTBUF_UPGRADE_BASELINE:-0.13.10}' "$historical_upgrade_smoke" >/dev/null \
+  || fail 'the historical v0.13.10 migration-failure smoke must remain independently reproducible'
 grep -F -- '#### 未公开 SemVer 候选的隔离 Registry' "$operations_runbook" >/dev/null \
   || fail 'the operations runbook must document pre-tag candidate staging'
 grep -F -- 'registry:2.8.3' "$operations_runbook" >/dev/null \

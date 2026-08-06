@@ -128,6 +128,8 @@ pnpm audit --prod --json
 
 ## 7. Beta 验收矩阵
 
+本节保留 Beta 阶段的来源证据；`v1.0.0` 已发布，当前补丁的增量判据以 [`v1.0.1` 发布就绪清单](./24-v1.0.1-release-readiness.md)为准。
+
 | 范围 | 状态 | 完成证据 |
 | --- | --- | --- |
 | 威胁模型、依赖、CSP、CSRF、SSRF、上传 | 已完成 | 本文第 1-6 节、单元/集成/E2E、生产审计 |
@@ -136,14 +138,14 @@ pnpm audit --prod --json
 | 桌面、平板、移动端、键盘和 axe | 已完成 | 390/1024/1440 三种视口；首页、节点、搜索、主题页 serious/critical axe 门槛；跳转主内容和 reduced-motion |
 | 从受支持 Beta 升级、备份和恢复 | 已完成 | CI #56：`v0.12.0 -> v0.13.0` 镜像升级、升级前备份与候选镜像空卷恢复 |
 | 故障诊断和管理员告警 | 已完成 | CI #56：PostgreSQL/Redis/Worker readiness 恢复；SMTP/存储 doctor 归因；后台积压告警 |
-| 最终账号注销、管理员连续性与 setup 密码证明 | `v1.0.0` 候选待验证 | ADR-0015/0021、真实 PostgreSQL/Redis/Mailpit 集成测试与 `v0.13.10 -> v1.0.0` 升级/恢复演练待作为候选发布证据收口 |
-| Outbox durable completion 与 Redis/replay 恢复 | `v1.0.0` 候选待验证 | `processed_at`、部分恢复索引、处理租约提交栅栏，以及 Redis 丢失/重放恢复的真实服务与升级测试 |
-| 邀请用户安装和核心旅程 | 待人工验收 | 安装、注册、发帖、举报、升级、恢复记录 |
+| 最终账号注销、管理员连续性与 setup 密码证明 | 已完成 | `v1.0.0` 真实 PostgreSQL/Redis/Mailpit、`v0.13.10 -> v1.0.0` 升级/恢复、演练和正式标签证据 |
+| Outbox durable completion 与 Redis/replay 恢复 | 已完成 | `v1.0.0` 的 `processed_at`、恢复索引、处理租约栅栏、Redis 丢失/重放和正式发布证据 |
+| 邀请用户安装和核心旅程 | 发布门槛已完成；实例级持续验收 | 正式 CI/Release 证明通用合同；部署者仍记录真实 SMTP、域名、Provider 和恢复旅程 |
 
 ## 8. 当前已知限制
 
 - 在线成员跟踪尚未实现，界面保持明确空状态；不得填充演示在线活动。
-- `v1.0.0` 候选已实现最终账号注销与管理员连续性，但尚无稳定 Release 验证证据。升级前至少需要 1 位合格的可接管管理员，生产实例优先 2 位或以上；合格条件为 `admin/site`、active、已验证、未申请或计划注销、无有效 suspend/ban 且有非空 credential 密码。
+- `v1.0.0` 已实现并发布最终账号注销与管理员连续性。升级前至少需要 1 位合格的可接管管理员，正式发布默认 2 位或以上；合格条件为 `admin/site`、active、已验证、未申请或计划注销、无有效 suspend/ban 且有非空 credential 密码。单版本风险豁免不得自动延伸，当前 `v1.0.1` 规则见专用清单。
 - OAuth-only 管理员不能完成密码二次验证，也不计入可接管管理员。
 - S3 备份依赖对象存储版本/快照，`nextbufctl backup` 不复制远端对象。
 - 非 Docker 发布包只提供 Linux x64；arm64 使用容器镜像。
@@ -203,7 +205,7 @@ pnpm benchmark:beta -- \
 
 ## 11. 迁移历史与升级证据
 
-`prisma/migration-baselines/v0.12.0.json` 与 `v0.13.0.json` 保存已发布 Beta 迁移基线；`v0.13.8.json` 冻结编辑会话追加迁移及此前全部迁移的顺序与 SHA-256。`v0.13.9.json` 保存相同 13 条迁移的历史标签清单，但 `v0.13.9` 发布不完整，因此该文件不代表公开升级基线；已发布 `v0.13.10.json` 继续冻结完全相同的 13 条迁移，证明修复归档没有新增或重写迁移。当前候选 `v1.0.0.json` 在这 13 条之后追加并冻结账号注销、Outbox durable completion 与邮件 attempt fencing 三条迁移，共 16 条；Outbox 迁移回填 `processed_at` 并创建部分恢复索引，邮件迁移增加 attempt token/generation、`outcome_unknown` 和重放风险确认时间。该清单在正式标签通过前只是候选，不改变公开升级基线。校验器强制要求与当前 `package.json` 版本同名的清单存在，并完整覆盖仓库当前迁移全集，不能靠遗漏候选清单获得绿色结果。执行：
+`prisma/migration-baselines/v0.12.0.json` 与 `v0.13.0.json` 保存已发布 Beta 迁移基线；`v0.13.8.json` 冻结编辑会话追加迁移及此前全部迁移的顺序与 SHA-256。`v0.13.9.json` 保存相同 13 条迁移的历史标签清单，但 `v0.13.9` 发布不完整，因此该文件不代表公开升级基线；已发布 `v0.13.10.json` 继续冻结完全相同的 13 条迁移。已发布 `v1.0.0.json` 在这 13 条之后追加并冻结账号注销、Outbox durable completion 与邮件 attempt fencing 三条迁移，共 16 条；`v1.0.1.json` 继续冻结完全相同的 16 条迁移，证明补丁没有新增或重写 DDL。校验器强制要求与当前 `package.json` 版本同名的清单存在，并完整覆盖仓库当前迁移全集。执行：
 
 ```bash
 pnpm migration:verify
@@ -247,7 +249,7 @@ axe 是自动回归门槛，不替代读屏器、缩放至 200%、高对比度�
 
 日常主分支、每日定时、手动和正式版本标签都会在 amd64 流水线执行当前受支持升级；主分支升级使用 `nextbufctl upgrade --verify-objects`，在发布 `edge`/`sha-*` 前证明数据库不变量和附件对象完整。主分支不运行空卷恢复或故障注入；候选在正式标签前仍必须至少通过一次定时或手动深度运行，正式标签再完整重跑全部门槛，避免只凭日常主线结果进入稳定通道。`v0.13.10` 已完成精确 `v0.13.8 -> v0.13.10` 发布门槛，当前基线已经提升到 `0.13.10`，后续 `v1.0.0` 候选必须执行精确 `v0.13.10 -> v1.0.0`。升级前先确认至少 1 位可接管管理员，生产实例优先 2 位或以上；可接管条件为 `admin/site`、active、邮箱已验证、无注销申请/计划、无有效 suspend/ban 且有密码非空的 `credential` Account：
 
-1. 拉取公开升级基线指定的精确 `ghcr.io/xwordsman/nextbuf:<基线版本>` 镜像；当前为 `0.13.10`。
+1. 拉取公开升级基线指定的精确 `ghcr.io/xwordsman/nextbuf:<基线版本>` 镜像；`v1.0.1` 当前为 `1.0.0`。
 2. 把基线和本次已构建的候选镜像发布到 Runner 内的临时 Registry，确保 `nextbufctl upgrade` 走真实 pull 流程。
 3. 在基线版本创建首位管理员、自定义节点、主题、首帖、回复、回复草稿、本地附件和当前/修订/草稿三类附件引用。
 4. 由 `nextbufctl` 自动创建升级前备份，停止 Web/Worker，并运行目标镜像的幂等 `setup`。
@@ -259,7 +261,7 @@ axe 是自动回归门槛，不替代读屏器、缩放至 200%、高对比度�
 
 候选镜像的空卷恢复由定时、手动和正式标签流水线的 `nextbuf-backup-v1` 恢复测试覆盖。迁移成功后仍不承诺旧代码直接读取新 Schema；失败恢复遵循 ADR-0015。
 
-迁移版本正式标签、镜像和 Release 全部成功后，后续开发提交必须把工作流的公开升级基线提升到该已发布版本；不能在标签验证前提前提升。`v0.13.10` 标签验证已经通过，工作流公开升级基线现为 `v0.13.10`。
+迁移版本正式标签、镜像和 Release 全部成功后，后续开发提交必须把工作流的公开升级基线提升到该已发布版本；不能在标签验证前提前提升。`v1.0.0` 标签验证已经通过，`v1.0.1` 工作流公开升级基线现为 `v1.0.0`。
 
 历史证据：CI #56 已真实完成同类六步并验证升级后的完整 doctor；正式标签 CI #58 已再次通过当时的升级门槛，并完成标签镜像、manifest、SBOM、provenance、归档和 GitHub Release 验证。`v0.13.9` 标签流水线虽完成双架构镜像，却在 Linux x64 归档启动阶段失败，不能作为完整发布或升级基线证据，且不可通过移动标签补写历史结果。`v0.13.10` [主线 CI](https://github.com/Xwordsman/nextbuf/actions/runs/30470438423) 和 [标签 CI](https://github.com/Xwordsman/nextbuf/actions/runs/30518120224) 已产生完整证据；不可变 OCI index Digest 为 `sha256:df9d61299a2db8287336f4b8c37855466fe19f94eb2427d000a319746299d21c`，包含 linux/amd64、linux/arm64 与各自 provenance attestation manifest。
 

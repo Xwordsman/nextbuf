@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type IORedis from "ioredis";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setup } from "@/cli/commands/setup";
@@ -52,6 +53,17 @@ function request(path: string, body?: Record<string, unknown>, cookie?: string):
     },
     body: body ? JSON.stringify(body) : undefined,
     redirect: "manual",
+  });
+}
+
+function registrationRequest(body: Record<string, unknown>): Request {
+  return new Request("http://127.0.0.1:3000/api/identity/register", {
+    method: "POST",
+    headers: {
+      origin: "http://127.0.0.1:3000",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
   });
 }
 
@@ -632,6 +644,178 @@ describe("identity authentication integration", () => {
       );
     } finally {
       await closeWorker(worker);
+    }
+  });
+
+  it("does not release a consumed invite after registration commits", async () => {
+    const prisma = getPrismaClient();
+    const originalSettings = await prisma.siteSetting.findUniqueOrThrow({
+      where: { id: "site" },
+      select: { registrationMode: true, revision: true, updatedById: true },
+    });
+    await prisma.siteSetting.update({
+      where: { id: "site" },
+      data: {
+        registrationMode: "invite",
+        revision: Math.max(2, originalSettings.revision + 1),
+      },
+    });
+    const { code, invite } = await createRegistrationInvite({ maxUses: 1 });
+    const email = testEmail(`invite-audit-${randomUUID().slice(0, 8)}`);
+    let failureFunctionCreated = false;
+    let failureTriggerCreated = false;
+
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE OR REPLACE FUNCTION nextbuf_test_fail_invite_audit() RETURNS trigger AS $$
+        BEGIN
+          IF NEW.event_type = 'identity.invite.consumed' THEN
+            RAISE EXCEPTION 'injected invite audit failure';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+      `);
+      failureFunctionCreated = true;
+      await prisma.$executeRawUnsafe(`
+        CREATE TRIGGER nextbuf_test_fail_invite_audit
+        BEFORE INSERT ON identity_audit_events
+        FOR EACH ROW EXECUTE FUNCTION nextbuf_test_fail_invite_audit()
+      `);
+      failureTriggerCreated = true;
+
+      const response = await register(
+        registrationRequest({
+          name: "Invite Audit User",
+          username: `invite_${randomUUID().replaceAll("-", "").slice(0, 12)}`,
+          email,
+          password: oldPassword,
+          inviteCode: code,
+        }),
+      );
+
+      expect(response.status).toBe(202);
+      await expect(prisma.user.findUnique({ where: { email } })).resolves.toMatchObject({ email });
+      await expect(
+        prisma.registrationInvite.findUniqueOrThrow({ where: { id: invite.id } }),
+      ).resolves.toMatchObject({ useCount: 1 });
+      await expect(
+        prisma.identityAuditEvent.count({
+          where: {
+            eventType: "identity.invite.consumed",
+            metadata: { path: ["inviteId"], equals: invite.id },
+          },
+        }),
+      ).resolves.toBe(0);
+    } finally {
+      try {
+        if (failureTriggerCreated) {
+          await prisma.$executeRawUnsafe(
+            "DROP TRIGGER IF EXISTS nextbuf_test_fail_invite_audit ON identity_audit_events",
+          );
+        }
+      } finally {
+        try {
+          if (failureFunctionCreated) {
+            await prisma.$executeRawUnsafe(
+              "DROP FUNCTION IF EXISTS nextbuf_test_fail_invite_audit()",
+            );
+          }
+        } finally {
+          await prisma.siteSetting.update({
+            where: { id: "site" },
+            data: originalSettings,
+          });
+        }
+      }
+    }
+  });
+
+  it("retains a reserved invite when a Better Auth post-commit audit hook fails", async () => {
+    const prisma = getPrismaClient();
+    const originalSettings = await prisma.siteSetting.findUniqueOrThrow({
+      where: { id: "site" },
+      select: { registrationMode: true, revision: true, updatedById: true },
+    });
+    await prisma.siteSetting.update({
+      where: { id: "site" },
+      data: {
+        registrationMode: "invite",
+        revision: Math.max(2, originalSettings.revision + 1),
+      },
+    });
+    const { code, invite } = await createRegistrationInvite({ maxUses: 1 });
+    const email = testEmail(`invite-auth-hook-${randomUUID().slice(0, 8)}`);
+    let failureFunctionCreated = false;
+    let failureTriggerCreated = false;
+
+    try {
+      await prisma.$executeRawUnsafe(`
+        CREATE OR REPLACE FUNCTION nextbuf_test_fail_registered_audit() RETURNS trigger AS $$
+        BEGIN
+          IF NEW.event_type = 'identity.user.registered' THEN
+            RAISE EXCEPTION 'injected registered audit failure';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+      `);
+      failureFunctionCreated = true;
+      await prisma.$executeRawUnsafe(`
+        CREATE TRIGGER nextbuf_test_fail_registered_audit
+        BEFORE INSERT ON identity_audit_events
+        FOR EACH ROW EXECUTE FUNCTION nextbuf_test_fail_registered_audit()
+      `);
+      failureTriggerCreated = true;
+
+      const response = await register(
+        registrationRequest({
+          name: "Invite Auth Hook User",
+          username: `invite_hook_${randomUUID().replaceAll("-", "").slice(0, 10)}`,
+          email,
+          password: oldPassword,
+          inviteCode: code,
+        }),
+      );
+
+      expect(response.status).toBe(202);
+      const persistedUser = await prisma.user.findUniqueOrThrow({
+        where: { email },
+        select: {
+          id: true,
+          accounts: { where: { providerId: "credential" }, select: { id: true } },
+        },
+      });
+      expect(persistedUser.accounts).toHaveLength(1);
+      await expect(
+        prisma.registrationInvite.findUniqueOrThrow({ where: { id: invite.id } }),
+      ).resolves.toMatchObject({ useCount: 1 });
+      await expect(
+        prisma.identityAuditEvent.count({
+          where: { eventType: "identity.user.registered", userId: persistedUser.id },
+        }),
+      ).resolves.toBe(0);
+    } finally {
+      try {
+        if (failureTriggerCreated) {
+          await prisma.$executeRawUnsafe(
+            "DROP TRIGGER IF EXISTS nextbuf_test_fail_registered_audit ON identity_audit_events",
+          );
+        }
+      } finally {
+        try {
+          if (failureFunctionCreated) {
+            await prisma.$executeRawUnsafe(
+              "DROP FUNCTION IF EXISTS nextbuf_test_fail_registered_audit()",
+            );
+          }
+        } finally {
+          await prisma.siteSetting.update({
+            where: { id: "site" },
+            data: originalSettings,
+          });
+        }
+      }
     }
   });
 

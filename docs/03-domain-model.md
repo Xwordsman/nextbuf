@@ -21,7 +21,7 @@
 - `username` 是唯一规范化用户名；`name` 是可重复昵称；邮箱、邮箱验证和账号状态沿用 Better Auth 语义。
 - `usernameChangedAt` 记录 30 天修改冷却起点；`deletionRequestedAt` 与 `deletionScheduledAt` 记录 14 天可撤销注销申请；`deletionFinalizedAt`、`deletionAttemptCount`、`deletionNextAttemptAt` 与 `deletionLastError` 保存最终化及可恢复 Worker 重试事实。
 - 账号状态：`pending`、`active`、`restricted`、`suspended`、`deleted`。
-- 暂停/封禁会同步写入 `suspended`，撤销或到期后由受审计服务/周期维护恢复。`v1.0.0` 候选的到期最终化不删除 User 行：保留 UUID、UID、公开内容归属、修订和治理关系，将身份改为墓碑并使状态成为 `deleted`。持久化信任状态位于独立 `TrustUserState`，不写入 User 角色字段。
+- 暂停/封禁会同步写入 `suspended`，撤销或到期后由受审计服务/周期维护恢复。`v1.0.0` 起的到期最终化不删除 User 行：保留 UUID、UID、公开内容归属、修订和治理关系，将身份改为墓碑并使状态成为 `deleted`。持久化信任状态位于独立 `TrustUserState`，不写入 User 角色字段。
 
 ### Profile
 

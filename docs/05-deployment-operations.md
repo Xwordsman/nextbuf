@@ -2,7 +2,7 @@
 
 本文件定义部署架构和运维原则。逐步安装、升级、备份、恢复和故障排查见 [安装与运维运行手册](./13-installation-operations-runbook.md)。
 
-> 当前实现状态：`v0.13.10` 是最后一个完整发布的公开 Beta。`v0.13.9` 标签流水线因 Linux x64 standalone 归档中的 pnpm 依赖链接被展平而无法启动 Web；该标签与已生成镜像保持不可变，但不构成完整、受支持的发布，也未成为公开升级基线。`v0.13.10` 不新增迁移或产品功能，原样保留 pnpm 符号链接并验证链接不悬空、不逃出归档及解压产物完整启动；它已通过精确 `v0.13.8 -> v0.13.10` 升级、恢复、双架构镜像和归档门槛，当前公开升级基线已提升到 `0.13.10`。`v1.0.0` 仍在稳定化，默认稳定通道与主线通道的分离见 [ADR-0020](./adr/0020-stable-release-channels-and-lifecycle.md)。生产与恢复合同见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)，面板启动协调见 [ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)，单文件面板入口见 [ADR-0017](./adr/0017-single-file-panel-compose.md)。Mailpit 只用于开发、测试和 CI，不是第五个生产容器。
+> 当前实现状态：`v1.0.0` 已作为首个稳定版完整发布，默认 `latest` 与不可变 `1.0.0` 指向相同 OCI index。当前 `v1.0.1` 以 `1.0.0` 为直接升级基线，不增加迁移或产品功能。默认稳定通道与主线通道的分离见 [ADR-0020](./adr/0020-stable-release-channels-and-lifecycle.md)，生产与恢复合同见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)，面板启动协调见 [ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)，单文件面板入口见 [ADR-0017](./adr/0017-single-file-panel-compose.md)。Mailpit 只用于开发、测试和 CI，不是第五个生产容器。
 
 ## 1. 部署目标
 
@@ -130,7 +130,7 @@ services:
 
 `NEXTBUF_IMAGE` 默认是 `ghcr.io/xwordsman/nextbuf`，受控入口的 `NEXTBUF_VERSION` 必须是精确版本。私有镜像镜像站可以覆盖地址，但不得让 Web 与 Worker 使用不同版本。
 
-根目录 [`compose.baota.yml`](../compose.baota.yml) 是单实例面板入口：它把首次必须填写的域名、密码、应用密钥和 SMTP 配置直接放入 Compose，使用 `ghcr.io/xwordsman/nextbuf:latest`，不读取 `.env`。`latest` 只在最新且完整的稳定 Release 成功后更新；`main` 通过全部门槛后发布 `edge` 与不可变 `sha-<提交>`，不会覆盖默认稳定通道。`v1.0.0` 发布前，既有 `latest` 可能仍指向最后一个经验证的 `v0.13.x` Beta，这不表示稳定版已经发布。镜像内部保存源码 SemVer、提交 SHA，并由 Digest 精确识别构建，参与 preflight、迁移和诊断。该入口保留相同四服务、健康检查、命名卷和 Web/Worker 隔离，容器固定显示为 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis`；模板自身不运行备份守护进程，Release 中的 `nextbufctl backup --baota` 会核对实际编排/容器/卷并导出到受控 `nextbuf-backup-v1`。固定名称意味着同一 Docker 主机只能运行一套该模板；多实例、横向扩容、精确升级和恢复继续使用受控 Compose。
+根目录 [`compose.baota.yml`](../compose.baota.yml) 是单实例面板入口：它把首次必须填写的域名、密码、应用密钥和 SMTP 配置直接放入 Compose，使用 `ghcr.io/xwordsman/nextbuf:latest`，不读取 `.env`。`latest` 只在最新且完整的稳定 Release 成功后更新；`main` 通过全部门槛后发布 `edge` 与不可变 `sha-<提交>`，不会覆盖默认稳定通道。镜像内部保存源码 SemVer、提交 SHA，并由 Digest 精确识别构建，参与 preflight、迁移和诊断。该入口保留相同四服务、健康检查、命名卷和 Web/Worker 隔离，容器固定显示为 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis`；模板自身不运行备份守护进程，Release 中的 `nextbufctl backup --baota` 会核对实际编排/容器/卷并导出到受控 `nextbuf-backup-v1`。固定名称意味着同一 Docker 主机只能运行一套该模板；多实例、横向扩容、精确升级和恢复继续使用受控 Compose。
 
 PostgreSQL 18 官方镜像使用版本化的 `PGDATA` 布局，命名卷应挂载到 `/var/lib/postgresql`。如果以后显式覆盖 `PGDATA`，卷挂载点必须与之匹配，并通过重建容器后的数据持久化测试验证，不能沿用旧版本路径后假定数据已经进入命名卷。
 

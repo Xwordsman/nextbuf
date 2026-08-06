@@ -11,6 +11,7 @@ import { isAccountTombstoneEmail } from "@/modules/identity/account-tombstone-po
 import { generateAvailableUsername } from "@/modules/profiles/username.server";
 import { validateUsername } from "@/modules/profiles/username-policy";
 import { getSiteSettings } from "@/modules/settings/settings.server";
+import { getTrustedOrigins } from "@/shared/config/environment";
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
 
 function splitList(value: string): string[] {
@@ -107,7 +108,7 @@ function createAuthInstance() {
       accountLinking: { enabled: true, disableImplicitLinking: true },
     },
     socialProviders: github,
-    trustedOrigins: [environment.APP_URL, ...splitList(environment.AUTH_TRUSTED_ORIGINS)],
+    trustedOrigins: getTrustedOrigins(environment),
     rateLimit: {
       enabled: true,
       customStorage: authRateLimitStorage,

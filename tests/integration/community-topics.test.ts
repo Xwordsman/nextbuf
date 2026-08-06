@@ -20,6 +20,7 @@ import { findReplyEditorSessionTarget } from "@/modules/community/editor-session
 import { createCommunityNode, updateCommunityNode } from "@/modules/community/nodes.server";
 import {
   getCommunityHomeView,
+  getPublicTopicTitle,
   getTopicPageView,
   listUserTopics,
 } from "@/modules/community/queries.server";
@@ -792,6 +793,75 @@ describe("community topics integration", () => {
       visibility: "public",
       archived: false,
     });
+  });
+
+  it("keeps hidden-node topics private while preserving owner and moderator access", async () => {
+    const prisma = getPrismaClient();
+    const [author, ordinary, nodeModerator, admin] = await Promise.all([
+      createActor("Hidden Node Topic Author"),
+      createActor("Hidden Node Ordinary"),
+      createActor("Hidden Node Moderator"),
+      createActor("Hidden Node Admin"),
+    ]);
+    const node = await prisma.communityNode.create({
+      data: {
+        slug: `hidden-topic-${randomUUID().slice(0, 8)}`,
+        name: "隐藏主题测试节点",
+        description: "验证隐藏节点不会通过数字主题地址泄露",
+        color: "#475569",
+        icon: "grid",
+        sortOrder: 90,
+        visibility: "public",
+      },
+    });
+    await prisma.communityRoleAssignment.createMany({
+      data: [
+        {
+          userId: nodeModerator.id,
+          role: "node_moderator",
+          nodeId: node.id,
+          scopeKey: node.id,
+        },
+        { userId: admin.id, role: "admin", scopeKey: "site" },
+      ],
+    });
+    const topic = await createTopic(
+      { userId: author.id },
+      {
+        nodeSlug: node.slug,
+        title: "隐藏节点数字地址不可泄露主题",
+        body: "该正文只允许主题作者和具备治理权限的用户继续读取。",
+        action: "publish",
+      },
+    );
+    await prisma.communityNode.update({
+      where: { id: node.id },
+      data: { visibility: "hidden" },
+    });
+
+    await expect(getPublicTopicTitle(topic.number)).resolves.toBeNull();
+    await expect(getTopicPageView(topic.number)).resolves.toBeNull();
+    await expect(getTopicPageView(topic.number, ordinary.id)).resolves.toBeNull();
+    await expect(getTopicPageView(topic.number, author.id)).resolves.toMatchObject({
+      number: topic.number,
+      canInteract: false,
+      canReply: false,
+    });
+    await expect(getTopicPageView(topic.number, nodeModerator.id)).resolves.toMatchObject({
+      number: topic.number,
+      canInteract: false,
+      canReply: false,
+    });
+    await expect(getTopicPageView(topic.number, admin.id)).resolves.toMatchObject({
+      number: topic.number,
+      canInteract: false,
+      canReply: false,
+    });
+    await expect(
+      createReply({ userId: ordinary.id }, topic.number, {
+        body: "普通用户即使知道数字地址也不能向隐藏节点主题回复。",
+      }),
+    ).rejects.toMatchObject({ code: "topic_not_found", status: 404 });
   });
 
   it("allocates stable floors and counts under concurrent replies", async () => {

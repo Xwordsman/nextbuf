@@ -2,12 +2,12 @@
 
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
-- 最后更新：2026-08-05
-- 当前已发布版本：`v0.13.10`，最后一个完整发布的公开 Beta
-- 当前开发版本：已批准的 `v1.0.0` 稳定化；不增加 `v1.1.0` 产品功能
+- 最后更新：2026-08-06
+- 当前已发布版本：`v1.0.0`，首个完整稳定版本
+- 当前开发版本：已批准的 `v1.0.1` 兼容补丁；不增加 `v1.1.0` 产品功能
 - 发布例外：不可变 `v0.13.9` 标签的 Linux x64 standalone 归档因 pnpm 依赖链接被展平而无法启动，Release 资产未完成；它不是完整、受支持的发布，也不能设为升级基线
-- 当前发布状态：美元符号保真修复提交 `a21946bd8a72cddae91f2705f06bb93f4d6c3b2a` 的主线 [Run 31009639325](https://github.com/Xwordsman/nextbuf/actions/runs/31009639325) 与同提交发布演练 [Run 31010887772](https://github.com/Xwordsman/nextbuf/actions/runs/31010887772) 均完整成功。演练复用主线已经测试的双架构候选，完成 Linux x64 归档、arm64 深度冒烟、amd64 宝塔导出/恢复、空卷恢复、故障注入和 `0.13.10 -> 1.0.0` 升级，并验证 staging OCI index 与 `sha-a21946b...`/`edge` 都是 `sha256:39b61cc9c7aa375f4e21eab463374f3d8e97d087121f143187d68a953968a589`；amd64/arm64 runtime manifest 分别为 `sha256:fcba8c42ccb19b954215a704fa00db4c56dfa2a5975b9c8fcb9f19a51532c801` 与 `sha256:50160d6befb17750b635a6d71f917cbbbba782a21030c70b949c3af071373d83`。演练未创建 `1.0.0`，`latest` 仍为历史 Beta `sha256:99fb5681668cbea1c35fa0c1d62b719c8f996d69a2ce106e214ceec06484b60f`。自动化实现基线已关闭已知阻断；本文证据更新后的新 HEAD 仍须独立通过相同主线与演练，真实社区隔离副本人工验收和正式标签尚未完成，因此 `v1.0.0` 继续保持 `NO-GO`
-- 下一动作：提交并推送本次最终候选文档更新，等待新 HEAD 的完整主线和 `release_rehearsal=true` 同提交复验；成功后不再用源码提交记录自身身份，而是在仓库外受限验收目录冻结 commit、主线/演练 URL、OCI/platform Digest、归档/SBOM artifact Digest 与时间。按正式版人工验收模板完成全新安装，并在生产维护窗口通过 `nextbufctl backup --baota` 把实际宝塔实例导出、以 `--keep-stopped` 恢复到 Provider 已隔离的受控副本。2026-08-03 对 `www.nextbuf.com` 的公开只读核对显示线上仍为 `0.13.8`，因此该副本必须先按已发布路径完成 `0.13.8 -> 0.13.10`；预标签候选再按运行手册把 `0.13.10` 与候选完整 OCI index 从记录的 Digest 复制到 loopback Registry，正常拉取并执行 `0.13.10 -> 1.0.0`，逐项证明用户、UID、内容、Better Auth 凭据/Session、附件、Provider、备份恢复和双管理员连续性。单纯本地 tag、忽略 pull 或另一次构建都不构成候选。人工验收后不再提交源码变更，直接在同一候选 commit 创建标签。生产实例不承担破坏性演练，`v1.0.0` 仍未发布，不混入 `v1.1.0` 功能
+- 当前发布状态：`v1.0.0` tag commit 为 `e2a58209ae09caa0e785cca9ad4a05b2d822c384`；主线 [Run 31013321788](https://github.com/Xwordsman/nextbuf/actions/runs/31013321788)、发布演练 [Run 31014301093](https://github.com/Xwordsman/nextbuf/actions/runs/31014301093) 和标签 [Run 31076773476](https://github.com/Xwordsman/nextbuf/actions/runs/31076773476) 均成功。[GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v1.0.0) 非 draft/非 prerelease；OCI index 为 `sha256:1093d394fb0d80e3d59eaab1a80ddc29e4998406ed3c534d8807b9a9c4902779`，amd64/arm64 分别为 `sha256:4e2fea043bf2bb4e230d614e26113f6bdd81f9a034915488301073b4439c5ef1` 与 `sha256:c8e53a4dd83a8f96a70d6063581252a5df6fdce1b3af8dcee8cd1fbb08ca163e`；`latest` 与 `1.0.0` 相同。生产已经完成升级和数据连续性验证。项目所有者批准暂时只有 1 位合格管理员，冗余警告保留，0 位仍阻断。
+- 下一动作：按 [`v1.0.1` 发布就绪清单](./24-v1.0.1-release-readiness.md)完成五项补丁与本地检查，提交推送 main，等待同一 commit 的完整 CI 与 `release_rehearsal=true`；P0/P1 清零且管理员条件满足后再创建不可变 `v1.0.1` 标签。Release 与 `latest` 身份一致后，先备份并校验生产，再执行 `1.0.0 -> 1.0.1` 升级和连续性验证；不混入 `v1.1.0` 功能。
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -279,13 +279,13 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 24. 正式升级证据遵循 ADR-0022：生产只提供维护窗口备份，破坏性验收在隔离副本执行；目标镜像在停写迁移前后以只读事务生成 HMAC 脱敏快照，严格比较身份、Better Auth 凭据/Session、社区、附件引用、互动和治理稳定事实，并单独验证三条候选迁移的允许变换。`nextbufctl upgrade` 只有比较通过才启动 Web/Worker，`--verify-objects` 进一步核对 local/S3 原始附件 SHA-256 和派生对象。
 25. 升级前至少保留 1 位可接管管理员，优先 2 位：必须是 `admin/site`、active、邮箱已验证、未申请/计划注销、无有效 suspend/ban 且有非空 credential 密码。0 位连续性失败是升级阻断项；在线成员仍是明确未实现的空状态。
 
-## 6. `v1.0.0` 稳定化边界
+## 6. `v1.0.1` 补丁边界
 
-入口：[V1 正式版人工验收模板](./21-v1.0.0-manual-acceptance.md)
+入口：[`v1.0.1` 发布就绪与验收清单](./24-v1.0.1-release-readiness.md)；`v1.0.0` 的完整人工模板只作为继承门槛，不可用其硬编码的 `0.13.10 -> 1.0.0` 步骤代替本补丁验收。
 
-`v0.13.10` 是当前公开升级基线；`v0.13.9` 保持不可变的不完整历史标签，不参与升级基线。`v1.0.0` 候选已实现最终账号注销、治理证据保留、管理员连续性、首次安装 claim/密码栅栏和 Outbox durable completion：到期账号保留为不可登录墓碑并清理认证/私人数据及旧身份通知邮件，邮件清理使用统一锁序，案件当前指派与历史证据分离；管理员角色变更、制裁、注销和 credential 变更受连续性保护；迟到安装请求不能越过当前 claim 写入首管事实或用不同密码接管旧账号；已发布未处理 Outbox 在 Redis 或 replay 后再次丢失时可恢复，新最终失败仍等待人工重放。自动化已经完成真实不可变 `0.13.10` 基线升级、空卷恢复、故障注入和双架构门槛；仍需按 [人工验收模板](./21-v1.0.0-manual-acceptance.md) 使用真实 Beta 数据核对最终注销、管理员连续性、Better Auth 凭据/Session、附件、Provider 和操作旅程，不能把自动化合成夹具当作正式 Release 的全部证据。
+`v1.0.0` 是当前公开升级基线。`v1.0.1` 只修复隐藏节点数字主题地址/metadata 越权、`AUTH_TRUSTED_ORIGINS` 合同漂移、Worker 启动失败资源残留、已提交注册错误释放邀请码，以及 CI 升级基线和 Release notes 冒烟硬编码问题。它冻结与 `v1.0.0` 相同的 16 条迁移，不改变四容器拓扑、公开数据模型或产品能力。
 
-`v1.0.0` 稳定化已经由用户明确批准；未经新的明确批准，不开始 `v1.1.0`、插件、交易、支付或开放 API。
+`v1.0.1` 补丁已经由用户明确批准；未经新的明确批准，不开始 `v1.1.0`、插件、交易、支付或开放 API。
 
 ## 7. 文档优先级与交接规则
 

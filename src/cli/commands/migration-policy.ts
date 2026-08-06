@@ -24,7 +24,7 @@ export const V1_0_0_MIGRATIONS: AppliedMigrationIdentity[] = v1_0_0Baseline.migr
 export function assertV1_0_0MigrationPrefix(rows: AppliedMigrationIdentity[]): void {
   if (rows.length > V1_0_0_MIGRATIONS.length) {
     throw new Error(
-      "Database migration history is not an exact prefix of the immutable v1.0.0 candidate; restore a supported backup before retrying. No candidate migration was started.",
+      "Database migration history is not an exact prefix of the immutable v1.0.0 release migration manifest; restore a supported backup before retrying. No migration was started.",
     );
   }
 
@@ -32,7 +32,7 @@ export function assertV1_0_0MigrationPrefix(rows: AppliedMigrationIdentity[]): v
     const expected = V1_0_0_MIGRATIONS[index];
     if (expected?.migrationName !== migrationName || expected.checksum !== checksum) {
       throw new Error(
-        "Database migration history is not an exact prefix of the immutable v1.0.0 candidate; restore a supported backup before retrying. No candidate migration was started.",
+        "Database migration history is not an exact prefix of the immutable v1.0.0 release migration manifest; restore a supported backup before retrying. No migration was started.",
       );
     }
   }

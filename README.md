@@ -2,7 +2,7 @@
 
 NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开源综合社区。
 
-当前完整发布版本为 [`v0.13.10`](https://github.com/Xwordsman/nextbuf/releases/tag/v0.13.10) 最终公开 Beta：保留主题/回复编辑幂等、真实社区数据、搜索、分页、认证流程、既有三栏布局和无需 `.env` 的宝塔单文件 Compose，同时收紧可信代理与隐藏节点附件边界，并强化依赖审计、发布归档依赖闭包、备份恢复和精确升级。`v0.13.9` 标签因归档失败而不是完整发布；当前已进入批准的 `v1.0.0` 稳定化，不混入 `v1.1.0` 功能。
+当前完整稳定版本为 [`v1.0.0`](https://github.com/Xwordsman/nextbuf/releases/tag/v1.0.0)。它交付真实社区数据、认证、治理、搜索、通知、三栏前台、shadcn/ui 管理后台、四容器部署、宝塔单文件 Compose、可验证备份恢复和保守升级合同。当前源码进入获批的 `v1.0.1` 兼容补丁，只修复缺陷、安全、升级和文档问题，不混入 `v1.1.0` 功能。
 
 ## 技术基线
 
@@ -54,7 +54,7 @@ cp .env.example .env
 
 ## Docker 部署
 
-宝塔面板用户可以直接粘贴 [`compose.baota.yml`](./compose.baota.yml)，首次替换其中的域名、密码、应用密钥和 SMTP 配置后启动。该模板使用默认稳定 `latest` 通道和 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis` 四个固定容器名；后续升级先用 Release 中的 `./nextbufctl backup --baota <实际部署编排>` 生成可校验归档（S3 另需同一维护窗口的 Provider 快照/版本），再在面板拉取新镜像并重建，不再编辑版本号。生产归档恢复到隔离环境时使用 `--keep-stopped`，先切换域名、邮件和存储 Provider 再启动。`v1.0.0` 尚未发布，因此过渡期的 `latest` 仍停留在最后一个经验证的 Beta，主线候选改由 `edge` 提供；通道合同见 [ADR-0020](./docs/adr/0020-stable-release-channels-and-lifecycle.md)。
+宝塔面板用户可以直接粘贴 [`compose.baota.yml`](./compose.baota.yml)，首次替换其中的域名、密码、应用密钥和 SMTP 配置后启动。该模板使用默认稳定 `latest` 通道和 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis` 四个固定容器名；后续升级先用 Release 中的 `./nextbufctl backup --baota <实际部署编排>` 生成可校验归档（S3 另需同一维护窗口的 Provider 快照/版本），再在面板拉取新镜像并重建，不再编辑版本号。生产归档恢复到隔离环境时使用 `--keep-stopped`，先切换域名、邮件和存储 Provider 再启动。`latest` 当前指向完整发布的 `v1.0.0`，主线候选只更新 `edge` 和不可变 `sha-*`；通道合同见 [ADR-0020](./docs/adr/0020-stable-release-channels-and-lifecycle.md)。
 
 需要 `nextbufctl` 精确升级、备份和恢复的用户使用正式 Release：
 

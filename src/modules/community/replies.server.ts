@@ -86,10 +86,10 @@ async function resolveQuotedPost(
 
 async function requireReplyableTopic(
   transaction: Prisma.TransactionClient,
-  topic: { id: string; nodeId: string; status: string },
+  topic: { id: string; nodeId: string; status: string; node: { visibility: string } },
   userId: string,
 ) {
-  if (!["published", "closed"].includes(topic.status)) {
+  if (topic.node.visibility !== "public" || !["published", "closed"].includes(topic.status)) {
     throw new CommunityError("topic_not_found", 404);
   }
   const permissions = await requireCommunityContentActor(transaction, userId, topic.nodeId);
@@ -137,7 +137,10 @@ export async function createReply(context: ReplyWriteContext, number: number, in
   return getPrismaClient().$transaction(async (transaction) => {
     await lockUser(transaction, context.userId);
     await lockTopic(transaction, number);
-    const topic = await transaction.communityTopic.findUnique({ where: { number } });
+    const topic = await transaction.communityTopic.findUnique({
+      where: { number },
+      include: { node: { select: { visibility: true } } },
+    });
     if (!topic) throw new CommunityError("topic_not_found", 404);
     const persistedSession = editorSession
       ? await transaction.communityReplyEditorSession.findUnique({
@@ -340,7 +343,10 @@ export async function saveReplyDraft(
   return getPrismaClient().$transaction(async (transaction) => {
     await lockUser(transaction, context.userId);
     await lockTopic(transaction, number);
-    const topic = await transaction.communityTopic.findUnique({ where: { number } });
+    const topic = await transaction.communityTopic.findUnique({
+      where: { number },
+      include: { node: { select: { visibility: true } } },
+    });
     if (!topic) throw new CommunityError("topic_not_found", 404);
     const persistedSession = editorSession
       ? await transaction.communityReplyEditorSession.findUnique({

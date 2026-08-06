@@ -459,9 +459,11 @@ export async function listWritableNodes() {
 export async function getPublicTopicTitle(number: number): Promise<string | null> {
   const topic = await getPrismaClient().communityTopic.findUnique({
     where: { number },
-    select: { title: true, status: true },
+    select: { title: true, status: true, node: { select: { visibility: true } } },
   });
-  return topic && publicTopicStatuses.includes(topic.status) ? topic.title : null;
+  return topic && topic.node.visibility === "public" && publicTopicStatuses.includes(topic.status)
+    ? topic.title
+    : null;
 }
 
 export async function getTopicPageView(number: number, viewerId?: string, requestedFrom = 2) {
@@ -486,10 +488,13 @@ export async function getTopicPageView(number: number, viewerId?: string, reques
   const isAuthor = viewerId === topic.authorId;
   const privateDraft = isPrivateTopicDraftLineage(topic);
   const canEdit = Boolean(permissions?.active && (isAuthor || (canModerate && !privateDraft)));
+  const canViewHiddenNode = Boolean(permissions?.active && (isAuthor || canModerate));
+  if (topic.node.visibility !== "public" && !canViewHiddenNode) return null;
   if (!["published", "closed"].includes(topic.status) && !canEdit) return null;
   const post = topic.posts[0];
   if (!post) return null;
   const canReply = Boolean(
+    topic.node.visibility === "public" &&
     permissions?.active &&
     (topic.status === "published" || (topic.status === "closed" && canModerate)),
   );
@@ -588,7 +593,10 @@ export async function getTopicPageView(number: number, viewerId?: string, reques
     bookmarkCount: topic.bookmarkCount,
     bookmarked: Boolean(topicInteractions[0]),
     followed: Boolean(topicInteractions[1]),
-    canInteract: permissions?.active === true && publicTopicStatuses.includes(topic.status),
+    canInteract:
+      topic.node.visibility === "public" &&
+      permissions?.active === true &&
+      publicTopicStatuses.includes(topic.status),
     lastVisiblePosition: visibleReplies.at(-1)?.position ?? 1,
     canEdit,
     canModerate,

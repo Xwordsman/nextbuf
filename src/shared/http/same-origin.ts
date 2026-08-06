@@ -1,16 +1,23 @@
 import { getAuthEnvironment } from "@/shared/config/runtime-env";
+import { getTrustedOrigins } from "@/shared/config/environment";
 
-export function isSameOrigin(request: Request, applicationUrl: string): boolean {
+export function isSameOrigin(
+  request: Request,
+  applicationUrl: string,
+  additionalTrustedOrigins: readonly string[] = [],
+): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return false;
   try {
     const parsedOrigin = new URL(origin);
-    return parsedOrigin.origin === origin && parsedOrigin.origin === new URL(applicationUrl).origin;
+    const trustedOrigins = new Set([new URL(applicationUrl).origin, ...additionalTrustedOrigins]);
+    return parsedOrigin.origin === origin && trustedOrigins.has(parsedOrigin.origin);
   } catch {
     return false;
   }
 }
 
 export function hasSameOrigin(request: Request): boolean {
-  return isSameOrigin(request, getAuthEnvironment().APP_URL);
+  const environment = getAuthEnvironment();
+  return isSameOrigin(request, environment.APP_URL, getTrustedOrigins(environment));
 }

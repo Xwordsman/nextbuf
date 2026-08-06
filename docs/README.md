@@ -2,7 +2,7 @@
 
 本目录是 NextBuf 的产品、架构和工程基线。它用于回答三个问题：我们要做什么、为什么这样设计、开发和发布时必须遵守什么。
 
-> 当前阶段：[`v0.13.10`](./18-v0.13.10-release-notes.md) 已作为最后一个公开 Beta 完整发布；`v0.13.9` 标签因归档失败而保留为不完整历史发布。`v0.13.10` 保持真实社区数据、既有三栏布局、无需 `.env`、固定容器名的宝塔单文件 Compose、工作流化后台内容管理和 UID 1 安装合同，并收紧安全、依赖、归档依赖闭包、备份和升级边界。当前进入已批准的 `v1.0.0` 稳定化，且不提前实现 `v1.1.0`。`UI/index.html` 仅是历史视觉参考，运行页面以 `src/app` 和 `src/components` 为准。
+> 当前阶段：[`v1.0.0`](./20-v1.0.0-release-notes.md) 已作为首个稳定版完整发布，`latest` 与不可变 `1.0.0` 指向相同 OCI index；当前进入获批的 `v1.0.1` 兼容补丁，只修复缺陷、安全、升级和文档问题，不提前实现 `v1.1.0`。`UI/index.html` 仅是历史视觉参考，运行页面以 `src/app` 和 `src/components` 为准。
 
 ## 项目定位
 
@@ -41,9 +41,11 @@ NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开
 | [18-v0.13.9-release-notes.md](./18-v0.13.9-release-notes.md) | 最终 Beta 的变更、升级、恢复和已知限制 | 部署、发布、运维 |
 | [18-v0.13.10-release-notes.md](./18-v0.13.10-release-notes.md) | 替代不完整 `v0.13.9` 的最终 Beta 发布说明 | 部署、发布、运维 |
 | [19-v1.0.0-release-readiness.md](./19-v1.0.0-release-readiness.md) | 首个稳定版的自动化、升级、安全、数据和发布 GO/NO-GO 门槛 | 测试、安全、发布、运维 |
-| [20-v1.0.0-release-notes.md](./20-v1.0.0-release-notes.md) | `v1.0.0` 候选发布说明、升级和回退草案 | 部署、发布、运维 |
+| [20-v1.0.0-release-notes.md](./20-v1.0.0-release-notes.md) | `v1.0.0` 正式发布说明、升级和回退边界 | 部署、发布、运维 |
 | [21-v1.0.0-manual-acceptance.md](./21-v1.0.0-manual-acceptance.md) | 全新安装、Beta 升级、核心旅程与正式发布人工验收模板 | 测试、发布、运维 |
 | [22-v1.0.0-provider-support-matrix.md](./22-v1.0.0-provider-support-matrix.md) | `v1.0.0` 数据库、缓存、存储、SMTP、OAuth、搜索和部署支持边界 | 部署、测试、支持 |
+| [23-v1.0.1-release-notes.md](./23-v1.0.1-release-notes.md) | `v1.0.1` 缺陷修复、兼容性、升级和回退说明 | 部署、发布、运维 |
+| [24-v1.0.1-release-readiness.md](./24-v1.0.1-release-readiness.md) | `v1.0.1` 五项补丁判据、升级、产物身份、管理员与 GO/NO-GO 清单 | 测试、发布、运维 |
 | [../SUPPORT.md](../SUPPORT.md) | 稳定版本生命周期、官方支持边界和问题报告信息 | 部署、维护者、用户 |
 | [../SECURITY.md](../SECURITY.md) | 受支持安全版本、私密漏洞报告和披露流程 | 安全、维护者、部署者 |
 | [adr/](./adr/) | 关键架构决策的背景、取舍和后果 | 架构、维护者 |

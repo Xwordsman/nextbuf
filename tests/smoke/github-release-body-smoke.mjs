@@ -6,11 +6,12 @@ import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const script = path.join(root, "scripts", "prepare-github-release-body.mjs");
+const packageMetadata = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 const directory = await mkdtemp(path.join(tmpdir(), "nextbuf-release-body-"));
 const docsDirectory = path.join(directory, "docs");
 const releaseDirectory = path.join(directory, "release");
 const outputPath = path.join(releaseDirectory, "release-body.md");
-const version = "1.0.0";
+const version = packageMetadata.version;
 const archiveName = `nextbuf-${version}-linux-x64.tar.gz`;
 const checksumName = `${archiveName}.sha256`;
 const sbomName = `nextbuf-v${version}-sbom.spdx.json`;
@@ -20,10 +21,10 @@ const commit = "a".repeat(40);
 const indexDigest = `sha256:${"b".repeat(64)}`;
 const amd64Digest = `sha256:${"c".repeat(64)}`;
 const arm64Digest = `sha256:${"d".repeat(64)}`;
-const notesPath = path.join(docsDirectory, "20-v1.0.0-release-notes.md");
+const notesPath = path.join(docsDirectory, `fixture-v${version}-release-notes.md`);
 const baseEnvironment = {
   ...process.env,
-  GITHUB_REF_NAME: "v1.0.0",
+  GITHUB_REF_NAME: `v${version}`,
   GITHUB_SHA: commit,
   GITHUB_SERVER_URL: "https://github.com",
   GITHUB_REPOSITORY: "Xwordsman/nextbuf",
@@ -45,9 +46,9 @@ function run(expectedStatus = 0, sourceDocsDirectory = docsDirectory) {
   return result;
 }
 
-const validNotes = `# NextBuf \`v1.0.0\` 发布说明（草案）
+const validNotes = `# NextBuf \`v${version}\` 发布说明（草案）
 
-> \`v1.0.0\` 尚未发布。
+> \`v${version}\` 尚未发布。
 
 ## 1. 变更
 
@@ -84,7 +85,7 @@ try {
     archiveSha256,
     `https://github.com/Xwordsman/nextbuf/blob/${commit}/docs/22-v1.0.0-provider-support-matrix.md`,
     `https://github.com/Xwordsman/nextbuf/blob/${commit}/SUPPORT.md`,
-    `https://github.com/Xwordsman/nextbuf/releases/download/v1.0.0/${archiveName}`,
+    `https://github.com/Xwordsman/nextbuf/releases/download/v${version}/${archiveName}`,
   ]) {
     if (!body.includes(expected)) {
       throw new Error(`Generated Release body is missing ${expected}`);
@@ -122,7 +123,7 @@ try {
   await writeFile(path.join(releaseDirectory, archiveName), archive);
   run(0, path.join(root, "docs"));
   const projectBody = await readFile(outputPath, "utf8");
-  if (!projectBody.includes("NextBuf 首个稳定社区版本") || projectBody.includes("待填写")) {
+  if (!projectBody.includes(`NextBuf \`v${version}\` 发布说明`) || projectBody.includes("待填写")) {
     throw new Error("Project Release notes did not produce a publishable Release body");
   }
 } finally {

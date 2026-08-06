@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getAuth, getInternalRegistrationHeader } from "@/infrastructure/auth/better-auth";
 import { consumeIdentityRateLimit } from "@/infrastructure/auth/rate-limit";
 import { getPrismaClient } from "@/infrastructure/database/client";
+import { logger } from "@/infrastructure/observability/logger";
 import { recordIdentityAudit } from "@/modules/identity/audit.server";
 import {
   releaseRegistrationInvite,
@@ -11,6 +12,7 @@ import { getAuthEnvironment } from "@/shared/config/runtime-env";
 import { isUsernameAvailable } from "@/modules/profiles/username.server";
 import { validateUsername } from "@/modules/profiles/username-policy";
 import { getSiteSettings } from "@/modules/settings/settings.server";
+import { getErrorMessage } from "@/shared/errors/error-message";
 import { isInstallationComplete } from "@/modules/installation/status.server";
 import { resolveClientIp } from "@/shared/http/client-ip.server";
 import { hasSameOrigin } from "@/shared/http/same-origin";
@@ -45,6 +47,52 @@ function acceptedResponse(): Response {
     { ok: true, message: "If registration is available, check your email." },
     { status: 202 },
   );
+}
+
+async function releaseInviteSafely(inviteId: string, reason: string): Promise<void> {
+  try {
+    await releaseRegistrationInvite(inviteId);
+  } catch (error) {
+    logger.error("Registration invite release failed", {
+      inviteId,
+      reason,
+      error: getErrorMessage(error),
+    });
+  }
+}
+
+async function releaseInviteOnlyWhenRegistrationDidNotCommit(
+  inviteId: string,
+  email: string,
+  registrationError: unknown,
+): Promise<void> {
+  try {
+    const persistedUser = await getPrismaClient().user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (persistedUser) {
+      // Better Auth can reject after its user transaction commits when a queued audit or mail hook
+      // fails. Conservatively retain the reservation whenever durable registration is visible.
+      logger.warn("Registration failed after durable user creation; invite reservation retained", {
+        inviteId,
+        userId: persistedUser.id,
+        error: getErrorMessage(registrationError),
+      });
+      return;
+    }
+  } catch (error) {
+    // An unavailable commit check is not proof that registration rolled back. Retaining one use is
+    // safer than making a single-use invite reusable after an indeterminate commit.
+    logger.error("Registration commit state could not be verified; invite reservation retained", {
+      inviteId,
+      registrationError: getErrorMessage(registrationError),
+      error: getErrorMessage(error),
+    });
+    return;
+  }
+
+  await releaseInviteSafely(inviteId, "registration_not_committed");
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -88,12 +136,12 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (existingUser) {
-    if (invite) await releaseRegistrationInvite(invite.id);
+    if (invite) await releaseInviteSafely(invite.id, "existing_user");
     return acceptedResponse();
   }
 
   if (!(await isUsernameAvailable(username.username))) {
-    if (invite) await releaseRegistrationInvite(invite.id);
+    if (invite) await releaseInviteSafely(invite.id, "username_unavailable");
     return errorResponse("username_unavailable", 409);
   }
 
@@ -111,8 +159,15 @@ export async function POST(request: Request): Promise<Response> {
         "x-nextbuf-registration": getInternalRegistrationHeader(),
       }),
     });
-
+  } catch (error) {
     if (invite) {
+      await releaseInviteOnlyWhenRegistrationDidNotCommit(invite.id, input.data.email, error);
+    }
+    return acceptedResponse();
+  }
+
+  if (invite) {
+    try {
       const user = await getPrismaClient().user.findUnique({
         where: { email: input.data.email },
         select: { id: true },
@@ -123,10 +178,14 @@ export async function POST(request: Request): Promise<Response> {
         request,
         metadata: { inviteId: invite.id },
       });
+    } catch (error) {
+      // Registration has already committed. Never release a consumed invite here: doing so could
+      // make a single-use code reusable. The public response remains intentionally non-enumerating.
+      logger.error("Invite consumption audit failed after registration committed", {
+        inviteId: invite.id,
+        error: getErrorMessage(error),
+      });
     }
-  } catch {
-    if (invite) await releaseRegistrationInvite(invite.id);
-    return acceptedResponse();
   }
 
   return acceptedResponse();

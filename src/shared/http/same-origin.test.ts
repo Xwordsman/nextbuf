@@ -11,7 +11,7 @@ function routeFiles(directory: string): string[] {
 }
 
 describe("same-origin mutation policy", () => {
-  it("only accepts the configured serialized origin", () => {
+  it("only accepts configured serialized origins", () => {
     const applicationUrl = "https://community.example.com";
     expect(
       isSameOrigin(
@@ -21,6 +21,24 @@ describe("same-origin mutation policy", () => {
         applicationUrl,
       ),
     ).toBe(true);
+    expect(
+      isSameOrigin(
+        new Request(`${applicationUrl}/api/test`, {
+          headers: { origin: "https://example.com" },
+        }),
+        applicationUrl,
+        ["https://example.com"],
+      ),
+    ).toBe(true);
+    expect(
+      isSameOrigin(
+        new Request(`${applicationUrl}/api/test`, {
+          headers: { origin: "https://unconfigured.example.com" },
+        }),
+        applicationUrl,
+        ["https://example.com"],
+      ),
+    ).toBe(false);
     expect(
       isSameOrigin(
         new Request(`${applicationUrl}/api/test`, {

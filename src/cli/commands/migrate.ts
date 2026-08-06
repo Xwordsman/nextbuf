@@ -266,7 +266,7 @@ async function preflightRolledBackResolution(
     }
     if (failed.rows[0]?.checksum !== expected.checksum) {
       throw new Error(
-        `Migration ${migrationName} has a checksum that differs from the immutable v1.0.0 candidate and cannot be resolved as rolled back.`,
+        `Migration ${migrationName} has a checksum that differs from the immutable v1.0.0 release migration manifest and cannot be resolved as rolled back.`,
       );
     }
 

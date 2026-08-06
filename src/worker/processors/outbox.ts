@@ -266,15 +266,22 @@ async function processOutboxJob(job: Job<OutboxJobData>): Promise<void> {
 export function createOutboxWorker() {
   const environment = getServiceEnvironment();
   const connection = createBullRedisConnection();
-  const worker = new Worker<OutboxJobData, void, typeof OUTBOX_JOB_NAME>(
-    SYSTEM_QUEUE_NAME,
-    processOutboxJob,
-    {
-      connection,
-      concurrency: environment.WORKER_CONCURRENCY,
-      prefix: getRedisKeyspaces().queue,
-    },
-  );
+  try {
+    const worker = new Worker<OutboxJobData, void, typeof OUTBOX_JOB_NAME>(
+      SYSTEM_QUEUE_NAME,
+      processOutboxJob,
+      {
+        connection,
+        concurrency: environment.WORKER_CONCURRENCY,
+        prefix: getRedisKeyspaces().queue,
+      },
+    );
 
-  return { worker, connection };
+    return { worker, connection };
+  } catch (error) {
+    // The runtime cannot take ownership until both objects are returned. A synchronous BullMQ
+    // constructor failure must therefore close the already-created Redis handle here.
+    connection.disconnect();
+    throw error;
+  }
 }
