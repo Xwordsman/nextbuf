@@ -7,6 +7,7 @@ import {
 } from "@/cli/commands/acceptance";
 import { compareAcceptanceSnapshots } from "@/cli/acceptance-contract";
 import { getDatabaseEnvironment } from "@/shared/config/runtime-env";
+import { PROJECT } from "@/shared/project";
 import {
   withIsolatedNextBufDatabase,
   withIsolatedV0_13_10Database,
@@ -88,7 +89,7 @@ describe("acceptance evidence", () => {
       `;
       const options: CaptureAcceptanceSnapshotOptions = {
         authSecret: "acceptance-evidence-hmac-secret-at-least-32-characters",
-        configuredVersion: "1.0.0",
+        configuredVersion: PROJECT.version,
         connectionString: databaseUrl(currentDatabase[0]!.database),
       };
       const before = await captureAcceptanceSnapshot(options);
@@ -372,7 +373,7 @@ describe("acceptance evidence", () => {
 
           const after = await captureAcceptanceSnapshot({
             ...options,
-            configuredVersion: "1.0.0",
+            configuredVersion: PROJECT.version,
           });
           expect(after.database.appliedMigrations).toHaveLength(16);
           expect(after.capabilities).toEqual({
@@ -440,7 +441,7 @@ describe("acceptance evidence", () => {
           );
           const normalRuntimeState = await captureAcceptanceSnapshot({
             ...options,
-            configuredVersion: "1.0.0",
+            configuredVersion: PROJECT.version,
           });
           expect(normalRuntimeState.integrity.outbox_processed_linkage).toMatchObject({
             applicable: true,
@@ -479,7 +480,7 @@ describe("acceptance evidence", () => {
           );
           const updatedAtChanged = await captureAcceptanceSnapshot({
             ...options,
-            configuredVersion: "1.0.0",
+            configuredVersion: PROJECT.version,
           });
           expect(compareAcceptanceSnapshots(normalRuntimeState, updatedAtChanged).issues).toEqual(
             expect.arrayContaining([
@@ -522,7 +523,7 @@ describe("acceptance evidence", () => {
           ]);
           const changed = await captureAcceptanceSnapshot({
             ...options,
-            configuredVersion: "1.0.0",
+            configuredVersion: PROJECT.version,
           });
           const comparison = compareAcceptanceSnapshots(updatedAtChanged, changed);
           expect(comparison.status).toBe("fail");

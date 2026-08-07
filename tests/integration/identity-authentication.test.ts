@@ -821,6 +821,10 @@ describe("identity authentication integration", () => {
 
   it("commits a mail accepted after Prisma's default transaction deadline exactly once", async () => {
     const prisma = getPrismaClient();
+    await prisma.processedJob.deleteMany();
+    await prisma.outboxEvent.deleteMany();
+    await prisma.emailDelivery.deleteMany();
+
     const email = testEmail("slow-worker");
     const { delivery } = await registerPendingUser(email);
     const event = await prisma.outboxEvent.findUniqueOrThrow({
