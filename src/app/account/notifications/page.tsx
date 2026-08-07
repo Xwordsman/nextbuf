@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AccountPageShell } from "@/components/account/account-page-shell";
 import { NotificationPreferences } from "@/components/account/notification-preferences.client";
@@ -9,21 +8,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/shadcn/ui/card";
-import { getAuth } from "@/infrastructure/auth/better-auth";
+import { getCurrentSession } from "@/modules/identity/session.server";
 import { getNotificationPreferences } from "@/modules/notifications/notifications.server";
 
 export const metadata = { title: "通知偏好" };
 
 export default async function NotificationPreferencesPage() {
-  const session = await getAuth().api.getSession({ headers: await headers() });
+  const session = await getCurrentSession();
   if (!session) redirect("/auth/sign-in?next=/account/notifications");
   const preferences = await getNotificationPreferences(session.user.id);
   return (
-    <AccountPageShell
-      active="notifications"
-      description="选择各类社区动态的站内和邮件投递方式。"
-      title="通知偏好"
-    >
+    <AccountPageShell description="选择各类社区动态的站内和邮件投递方式。" title="通知偏好">
       <Card className="gap-0 py-0">
         <CardHeader className="border-b py-4">
           <CardTitle>

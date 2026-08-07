@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import { FilePenLine, Plus } from "lucide-react";
 import { redirect } from "next/navigation";
@@ -6,8 +5,8 @@ import { AccountPageShell } from "@/components/account/account-page-shell";
 import { Badge } from "@/components/shadcn/ui/badge";
 import { Button } from "@/components/shadcn/ui/button";
 import { Card, CardContent } from "@/components/shadcn/ui/card";
-import { getAuth } from "@/infrastructure/auth/better-auth";
 import { listUserTopics } from "@/modules/community/queries.server";
+import { getCurrentSession } from "@/modules/identity/session.server";
 
 export const metadata = { title: "我的主题" };
 
@@ -20,13 +19,12 @@ const labels: Record<string, string> = {
 };
 
 export default async function AccountTopicsPage() {
-  const session = await getAuth().api.getSession({ headers: await headers() });
+  const session = await getCurrentSession();
   if (!session) redirect("/auth/sign-in?next=/account/topics");
   const topics = await listUserTopics(session.user.id);
 
   return (
     <AccountPageShell
-      active="topics"
       description="管理草稿、已发布主题和可恢复的软删除记录。"
       title="我的主题"
       action={

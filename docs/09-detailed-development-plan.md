@@ -468,7 +468,7 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 - 官方宝塔现网能完整导出并恢复到独立受控 Compose；归档内部/外部校验、来源 image config 身份和 Provider 启动前隔离均通过。
 - 所有必需环境变量、卷、端口和 Provider 都与文档一致。
 - 升级前必须至少保留 1 位可接管管理员：`admin/site`、`active`、邮箱已验证、无注销申请或计划、无有效 suspend/ban，且有密码非空的 `credential` Account；生产实例优先准备 2 位或以上。Doctor 为 0 位连续性失败时不得继续升级。
-- 最终注销、管理员交接、SMTP attempt/结果未知重放、墓碑公开页、认证阻断、setup 密码竞态、Outbox `processed_at` 回填、Redis/replay 恢复及升级后的连续性诊断均已通过真实 PostgreSQL/Redis/Mailpit 和正式标签流水线验证。`v1.0.0` 已于 2026-08-06 完整发布并升级生产，后续补丁以它作为直接升级基线。
+- 最终注销、管理员交接、SMTP attempt/结果未知重放、墓碑公开页、认证阻断、setup 密码竞态、Outbox `processed_at` 回填、Redis/replay 恢复及升级后的连续性诊断均已通过真实 PostgreSQL/Redis/Mailpit 和正式标签流水线验证。`v1.0.0` 已于 2026-08-06 完整发布并升级生产；后续补丁必须以最近一个完整发布的稳定补丁作为直接升级基线。
 
 ## 4. V1 稳定系列
 
@@ -484,6 +484,8 @@ Issue/Epic -> 功能分支 -> Pull Request -> main -> 版本标签
 补丁版本不得加入交易、插件等新领域，也不得要求破坏性配置迁移。
 
 `v1.0.1` 的冻结范围：修复隐藏节点数字主题地址/metadata 越权、统一 `AUTH_TRUSTED_ORIGINS` 写接口边界、清理 Worker 启动失败资源、保护已提交注册的邀请码计数，以及把发布升级基线和 Release notes 冒烟提升到稳定补丁合同；不新增迁移或产品功能。
+
+`v1.0.1` 已于 2026-08-07 完整发布。`v1.0.2` 的冻结范围是不改变公开行为的性能优化：请求内 Session/站点设置去重、主题详情轻量三栏 Shell、Profile 正常读取不写库、账号共享 layout、主题与账号局部 loading、动态路由预取和客户端初始化收窄。它以 `v1.0.1` 为直接升级基线，继续冻结相同 16 条迁移；不改用 Go、不拆 frontend/backend、不替换 Better Auth、不新增配置或产品功能。
 
 ### v1.1.0：内容发现增强
 

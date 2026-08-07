@@ -2,12 +2,12 @@
 
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
-- 最后更新：2026-08-06
-- 当前已发布版本：`v1.0.0`，首个完整稳定版本
-- 当前开发版本：已批准的 `v1.0.1` 兼容补丁；不增加 `v1.1.0` 产品功能
+- 最后更新：2026-08-07
+- 当前已发布版本：`v1.0.1`，当前完整稳定补丁
+- 当前开发版本：已批准的 `v1.0.2` 性能补丁；不增加 `v1.1.0` 产品功能
 - 发布例外：不可变 `v0.13.9` 标签的 Linux x64 standalone 归档因 pnpm 依赖链接被展平而无法启动，Release 资产未完成；它不是完整、受支持的发布，也不能设为升级基线
-- 当前发布状态：`v1.0.0` tag commit 为 `e2a58209ae09caa0e785cca9ad4a05b2d822c384`；主线 [Run 31013321788](https://github.com/Xwordsman/nextbuf/actions/runs/31013321788)、发布演练 [Run 31014301093](https://github.com/Xwordsman/nextbuf/actions/runs/31014301093) 和标签 [Run 31076773476](https://github.com/Xwordsman/nextbuf/actions/runs/31076773476) 均成功。[GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v1.0.0) 非 draft/非 prerelease；OCI index 为 `sha256:1093d394fb0d80e3d59eaab1a80ddc29e4998406ed3c534d8807b9a9c4902779`，amd64/arm64 分别为 `sha256:4e2fea043bf2bb4e230d614e26113f6bdd81f9a034915488301073b4439c5ef1` 与 `sha256:c8e53a4dd83a8f96a70d6063581252a5df6fdce1b3af8dcee8cd1fbb08ca163e`；`latest` 与 `1.0.0` 相同。生产已经完成升级和数据连续性验证。项目所有者批准暂时只有 1 位合格管理员，冗余警告保留，0 位仍阻断。
-- 下一动作：按 [`v1.0.1` 发布就绪清单](./24-v1.0.1-release-readiness.md)完成五项补丁与本地检查，提交推送 main，等待同一 commit 的完整 CI 与 `release_rehearsal=true`；P0/P1 清零且管理员条件满足后再创建不可变 `v1.0.1` 标签。Release 与 `latest` 身份一致后，先备份并校验生产，再执行 `1.0.0 -> 1.0.1` 升级和连续性验证；不混入 `v1.1.0` 功能。
+- 当前发布状态：`v1.0.1` tag commit 为 `681a3bac959808f548e49b51628e15f1b1d98a6a`；主线 [Run 31152722387](https://github.com/Xwordsman/nextbuf/actions/runs/31152722387)、发布演练 [Run 31153527154](https://github.com/Xwordsman/nextbuf/actions/runs/31153527154) 和标签 [Run 31156787209](https://github.com/Xwordsman/nextbuf/actions/runs/31156787209) 均成功。[GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v1.0.1) 非 draft/非 prerelease；`1.0.1` 与 `latest` OCI index 均为 `sha256:d193c155d800e9c86c93e8a56272d0a99cc81e8bb737d6bca57b3e9b9ff9787d`。2026-08-07 SSH 复核生产四容器健康，Web 内置版本为 `1.0.1`。项目所有者批准本版本暂时只有 1 位合格管理员，冗余警告保留，0 位仍阻断。
+- 下一动作：按 [`v1.0.2` 发布就绪清单](./26-v1.0.2-release-readiness.md)完成性能代码、分层测量与本地检查，提交推送 main，等待同一 commit 的完整 CI 和 `release_rehearsal=true`；P0/P1 清零且本版本管理员条件满足后再创建不可变 `v1.0.2` 标签。Release 与 `latest` 身份一致后，先备份并校验生产，再执行 `1.0.1 -> 1.0.2` 升级和连续性/性能复测；不混入 `v1.1.0` 功能。
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
@@ -208,6 +208,7 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 - 集成测试覆盖运行时、身份/资料、社区、互动/搜索、通知/Worker、治理/信任、后台、容量、迁移索引、编辑会话并发、私人草稿防枚举、引用可见性、隐藏节点附件授权、最终注销、管理员连续性、首次安装 claim/密码栅栏、Better Auth 资料更新边界，以及 `processed_at` 回填、处理租约提交栅栏、`published -> Redis flush -> no ProcessedJob` 自动重入队、replay 后再次丢失 Redis 的恢复、replay 重置发布状态与终态 Redis Job 的普通 Dispatcher 竞态、新最终失败重新阻断、SMTP 明确未接受重试、结果未知确认和失租旧 attempt 栅栏；周期任务竞争夹具隔离其他到期任务。迁移预检要求所有成功记录是冻结 `v1.0.0` 清单的 checksum 精确连续前缀，已初始化实例至少完整匹配 `v0.13.10`，失败恢复同时核对 checksum、前缀位置和目标 schema marker。
 - Playwright 共 14 项，覆盖完整身份/社区旅程、编辑器网络屏障与响应丢失恢复、私人草稿 HTTP 防枚举、性能样本、三种视口布局，以及四个公开页面的 serious/critical axe、水平溢出、键盘和 reduced-motion。
 - 已记录的 `v1.0.0` 自动化代码基线 `1054a4de3ee2f6c2be2a72708ae842b3f7d16134` 的 [主线 CI](https://github.com/Xwordsman/nextbuf/actions/runs/30809190787) 已通过完整 `check`、Linux x64 归档启动、amd64/arm64 镜像冒烟和主线发布。amd64 还从真实不可变 `ghcr.io/xwordsman/nextbuf:0.13.10` 执行 `nextbufctl upgrade 1.0.0 --verify-objects`：迁移前后生成权限 `600` 的 HMAC 脱敏 before/after 快照、比较报告及 SHA-256，报告不含原始标识符或秘密，稳定事实与允许迁移变换通过，原始及派生附件对象校验通过，最后 Web/Worker 健康。该运行完成时不可变 `sha-1054a4de3ee2f6c2be2a72708ae842b3f7d16134` 为双架构 index `sha256:61c2c6c445cecc3504c87c7c5c5ad2039ff3c1768b5bf93755b0bb51f913cc12`，amd64/arm64 manifest 分别为 `sha256:767f21fcffd6d0314d91808b206f908337ad9a7214fb9bba004d9f7cb5e0c721` 与 `sha256:7791b326afd4e5fce140a34a9a67576bd49f1e53674205880276e0fec4b072fa`；这些 Digest 只证明该历史基线，不代表后续文档提交或最终冻结候选。旧候选 `9342815e394b4e93d215ace98b2937412f422016` 的 [定时深度 CI](https://github.com/Xwordsman/nextbuf/actions/runs/30763832572) 继续作为空卷恢复与 PostgreSQL/Redis/Worker/SMTP/本地存储故障注入的历史回归证据。完整证据见 [发布就绪门槛](./19-v1.0.0-release-readiness.md)。
+- `v1.0.1` 冻结 commit `681a3bac959808f548e49b51628e15f1b1d98a6a` 的主线、演练和 tag 三条流水线全部成功，直接完成 `1.0.0 -> 1.0.1` 无迁移验收升级、双架构镜像、Linux x64 归档、SBOM/provenance 和 Release 完成回执；`1.0.1` 与 `latest` 同为 OCI index `sha256:d193c155d800e9c86c93e8a56272d0a99cc81e8bb737d6bca57b3e9b9ff9787d`。本地工作机仍无 Docker/PostgreSQL/Redis，后续补丁的真实服务、镜像和升级证据继续以同一候选 commit 的 Actions 为准。
 - 主分支 `0.13.0` 候选已由 CI #56/#57 完成 amd64 setup、首次管理员、故障注入、空卷恢复和 `v0.12.0` 升级；正式标签 CI #58 已重跑 amd64 并完成原生 arm64、manifest、SBOM/provenance、非 Docker x64 归档和 Release。
 - 当前开发机没有 Docker、Podman、本地 PostgreSQL 或 Redis，因此本地不能执行真实集成与 E2E；发布以 GitHub Actions 的 PostgreSQL 18、Redis 8、Mailpit 服务容器结果为最终门槛。
 - `v0.13.1` 主分支 CI #63 已通过完整检查与原生 amd64 镜像冒烟；标签 CI #64 已通过 amd64/arm64 空安装、无预置节点、首次访问 307 跳转 `/setup`、首次管理员、升级保留既有节点、恢复、manifest、SBOM/provenance、非 Docker x64 归档和 Release 发布。
@@ -279,13 +280,13 @@ pnpm test:e2e                    standalone Web + Worker 身份与页面 E2E
 24. 正式升级证据遵循 ADR-0022：生产只提供维护窗口备份，破坏性验收在隔离副本执行；目标镜像在停写迁移前后以只读事务生成 HMAC 脱敏快照，严格比较身份、Better Auth 凭据/Session、社区、附件引用、互动和治理稳定事实，并单独验证三条候选迁移的允许变换。`nextbufctl upgrade` 只有比较通过才启动 Web/Worker，`--verify-objects` 进一步核对 local/S3 原始附件 SHA-256 和派生对象。
 25. 升级前至少保留 1 位可接管管理员，优先 2 位：必须是 `admin/site`、active、邮箱已验证、未申请/计划注销、无有效 suspend/ban 且有非空 credential 密码。0 位连续性失败是升级阻断项；在线成员仍是明确未实现的空状态。
 
-## 6. `v1.0.1` 补丁边界
+## 6. `v1.0.2` 性能补丁边界
 
-入口：[`v1.0.1` 发布就绪与验收清单](./24-v1.0.1-release-readiness.md)；`v1.0.0` 的完整人工模板只作为继承门槛，不可用其硬编码的 `0.13.10 -> 1.0.0` 步骤代替本补丁验收。
+入口：[`v1.0.2` 发布就绪与验收清单](./26-v1.0.2-release-readiness.md)；此前稳定版清单只作为继承门槛，不可用旧升级路径代替本补丁的 `1.0.1 -> 1.0.2` 验收。
 
-`v1.0.0` 是当前公开升级基线。`v1.0.1` 只修复隐藏节点数字主题地址/metadata 越权、`AUTH_TRUSTED_ORIGINS` 合同漂移、Worker 启动失败资源残留、已提交注册错误释放邀请码，以及 CI 升级基线和 Release notes 冒烟硬编码问题。它冻结与 `v1.0.0` 相同的 16 条迁移，不改变四容器拓扑、公开数据模型或产品能力。
+`v1.0.1` 是当前公开升级基线。`v1.0.2` 只优化请求内 Session/设置复用、主题详情轻量 Shell、Profile 只读路径、账号共享 layout、局部 loading、动态预取与客户端边界。它冻结与 `v1.0.1` 相同的 16 条迁移，不增加配置，不改变四容器、Better Auth、公开数据、权限或产品能力。性能证据必须把服务器内部、完成水合后的软导航与 Cloudflare/公网端到端路径分开记录。
 
-`v1.0.1` 补丁已经由用户明确批准；未经新的明确批准，不开始 `v1.1.0`、插件、交易、支付或开放 API。
+`v1.0.2` 性能补丁已经由用户明确批准；未经新的明确批准，不开始 `v1.1.0`、插件、交易、支付或开放 API。`v1.0.1` 的单管理员豁免不能自动用于 `v1.0.2` 正式 tag。
 
 ## 7. 文档优先级与交接规则
 

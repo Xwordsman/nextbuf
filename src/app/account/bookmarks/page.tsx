@@ -1,22 +1,20 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountPageShell } from "@/components/account/account-page-shell";
 import { Badge } from "@/components/shadcn/ui/badge";
 import { Card, CardContent } from "@/components/shadcn/ui/card";
-import { getAuth } from "@/infrastructure/auth/better-auth";
+import { getCurrentSession } from "@/modules/identity/session.server";
 import { listBookmarkedTopics } from "@/modules/interactions/queries.server";
 
 export const metadata = { title: "我的收藏" };
 
 export default async function AccountBookmarksPage() {
-  const session = await getAuth().api.getSession({ headers: await headers() });
+  const session = await getCurrentSession();
   if (!session) redirect("/auth/sign-in?next=/account/bookmarks");
   const bookmarks = await listBookmarkedTopics(session.user.id);
 
   return (
     <AccountPageShell
-      active="bookmarks"
       description="这里的收藏只对你可见，原主题删除后不会继续暴露内容。"
       title="我的收藏"
     >

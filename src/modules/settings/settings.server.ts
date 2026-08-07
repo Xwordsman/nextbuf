@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import type { Prisma } from "@/generated/prisma/client";
 import { getPrismaClient } from "@/infrastructure/database/client";
 import { AdminError } from "@/modules/admin/errors";
@@ -45,6 +46,13 @@ export async function getSiteSettings(
     updatedAt: row.updatedAt,
   };
 }
+
+export const getSiteSettingsForRequest = cache(async () => {
+  if (runtimeEnv.NODE_ENV === "development" && !process.env.DATABASE_URL) {
+    return { ...defaultSiteSettings, revision: 0, updatedAt: null };
+  }
+  return getSiteSettings();
+});
 
 export async function updateSiteSettings(input: {
   actorId: string;

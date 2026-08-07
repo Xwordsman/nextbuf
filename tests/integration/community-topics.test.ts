@@ -20,6 +20,7 @@ import { findReplyEditorSessionTarget } from "@/modules/community/editor-session
 import { createCommunityNode, updateCommunityNode } from "@/modules/community/nodes.server";
 import {
   getCommunityHomeView,
+  getCommunityShellView,
   getPublicTopicTitle,
   getTopicPageView,
   listUserTopics,
@@ -839,6 +840,10 @@ describe("community topics integration", () => {
       data: { visibility: "hidden" },
     });
 
+    const shell = await getCommunityShellView();
+    expect(shell.nodes.some((candidate) => candidate.id === node.slug)).toBe(false);
+    expect(shell.hotTopics.some((candidate) => candidate.id === topic.number)).toBe(false);
+    expect(shell.onlineMembers).toEqual([]);
     await expect(getPublicTopicTitle(topic.number)).resolves.toBeNull();
     await expect(getTopicPageView(topic.number)).resolves.toBeNull();
     await expect(getTopicPageView(topic.number, ordinary.id)).resolves.toBeNull();

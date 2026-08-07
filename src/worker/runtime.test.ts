@@ -58,7 +58,7 @@ vi.mock("@/infrastructure/queue/mail-privacy-migration", () => ({
 }));
 vi.mock("@/shared/config/runtime-env", () => ({
   getAuthEnvironment: () => ({
-    NEXTBUF_VERSION: "1.0.1",
+    NEXTBUF_VERSION: "1.0.2",
     WORKER_CONCURRENCY: 5,
     WORKER_HEARTBEAT_INTERVAL_MS: 60_000,
     WORKER_SCHEDULER_POLL_INTERVAL_MS: 60_000,

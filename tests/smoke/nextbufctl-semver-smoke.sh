@@ -28,6 +28,7 @@ assert_comparison 1.0.0 1.0.0-rc.1 1
 assert_comparison 1.0.0-rc.1 1.0.0-rc.2 -1
 assert_comparison 1.0.0-rc.2 1.0.0-rc.10 -1
 assert_comparison 1.0.0 1.0.1 -1
+assert_comparison 1.0.1 1.0.2 -1
 assert_comparison 1.0.0 1.0.0 0
 assert_comparison 999999999999999999999999.0.0 1000000000000000000000000.0.0 -1
 assert_comparison 1.0.0-999999999999999999999999 1.0.0-1000000000000000000000000 -1

@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AccountPageShell } from "@/components/account/account-page-shell";
 import { Badge } from "@/components/shadcn/ui/badge";
@@ -10,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/shadcn/ui/card";
-import { getAuth } from "@/infrastructure/auth/better-auth";
+import { getCurrentSession } from "@/modules/identity/session.server";
 import { getUserModerationHistory } from "@/modules/moderation/queries.server";
 import { parseTrustRuleConfig, type TrustMetrics } from "@/modules/trust/policy";
 import { getTrustHistory, getTrustOverview } from "@/modules/trust/trust.server";
@@ -41,7 +40,7 @@ const metricLabels: Array<[keyof TrustMetrics, string]> = [
 ];
 
 export default async function AccountTrustPage() {
-  const session = await getAuth().api.getSession({ headers: await headers() });
+  const session = await getCurrentSession();
   if (!session) redirect("/auth/sign-in?next=/account/trust");
   const [overview, history, sanctions] = await Promise.all([
     getTrustOverview(session.user.id),
@@ -54,7 +53,6 @@ export default async function AccountTrustPage() {
 
   return (
     <AccountPageShell
-      active="trust"
       description="查看当前等级、自动计算指标、降级宽限期和历史变更。"
       title="信任等级"
     >

@@ -2,7 +2,7 @@
 
 本文件定义部署架构和运维原则。逐步安装、升级、备份、恢复和故障排查见 [安装与运维运行手册](./13-installation-operations-runbook.md)。
 
-> 当前实现状态：`v1.0.0` 已作为首个稳定版完整发布，默认 `latest` 与不可变 `1.0.0` 指向相同 OCI index。当前 `v1.0.1` 以 `1.0.0` 为直接升级基线，不增加迁移或产品功能。默认稳定通道与主线通道的分离见 [ADR-0020](./adr/0020-stable-release-channels-and-lifecycle.md)，生产与恢复合同见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)，面板启动协调见 [ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)，单文件面板入口见 [ADR-0017](./adr/0017-single-file-panel-compose.md)。Mailpit 只用于开发、测试和 CI，不是第五个生产容器。
+> 当前实现状态：`v1.0.1` 已于 2026-08-07 完整发布，默认 `latest` 与不可变 `1.0.1` 指向相同 OCI index。当前 `v1.0.2` 以 `1.0.1` 为直接升级基线，只做不改变公开行为的性能优化，不增加迁移、配置或产品功能。默认稳定通道与主线通道的分离见 [ADR-0020](./adr/0020-stable-release-channels-and-lifecycle.md)，生产与恢复合同见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)，面板启动协调见 [ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)，单文件面板入口见 [ADR-0017](./adr/0017-single-file-panel-compose.md)。Mailpit 只用于开发、测试和 CI，不是第五个生产容器。
 
 ## 1. 部署目标
 

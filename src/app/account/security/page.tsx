@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { SessionManager } from "@/components/auth/session-manager.client";
 import { AccountPageShell } from "@/components/account/account-page-shell";
@@ -9,15 +8,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/shadcn/ui/card";
-import { getAuth } from "@/infrastructure/auth/better-auth";
 import { getPrismaClient } from "@/infrastructure/database/client";
+import { getCurrentSession } from "@/modules/identity/session.server";
 
 export const metadata = { title: "账号安全" };
 export const dynamic = "force-dynamic";
 
 export default async function AccountSecurityPage() {
-  const requestHeaders = await headers();
-  const current = await getAuth().api.getSession({ headers: requestHeaders });
+  const current = await getCurrentSession();
   if (!current) redirect("/auth/sign-in?next=/account/security");
 
   const sessions = await getPrismaClient().session.findMany({
@@ -26,11 +24,7 @@ export default async function AccountSecurityPage() {
   });
 
   return (
-    <AccountPageShell
-      active="security"
-      description="查看当前登录设备并撤销不再使用的会话。"
-      title="账号安全"
-    >
+    <AccountPageShell description="查看当前登录设备并撤销不再使用的会话。" title="账号安全">
       <Card className="gap-0 py-0">
         <CardHeader className="border-b py-4">
           <CardTitle>

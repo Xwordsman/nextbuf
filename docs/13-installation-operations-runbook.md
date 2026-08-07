@@ -2,7 +2,7 @@
 
 本文定义 NextBuf 面向部署者的目标操作流程，包括 Docker Compose、宝塔、非 Docker、升级、备份、恢复和故障排查。
 
-> 当前实现状态：已发布 `v1.0.0` 交付生产镜像、四容器 Compose、无需 `.env` 且固定容器名的宝塔单文件入口、通用空节点安装、首位用户 UID 1、官方 shadcn/ui 管理后台与全站公开前台、`nextbufctl`、首次管理员、可验证备份恢复、稳定升级和真实非 Docker 归档烟测。当前 `v1.0.1` 是无新迁移的兼容补丁。容器/恢复验收由 GitHub Actions 在 Linux amd64/arm64 上执行；Mailpit 只出现在测试覆盖中，不进入生产拓扑。长期决策见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)、[ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)、[ADR-0017](./adr/0017-single-file-panel-compose.md)、[ADR-0019](./adr/0019-editor-autosave-idempotency-and-draft-privacy.md) 和 [ADR-0020](./adr/0020-stable-release-channels-and-lifecycle.md)。
+> 当前实现状态：已发布 `v1.0.1` 交付生产镜像、四容器 Compose、无需 `.env` 且固定容器名的宝塔单文件入口、通用空节点安装、首位用户 UID 1、官方 shadcn/ui 前后台、`nextbufctl`、首次管理员、可验证备份恢复与稳定升级。当前 `v1.0.2` 是以 `1.0.1` 为直接基线、无新迁移和配置的性能补丁。容器/恢复验收由 GitHub Actions 在 Linux amd64/arm64 上执行；Mailpit 只出现在测试覆盖中，不进入生产拓扑。长期决策见 [ADR-0015](./adr/0015-production-packaging-setup-and-recovery.md)、[ADR-0016](./adr/0016-panel-friendly-compose-bootstrap.md)、[ADR-0017](./adr/0017-single-file-panel-compose.md)、[ADR-0019](./adr/0019-editor-autosave-idempotency-and-draft-privacy.md) 和 [ADR-0020](./adr/0020-stable-release-channels-and-lifecycle.md)。
 
 ## 1. 发布包合同
 
@@ -74,7 +74,7 @@ nextbuf-release/
 
 ```dotenv
 NEXTBUF_IMAGE=<正式发布时确定的镜像地址>
-NEXTBUF_VERSION=1.0.1
+NEXTBUF_VERSION=1.0.2
 ```
 
 宝塔单文件入口是明确例外：它使用只随最新完整稳定 Release 更新的 `latest`，不需要在每个补丁中手工改版本号。通过完整主分支门槛的候选发布到 `edge` 与不可变 `sha-*`，不会进入默认稳定通道。精确 SemVer 仍属于可复现 Release 和受控部署；该入口的升级和回滚边界见第 4 节与 ADR-0020。
@@ -620,7 +620,7 @@ PostgreSQL 和 Redis 不因每次应用补丁自动升级主版本。基础服�
 - Outbox 和队列继续下降，没有持续失败任务。
 - 邮件、附件和 OAuth Provider 正常。
 - 错误率和资源占用没有异常上升。
-- `backups/acceptance-<from>-to-<to>-*-comparison.json` 为 `status=pass`；正式发布默认应有至少 2 位合格管理员。项目所有者对 `v1.0.0` 的单管理员豁免不得自动延伸到后续补丁；若 `v1.0.1` 发布时仍只有 1 位，必须增加第二位或重新记录本次明确豁免。`administrator_redundancy_missing` 警告必须保留，0 位合格管理员始终是硬阻断，任何豁免都不能绕过。
+- `backups/acceptance-<from>-to-<to>-*-comparison.json` 为 `status=pass`；正式发布默认应有至少 2 位合格管理员。任何既有单管理员豁免不得自动延伸到后续补丁；若 `v1.0.2` 发布时仍只有 1 位，必须增加第二位或重新记录本次明确豁免。`administrator_redundancy_missing` 警告必须保留，0 位合格管理员始终是硬阻断，任何豁免都不能绕过。
 
 ## 10. 回滚
 
@@ -770,7 +770,7 @@ Worker 日志中的 `Connection timeout` 表示 TCP/TLS 连接尚未建立，不
 - 日志脱敏、轮转和磁盘告警有效。
 - Web/Worker readiness 和队列积压可观察。
 - 已阅读当前版本已知问题和回滚限制。
-- Beta 部署按[公开 Beta 人工验收模板](./17-public-beta-acceptance-template.md)留证；首个稳定版按[`v1.0.0` 正式版人工验收模板](./21-v1.0.0-manual-acceptance.md)保存完整证据，补丁版还必须使用本版本清单（当前为 [`v1.0.1`](./24-v1.0.1-release-readiness.md)），不能复用硬编码旧升级路径代替直接基线验收。
+- Beta 部署按[公开 Beta 人工验收模板](./17-public-beta-acceptance-template.md)留证；首个稳定版按[`v1.0.0` 正式版人工验收模板](./21-v1.0.0-manual-acceptance.md)保存完整证据，补丁版还必须使用本版本清单（当前为 [`v1.0.2`](./26-v1.0.2-release-readiness.md)），不能复用硬编码旧升级路径代替直接基线验收。
 
 ## 15. 文档实现责任
 
@@ -786,6 +786,6 @@ Worker 日志中的 `Connection timeout` 表示 TCP/TLS 连接尚未建立，不
 
 CI 在主分支、定时、手动和正式标签运行中使用原生 amd64/arm64 Runner 验证空数据库通过默认 Compose 自动 setup、Web/Worker 健康、四个生产容器且无停止的 setup 记录，以及一次性管理员流程。日常主分支对两个架构执行基础镜像冒烟，并在 amd64 从当前公开版本真实备份/升级到候选，强制运行停写比较和附件对象校验；只有这些门槛通过且提交仍是远程 HEAD，才发布 `edge` 与不可变 `sha-<提交>`，不写入 `latest`。耗时更长的 amd64 空卷恢复和依赖故障注入由每日定时、手动和正式标签运行执行，这些深度通道同时重跑升级。正式标签另发布不可变 SemVer、非 Docker x64 包和供应链资产；最新完整稳定 Release 成功后才提升同一 manifest 为 `latest`。生产部署者仍应在自己的域名、SMTP、对象存储和备份目标上完成上线清单，因为 CI 不能替代实例级凭据和灾难恢复演练。
 
-正式迁移版本的标签、镜像和 Release 全部通过后，下一次开发提交才把 `.github/workflows/ci.yml` 的 `NEXTBUF_UPGRADE_BASELINE` 提升到该已发布版本；不能在标签验证前提前提升，否则会跳过真正需要证明的旧版升级。`v1.0.0` 标签验证已经通过，`v1.0.1` 的当前公开升级基线为 `1.0.0`。
+正式版本的标签、镜像和 Release 全部通过后，下一次开发提交才把 `.github/workflows/ci.yml` 的 `NEXTBUF_UPGRADE_BASELINE` 提升到该已发布版本；不能在标签验证前提前提升，否则会跳过真正需要证明的旧版升级。`v1.0.1` 标签验证已经通过，`v1.0.2` 的当前公开升级基线为 `1.0.1`。
 
 `v0.13.0` 的 `nextbufctl doctor` 同时输出 PostgreSQL 数据量/连接、Redis 内存/淘汰策略、Worker 并发和 Queue/Outbox/邮件积压。报告不包含连接串和凭据，可以用于工单诊断；但仍应在分享前检查实例名称、对象存储桶名和业务规模是否属于不应公开的信息。

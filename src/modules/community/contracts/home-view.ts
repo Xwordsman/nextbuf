@@ -73,3 +73,8 @@ export type CommunityHomeView = {
   overview: Array<{ label: string; value: string }>;
   onlineMembers: Array<Pick<CommunityUserView, "name" | "avatarUrl" | "initials">>;
 };
+
+export type CommunityShellView = Pick<
+  CommunityHomeView,
+  "nodes" | "hotTopics" | "overview" | "onlineMembers"
+>;

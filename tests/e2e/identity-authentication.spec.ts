@@ -367,6 +367,15 @@ test.describe.serial("identity authentication", () => {
     await expect(page.getByRole("link", { name: topicTitle })).toBeVisible();
     await page.goto(topicUrl);
 
+    const topicDocumentTimeOrigin = await page.evaluate(() => performance.timeOrigin);
+    await page.getByRole("button", { name: "账户菜单" }).click();
+    await expect(page.getByRole("menu")).toBeVisible();
+    await page.getByRole("menuitem", { name: "账号安全" }).click();
+    await expect(page).toHaveURL("/account/security");
+    await expect(page.getByRole("heading", { name: "账号安全" })).toBeVisible();
+    expect(await page.evaluate(() => performance.timeOrigin)).toBe(topicDocumentTimeOrigin);
+    await page.goto(topicUrl);
+
     const legacyReplyWriteStatus = await page.evaluate(async () =>
       fetch(`${window.location.pathname}/replies`.replace("/topics/", "/api/community/topics/"), {
         method: "PUT",

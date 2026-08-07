@@ -2,7 +2,7 @@
 
 Before changing code, read `docs/14-project-status-handoff.md`, the current milestone in `docs/09-detailed-development-plan.md`, and the relevant architecture document.
 
-- Current completed milestone: `v1.0.0`; `v1.0.1` stabilization fixes are explicitly approved. Do not begin `v1.1.0` or later feature work without explicit user approval.
+- Current completed milestone: `v1.0.1`; `v1.0.2` non-behavior-changing performance work is explicitly approved. Do not begin `v1.1.0` or later feature work without explicit user approval.
 - Better Auth owns authentication. Do not replace its password, session, verification, OAuth, or Cookie behavior without a superseding ADR and migration plan.
 - Nodes, topics, posts, revisions, mentions, attachments and member/topic/reply overview counts are real PostgreSQL data. Online-member tracking is not implemented; keep it at an explicit empty state instead of inventing demo activity.
 - Real identity includes immutable UID, `@username`, permanent aliases, profile, local avatars, privacy settings, public member pages, cancellable deletion requests and persisted trust state. Follow ADR-0009 and ADR-0013.

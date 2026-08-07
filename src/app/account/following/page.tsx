@@ -1,16 +1,15 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountPageShell } from "@/components/account/account-page-shell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/shadcn/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/shadcn/ui/card";
-import { getAuth } from "@/infrastructure/auth/better-auth";
+import { getCurrentSession } from "@/modules/identity/session.server";
 import { listFollowedTopics, listFollowedUsers } from "@/modules/interactions/queries.server";
 
 export const metadata = { title: "我的关注" };
 
 export default async function AccountFollowingPage() {
-  const session = await getAuth().api.getSession({ headers: await headers() });
+  const session = await getCurrentSession();
   if (!session) redirect("/auth/sign-in?next=/account/following");
   const [users, topics] = await Promise.all([
     listFollowedUsers(session.user.id),
@@ -18,11 +17,7 @@ export default async function AccountFollowingPage() {
   ]);
 
   return (
-    <AccountPageShell
-      active="following"
-      description="查看你主动关注的成员和主题。"
-      title="我的关注"
-    >
+    <AccountPageShell description="查看你主动关注的成员和主题。" title="我的关注">
       <div className="grid gap-5">
         <section aria-labelledby="followed-members-title">
           <Card className="gap-0 py-0">

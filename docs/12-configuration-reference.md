@@ -4,7 +4,7 @@
 
 本文定义 NextBuf 环境变量的目标合同。`v0.1.0` 必须建立统一配置 Schema，`v0.12.0` 前必须让 `.env.example`、Compose、安装向导、Web、Worker、CLI 与本文完全一致。
 
-> 当前实现状态：已发布 `v1.0.0` 让共享 Zod Schema、根 `.env.example`、生产 Compose、宝塔单文件 Compose、Web、Worker、CLI、setup、doctor 和发布包使用同一合同。`v1.0.1` 进一步统一 Better Auth 与 NextBuf 自有写接口的可信 Origin 解析。可信代理只接受明确 IP/CIDR，非 Docker Web 固定绑定回环；站点名称、注册策略、发布开关和每小时限额由 PostgreSQL `site_settings` 管理，Provider 密钥不在线保存或回显。
+> 当前实现状态：已发布 `v1.0.1` 让共享 Zod Schema、根 `.env.example`、生产 Compose、宝塔单文件 Compose、Web、Worker、CLI、setup、doctor 和发布包使用同一合同，并统一 Better Auth 与 NextBuf 自有写接口的可信 Origin 解析。`v1.0.2` 不增加或改变配置字段。可信代理只接受明确 IP/CIDR，非 Docker Web 固定绑定回环；站点名称、注册策略、发布开关和每小时限额由 PostgreSQL `site_settings` 管理，Provider 密钥不在线保存或回显。
 
 ## 1. 配置规则
 

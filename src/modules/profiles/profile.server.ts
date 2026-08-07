@@ -4,6 +4,12 @@ import { getPrismaClient } from "@/infrastructure/database/client";
 
 export async function getAccountProfile(userId: string) {
   const prisma = getPrismaClient();
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    include: { profile: true },
+  });
+  if (user.profile) return user;
+
   await prisma.profile.upsert({
     where: { userId },
     create: { userId },

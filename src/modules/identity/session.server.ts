@@ -23,7 +23,7 @@ export type CurrentAccountView = {
   canModerate: boolean;
 };
 
-const getCurrentSession = cache(async () => {
+export const getCurrentSession = cache(async () => {
   if (
     runtimeEnv.NODE_ENV === "development" &&
     (!process.env.DATABASE_URL || !process.env.REDIS_URL || !process.env.AUTH_SECRET)

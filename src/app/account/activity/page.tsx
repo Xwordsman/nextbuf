@@ -1,24 +1,19 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountPageShell } from "@/components/account/account-page-shell";
 import { Card, CardContent } from "@/components/shadcn/ui/card";
-import { getAuth } from "@/infrastructure/auth/better-auth";
+import { getCurrentSession } from "@/modules/identity/session.server";
 import { listParticipatedTopics } from "@/modules/interactions/queries.server";
 
 export const metadata = { title: "我的参与" };
 
 export default async function AccountActivityPage() {
-  const session = await getAuth().api.getSession({ headers: await headers() });
+  const session = await getCurrentSession();
   if (!session) redirect("/auth/sign-in?next=/account/activity");
   const topics = await listParticipatedTopics(session.user.id);
 
   return (
-    <AccountPageShell
-      active="activity"
-      description="按最近活动查看你发布或回复过的公开主题。"
-      title="我的参与"
-    >
+    <AccountPageShell description="按最近活动查看你发布或回复过的公开主题。" title="我的参与">
       <Card className="gap-0 py-0">
         <CardContent className="p-0">
           {topics.map((topic) => (

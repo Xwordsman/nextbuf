@@ -2,7 +2,7 @@
 
 本目录是 NextBuf 的产品、架构和工程基线。它用于回答三个问题：我们要做什么、为什么这样设计、开发和发布时必须遵守什么。
 
-> 当前阶段：[`v1.0.0`](./20-v1.0.0-release-notes.md) 已作为首个稳定版完整发布，`latest` 与不可变 `1.0.0` 指向相同 OCI index；当前进入获批的 `v1.0.1` 兼容补丁，只修复缺陷、安全、升级和文档问题，不提前实现 `v1.1.0`。`UI/index.html` 仅是历史视觉参考，运行页面以 `src/app` 和 `src/components` 为准。
+> 当前阶段：[`v1.0.1`](./23-v1.0.1-release-notes.md) 已于 2026-08-07 完整发布，`latest` 与不可变 `1.0.1` 指向相同 OCI index；当前进入获批的 [`v1.0.2`](./25-v1.0.2-release-notes.md) 性能补丁，只优化导航、查询、共享布局和客户端初始化，不提前实现 `v1.1.0`。`UI/index.html` 仅是历史视觉参考，运行页面以 `src/app` 和 `src/components` 为准。
 
 ## 项目定位
 
@@ -46,6 +46,8 @@ NextBuf 是一个面向 AI、建站、主机、域名及相关技术话题的开
 | [22-v1.0.0-provider-support-matrix.md](./22-v1.0.0-provider-support-matrix.md) | `v1.0.0` 数据库、缓存、存储、SMTP、OAuth、搜索和部署支持边界 | 部署、测试、支持 |
 | [23-v1.0.1-release-notes.md](./23-v1.0.1-release-notes.md) | `v1.0.1` 缺陷修复、兼容性、升级和回退说明 | 部署、发布、运维 |
 | [24-v1.0.1-release-readiness.md](./24-v1.0.1-release-readiness.md) | `v1.0.1` 五项补丁判据、升级、产物身份、管理员与 GO/NO-GO 清单 | 测试、发布、运维 |
+| [25-v1.0.2-release-notes.md](./25-v1.0.2-release-notes.md) | `v1.0.2` 导航、查询、共享布局与客户端初始化性能改进 | 部署、发布、运维 |
+| [26-v1.0.2-release-readiness.md](./26-v1.0.2-release-readiness.md) | `v1.0.2` 分层性能、安全回归、升级、产物与 GO/NO-GO 清单 | 测试、发布、运维 |
 | [../SUPPORT.md](../SUPPORT.md) | 稳定版本生命周期、官方支持边界和问题报告信息 | 部署、维护者、用户 |
 | [../SECURITY.md](../SECURITY.md) | 受支持安全版本、私密漏洞报告和披露流程 | 安全、维护者、部署者 |
 | [adr/](./adr/) | 关键架构决策的背景、取舍和后果 | 架构、维护者 |

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Bell,
   Bookmark,
@@ -55,6 +55,7 @@ type SiteHeaderProps = {
 
 export function SiteHeader({ account, siteName, registrationOpen }: SiteHeaderProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { query, setQuery, mobileSearchOpen, setMobileSearchOpen, setRailOpen } = useCommunityUi();
   const routedQuery = pathname === "/search" ? (searchParams.get("q") ?? "") : "";
@@ -66,6 +67,10 @@ export function SiteHeader({ account, siteName, registrationOpen }: SiteHeaderPr
   const signOut = async () => {
     await authClient.signOut();
     window.location.assign("/");
+  };
+  const prefetchAccount = () => {
+    router.prefetch("/account");
+    router.prefetch("/account/security");
   };
 
   return (
@@ -192,6 +197,9 @@ export function SiteHeader({ account, siteName, registrationOpen }: SiteHeaderPr
                     size="icon"
                     className="size-9 overflow-hidden rounded-full border border-border bg-background p-0 hover:border-foreground/35 hover:bg-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 data-[state=open]:border-foreground/35"
                     aria-label="账户菜单"
+                    onFocus={prefetchAccount}
+                    onPointerDown={prefetchAccount}
+                    onPointerEnter={prefetchAccount}
                   >
                     <Avatar className="size-full border-0">
                       <AvatarImage src={account.image ?? undefined} alt={account.name} />

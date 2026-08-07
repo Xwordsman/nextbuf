@@ -5,7 +5,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$ROOT"
 
 ARCH=${1:-amd64}
-BASELINE_VERSION=${NEXTBUF_UPGRADE_BASELINE:-1.0.0}
+BASELINE_VERSION=${NEXTBUF_UPGRADE_BASELINE:-1.0.1}
 TARGET_VERSION=${NEXTBUF_SMOKE_VERSION:?Set NEXTBUF_SMOKE_VERSION}
 TARGET_CORE=${TARGET_VERSION%%-*}
 MISMATCH_VERSION=$(printf '%s' "$TARGET_CORE" | awk -F. '{ printf "%d.%d.%d-mismatch.1", $1, $2, $3 + 1 }')
@@ -95,7 +95,7 @@ docker push "$UPGRADE_IMAGE:$BASELINE_VERSION"
 docker push "$UPGRADE_IMAGE:$TARGET_VERSION"
 docker push "$UPGRADE_IMAGE:$MISMATCH_VERSION"
 
-stage 'start the immutable v1.0.0 baseline'
+stage "start the immutable v$BASELINE_VERSION baseline"
 checkpoint 'render patch upgrade configuration'
 cp .env.example "$ENV_FILE"
 sed -i \
@@ -122,7 +122,7 @@ NEXTBUF_ENV_FILE="$ENV_FILE" $COMPOSE up -d --no-deps web worker
 wait_for_url http://127.0.0.1:3200/health/ready 180
 wait_for_url http://127.0.0.1:3200/health/worker 180
 
-stage 'create durable identity, content and attachment facts on v1.0.0'
+stage "create durable identity, content and attachment facts on v$BASELINE_VERSION"
 checkpoint 'create and verify the baseline administrator'
 response=$(curl --fail-with-body --silent \
   -H 'origin: http://127.0.0.1:3200' \
@@ -151,7 +151,7 @@ INSERT INTO community_nodes (
   id, slug, name, description, color, icon, sort_order, visibility, updated_at
 ) VALUES (
   '21000000-0000-4000-8000-000000000001', 'patch-upgrade-proof',
-  'Patch upgrade proof', 'Stable v1.0.0 patch fixture', '#334455', 'grid', 10,
+  'Patch upgrade proof', 'Stable patch baseline fixture', '#334455', 'grid', 10,
   'public', CURRENT_TIMESTAMP
 );
 INSERT INTO community_topics (
@@ -226,7 +226,7 @@ fi
 wait_for_url http://127.0.0.1:3200/health/ready 180
 wait_for_url http://127.0.0.1:3200/health/worker 180
 
-stage 'perform the no-migration v1.0.0 to v1.0.1 acceptance-gated upgrade'
+stage "perform the no-migration v$BASELINE_VERSION to v$TARGET_VERSION acceptance-gated upgrade"
 checkpoint 'upgrade with database and attachment verification'
 NEXTBUFCTL_ASSUME_YES=1 \
   NEXTBUF_ENV_FILE="$ENV_FILE" \

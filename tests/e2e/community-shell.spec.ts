@@ -103,14 +103,16 @@ test.describe("community shell", () => {
       .getAttribute("href");
     expect(topicHref).toMatch(/^\/topics\/\d+$/);
 
-    const topicResponse = await page.goto(topicHref!);
-    expect(topicResponse?.ok(), `Expected ${topicHref} to load successfully`).toBe(true);
+    const timeOrigin = await page.evaluate(() => performance.timeOrigin);
+    await page.getByRole("link", { name: "E2E 人工智能社区主题", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${topicHref!.replace("/", "\\/")}$`));
     const shell = page.getByTestId("community-shell");
     const left = page.getByTestId("community-left-rail");
     const main = page.getByTestId("community-main");
     const right = page.getByTestId("community-right-rail");
     await expect(shell).toBeVisible();
     await expect(page.getByRole("heading", { name: "E2E 人工智能社区主题" })).toBeVisible();
+    expect(await page.evaluate(() => performance.timeOrigin)).toBe(timeOrigin);
     const [shellBox, leftBox, mainBox, rightBox] = await Promise.all([
       shell.evaluate((element) => element.getBoundingClientRect().toJSON()),
       left.evaluate((element) => element.getBoundingClientRect().toJSON()),

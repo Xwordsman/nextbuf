@@ -9,6 +9,7 @@ import type {
   CommunityHomeView,
   CommunityNodeIcon,
   CommunityNodeView,
+  CommunityShellView,
   CommunityTopicStatus,
   CommunityTopicView,
 } from "@/modules/community/contracts/home-view";
@@ -340,39 +341,27 @@ async function getHotFeedPage(input: { nodeId?: string; cursor?: string; viewerI
   };
 }
 
-export async function getCommunityHomeView(input: {
-  nodeSlug?: string;
-  filter?: CommunityFeedFilter;
-  cursor?: string;
-  direction?: FeedDirection;
-  viewerId?: string;
-}): Promise<{ view: CommunityHomeView; activeNode: CommunityNodeView | null }> {
-  const prisma = getPrismaClient();
-  const nodes = await prisma.communityNode.findMany({
+async function getPublicNodeRecords() {
+  return getPrismaClient().communityNode.findMany({
     where: { visibility: "public" },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     include: {
       _count: { select: { topics: { where: { status: { in: publicTopicStatuses } } } } },
     },
   });
-  const active = input.nodeSlug ? nodes.find((node) => node.slug === input.nodeSlug) : undefined;
-  if (input.nodeSlug && !active) throw new CommunityError("node_unavailable", 404);
-  const filter = input.filter ?? "latest";
-  const today = new Date();
+}
+
+async function getCommunityShellForNodes(
+  nodes: Awaited<ReturnType<typeof getPublicNodeRecords>>,
+): Promise<CommunityShellView> {
+  const prisma = getPrismaClient();
+  const now = new Date();
+  const today = new Date(now);
   today.setHours(0, 0, 0, 0);
-  const [feed, hotTopics, memberCount, topicCount, todayReplyCount] = await Promise.all([
-    getFeedPage({
-      nodeId: active?.id,
-      filter,
-      cursor: input.cursor,
-      direction: input.direction ?? "next",
-      viewerId: input.viewerId,
-    }),
-    listHotTopicIds({ asOf: new Date(), limit: 3 }),
+  const topicCount = nodes.reduce((total, node) => total + node._count.topics, 0);
+  const [hotTopics, memberCount, todayReplyCount] = await Promise.all([
+    listHotTopicIds({ asOf: now, limit: 3 }),
     prisma.user.count({ where: { status: "active" } }),
-    prisma.communityTopic.count({
-      where: { status: { in: publicTopicStatuses }, node: { visibility: "public" } },
-    }),
     prisma.communityPost.count({
       where: {
         position: { gt: 1 },
@@ -387,24 +376,65 @@ export async function getCommunityHomeView(input: {
     include: topicInclude,
   });
   const hotTopicById = new Map(hotTopicRows.map((topic) => [topic.id, topic]));
-  const nodeViews: CommunityNodeView[] = [
-    {
-      id: "all",
-      name: "全部话题",
-      description: "浏览社区全部公开话题。",
-      color: "#18181b",
-      icon: "grid",
-      topicCount,
-    },
-    ...nodes.map((node) => ({
-      id: node.slug,
-      name: node.name,
-      description: node.description,
-      color: node.color,
-      icon: validIcon(node.icon),
-      topicCount: node._count.topics,
-    })),
-  ];
+
+  return {
+    nodes: [
+      {
+        id: "all",
+        name: "全部话题",
+        description: "浏览社区全部公开话题。",
+        color: "#18181b",
+        icon: "grid",
+        topicCount,
+      },
+      ...nodes.map((node) => ({
+        id: node.slug,
+        name: node.name,
+        description: node.description,
+        color: node.color,
+        icon: validIcon(node.icon),
+        topicCount: node._count.topics,
+      })),
+    ],
+    hotTopics: hotTopics.flatMap((ranked) => {
+      const topic = hotTopicById.get(ranked.id);
+      return topic ? [toTopicView(topic, now)] : [];
+    }),
+    overview: [
+      { label: "成员", value: memberCount.toLocaleString("zh-CN") },
+      { label: "话题", value: topicCount.toLocaleString("zh-CN") },
+      { label: "今日回复", value: todayReplyCount.toLocaleString("zh-CN") },
+      { label: "当前在线", value: "0" },
+    ],
+    onlineMembers: [],
+  };
+}
+
+export async function getCommunityShellView(): Promise<CommunityShellView> {
+  return getCommunityShellForNodes(await getPublicNodeRecords());
+}
+
+export async function getCommunityHomeView(input: {
+  nodeSlug?: string;
+  filter?: CommunityFeedFilter;
+  cursor?: string;
+  direction?: FeedDirection;
+  viewerId?: string;
+}): Promise<{ view: CommunityHomeView; activeNode: CommunityNodeView | null }> {
+  const nodes = await getPublicNodeRecords();
+  const active = input.nodeSlug ? nodes.find((node) => node.slug === input.nodeSlug) : undefined;
+  if (input.nodeSlug && !active) throw new CommunityError("node_unavailable", 404);
+  const filter = input.filter ?? "latest";
+  const [feed, shell] = await Promise.all([
+    getFeedPage({
+      nodeId: active?.id,
+      filter,
+      cursor: input.cursor,
+      direction: input.direction ?? "next",
+      viewerId: input.viewerId,
+    }),
+    getCommunityShellForNodes(nodes),
+  ]);
 
   return {
     activeNode: active
@@ -418,34 +448,16 @@ export async function getCommunityHomeView(input: {
         }
       : null,
     view: {
-      nodes: nodeViews,
+      ...shell,
       topics: feed.topics,
       topicTotal: feed.total,
-      hotTopics: hotTopics.flatMap((ranked) => {
-        const topic = hotTopicById.get(ranked.id);
-        return topic ? [toTopicView(topic, new Date())] : [];
-      }),
       pagination: feed.pagination,
-      overview: [
-        { label: "成员", value: memberCount.toLocaleString("zh-CN") },
-        { label: "话题", value: topicCount.toLocaleString("zh-CN") },
-        { label: "今日回复", value: todayReplyCount.toLocaleString("zh-CN") },
-        { label: "当前在线", value: "0" },
-      ],
-      onlineMembers: [],
     },
   };
 }
 
 export async function listPublicNodes() {
-  const prisma = getPrismaClient();
-  return prisma.communityNode.findMany({
-    where: { visibility: "public" },
-    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    include: {
-      _count: { select: { topics: { where: { status: { in: publicTopicStatuses } } } } },
-    },
-  });
+  return getPublicNodeRecords();
 }
 
 export async function listWritableNodes() {

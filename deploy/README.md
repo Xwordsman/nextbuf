@@ -1,8 +1,8 @@
 # Deployment Assets
 
-根目录 `compose.yml`、`.env.example`、`nextbufctl` 和生产 `Dockerfile` 是已发布 `v1.0.0` 的受控单机部署合同；`compose.baota.yml` 是无需 `.env` 的单实例面板入口，并固定显示为 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis`。两者默认只创建 Web、Worker、PostgreSQL、Redis 四个常驻容器。Web 启动前幂等执行 setup/preflight，显式 setup 服务位于工具 profile，不会在面板留下停止记录。空安装不创建业务节点，访问根地址会进入首次安装页，首位用户的 UID 从 1 开始；生产升级仍须先创建可验证备份。
+根目录 `compose.yml`、`.env.example`、`nextbufctl` 和生产 `Dockerfile` 是已发布 `v1.0.1` 继承并验证的受控单机部署合同；`compose.baota.yml` 是无需 `.env` 的单实例面板入口，并固定显示为 `nextbuf`、`nextbuf-worker`、`nextbuf-postgres`、`nextbuf-redis`。两者默认只创建 Web、Worker、PostgreSQL、Redis 四个常驻容器。Web 启动前幂等执行 setup/preflight，显式 setup 服务位于工具 profile，不会在面板留下停止记录。空安装不创建业务节点，访问根地址会进入首次安装页，首位用户的 UID 从 1 开始；生产升级仍须先创建可验证备份。
 
-当前源码版本为 `v1.0.1` 兼容补丁，直接升级基线是已发布 `v1.0.0`，两者保持相同 16 条迁移。`main` 只更新 `edge` 与不可变 `sha-*`；完整稳定 Release 成功后才把相同 OCI index 提升为 `latest`。
+当前源码版本为 `v1.0.2` 性能补丁，直接升级基线是已发布 `v1.0.1`，两者保持相同 16 条迁移。`main` 只更新 `edge` 与不可变 `sha-*`；完整稳定 Release 成功后才把相同 OCI index 提升为 `latest`。
 
 `compose/compose.dev.yml` 和 `compose/compose.test.yml` 只用于本地开发与隔离集成测试，固定 PostgreSQL 18、Redis 8 与测试 Mailpit 基线。
 

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { CommunityHomeShadcn } from "@/components/community/community-home-shadcn.client";
+import { CommunityHomeShadcn } from "@/components/community/community-home-shadcn";
 import type { CommunityFeedFilter } from "@/modules/community/contracts/home-view";
 import { getCommunityHomeView } from "@/modules/community/queries.server";
 import { getCurrentAccount, getCurrentUserId } from "@/modules/identity/session.server";

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Eye, FilePenLine } from "lucide-react";
 import { notFound } from "next/navigation";
@@ -9,7 +8,7 @@ import { ReplyEditor } from "@/components/community/reply-editor.client";
 import {
   CommunityNodeNavigation,
   CommunityRightRail,
-} from "@/components/community/community-home-shadcn.client";
+} from "@/components/community/community-rails";
 import { CommunityThreeColumnShell } from "@/components/community/community-three-column-shell.client";
 import { PostLikeButton } from "@/components/interactions/post-like-button.client";
 import { TopicActions } from "@/components/interactions/topic-actions.client";
@@ -19,15 +18,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/shadcn/ui/avat
 import { Badge } from "@/components/shadcn/ui/badge";
 import { Button } from "@/components/shadcn/ui/button";
 import { Card, CardContent } from "@/components/shadcn/ui/card";
-import { getAuth } from "@/infrastructure/auth/better-auth";
 import { POST_BODY_MAX_LENGTH } from "@/modules/community/content-policy";
 import {
-  getCommunityHomeView,
+  getCommunityShellView,
   getPublicTopicTitle,
   getTopicPageView,
 } from "@/modules/community/queries.server";
-import { getCurrentAccount } from "@/modules/identity/session.server";
-import { getSiteSettings } from "@/modules/settings/settings.server";
+import { getCurrentAccount, getCurrentSession } from "@/modules/identity/session.server";
+import { getSiteSettingsForRequest } from "@/modules/settings/settings.server";
 import {
   postReferenceLabel,
   replyFloorLabel,
@@ -58,13 +56,13 @@ export async function generateMetadata({ params }: TopicPageProps): Promise<Meta
 export default async function TopicPage({ params, searchParams }: TopicPageProps) {
   const number = topicNumber((await params).number);
   if (!number) notFound();
-  const session = await getAuth().api.getSession({ headers: await headers() });
+  const session = await getCurrentSession();
   const from = replyFrom((await searchParams).from);
   const [topic, community, account, siteSettings] = await Promise.all([
     getTopicPageView(number, session?.user.id, from),
-    getCommunityHomeView({}),
+    getCommunityShellView(),
     getCurrentAccount(),
-    getSiteSettings(),
+    getSiteSettingsForRequest(),
   ]);
   if (!topic) notFound();
   const statusLabel: Record<string, string> = {
@@ -76,17 +74,15 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
   const isPublicTopic = ["published", "closed"].includes(topic.status);
   const rightRailProps = {
     account,
-    overview: community.view.overview,
-    hotTopics: community.view.hotTopics,
-    onlineMembers: community.view.onlineMembers,
+    overview: community.overview,
+    hotTopics: community.hotTopics,
+    onlineMembers: community.onlineMembers,
   };
   const topicPostedAt = topic.publishedAt ?? topic.createdAt;
 
   return (
     <CommunityThreeColumnShell
-      leftRail={
-        <CommunityNodeNavigation nodes={community.view.nodes} activeNodeId={topic.node.slug} />
-      }
+      leftRail={<CommunityNodeNavigation nodes={community.nodes} activeNodeId={topic.node.slug} />}
       rightRail={<CommunityRightRail {...rightRailProps} />}
       mobileRightRail={<CommunityRightRail {...rightRailProps} sticky={false} />}
       mainLabelledBy="topic-title"

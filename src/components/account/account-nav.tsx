@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Bell,
   Bookmark,
@@ -39,7 +42,17 @@ const accountSections: Array<{
   { value: "activity", href: "/account/activity", label: "我的参与", icon: History },
 ];
 
-export function AccountNav({ active }: { active: AccountSection }) {
+function currentSection(pathname: string): AccountSection {
+  const match = accountSections.find((section) =>
+    section.href === "/account"
+      ? pathname === section.href
+      : pathname === section.href || pathname.startsWith(`${section.href}/`),
+  );
+  return match?.value ?? "profile";
+}
+
+export function AccountNav() {
+  const active = currentSection(usePathname());
   return (
     <Card size="sm" className="mb-5 gap-0 py-2">
       <CardContent className="overflow-x-auto px-2">

@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AccountPageShell } from "@/components/account/account-page-shell";
 import { ProfileSettings } from "@/components/account/profile-settings.client";
@@ -9,24 +8,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/shadcn/ui/card";
-import { getAuth } from "@/infrastructure/auth/better-auth";
+import { getCurrentSession } from "@/modules/identity/session.server";
 import { getAccountProfile } from "@/modules/profiles/profile.server";
 import { usernameCooldownEnds } from "@/modules/profiles/username-policy";
 
 export const metadata = { title: "账号中心" };
 
 export default async function AccountPage() {
-  const session = await getAuth().api.getSession({ headers: await headers() });
+  const session = await getCurrentSession();
   if (!session) redirect("/auth/sign-in?next=/account");
   const user = await getAccountProfile(session.user.id);
   const availableAt = user.usernameChangedAt ? usernameCooldownEnds(user.usernameChangedAt) : null;
 
   return (
-    <AccountPageShell
-      active="profile"
-      description="管理公开身份、头像、隐私和账号状态。"
-      title="账号中心"
-    >
+    <AccountPageShell description="管理公开身份、头像、隐私和账号状态。" title="账号中心">
       <Card className="gap-0 py-0">
         <CardHeader className="border-b py-4">
           <CardTitle>
