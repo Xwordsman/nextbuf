@@ -3,11 +3,11 @@
 本文是每次开始开发、交接给其他开发者或交给 AI 前首先阅读的状态入口。它记录当前有效实现、验证边界和唯一下一阶段，不替代专题文档。
 
 - 最后更新：2026-08-07
-- 当前已发布版本：`v1.0.1`，当前完整稳定补丁
-- 当前开发版本：已批准的 `v1.0.2` 性能补丁；不增加 `v1.1.0` 产品功能
+- 当前已发布版本：`v1.0.2`，当前完整稳定补丁
+- 当前开发版本：无；`v1.0.2` 已冻结、发布并升级生产，未经用户明确批准不得开始 `v1.1.0` 产品功能
 - 发布例外：不可变 `v0.13.9` 标签的 Linux x64 standalone 归档因 pnpm 依赖链接被展平而无法启动，Release 资产未完成；它不是完整、受支持的发布，也不能设为升级基线
-- 当前发布状态：`v1.0.1` tag commit 为 `681a3bac959808f548e49b51628e15f1b1d98a6a`；主线 [Run 31152722387](https://github.com/Xwordsman/nextbuf/actions/runs/31152722387)、发布演练 [Run 31153527154](https://github.com/Xwordsman/nextbuf/actions/runs/31153527154) 和标签 [Run 31156787209](https://github.com/Xwordsman/nextbuf/actions/runs/31156787209) 均成功。[GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v1.0.1) 非 draft/非 prerelease；`1.0.1` 与 `latest` OCI index 均为 `sha256:d193c155d800e9c86c93e8a56272d0a99cc81e8bb737d6bca57b3e9b9ff9787d`。2026-08-07 SSH 复核生产四容器健康，Web 内置版本为 `1.0.1`。项目所有者批准本版本暂时只有 1 位合格管理员，冗余警告保留，0 位仍阻断。
-- 下一动作：按 [`v1.0.2` 发布就绪清单](./26-v1.0.2-release-readiness.md)完成性能代码、分层测量与本地检查，提交推送 main，等待同一 commit 的完整 CI 和 `release_rehearsal=true`；P0/P1 清零且本版本管理员条件满足后再创建不可变 `v1.0.2` 标签。Release 与 `latest` 身份一致后，先备份并校验生产，再执行 `1.0.1 -> 1.0.2` 升级和连续性/性能复测；不混入 `v1.1.0` 功能。
+- 当前发布状态：`v1.0.2` 注释标签固定到 `cf680a4d7f979dac76b4d8d58058df8b9053e292`；主线 [Run 31171214423](https://github.com/Xwordsman/nextbuf/actions/runs/31171214423)、发布演练 [Run 31172314692](https://github.com/Xwordsman/nextbuf/actions/runs/31172314692) 和标签 [Run 31187321996](https://github.com/Xwordsman/nextbuf/actions/runs/31187321996) 均成功。[GitHub Release](https://github.com/Xwordsman/nextbuf/releases/tag/v1.0.2) 非 draft、非 prerelease，并包含 Linux x64 归档、SHA-256、Source SBOM 与完成回执；候选、`1.0.2` 和 `latest` 均为 OCI index `sha256:8883cac6d18056dc5d2553119348a5ce8ab268adf88ec308e56749a01d32976c`。2026-08-07 已创建并校验升级前备份，生产由 `v1.0.1` 无迁移升级；四容器健康，Web/Worker 为 `1.0.2`，16 条迁移、用户/节点/主题/帖子和附件连续性保持。项目所有者明确批准本版本暂时只有 1 位合格管理员，冗余警告保留，0 位仍阻断。
+- 下一动作：保持 `v1.0.2` 稳定通道观察，按 [`v1.0.2` 发布就绪清单](./26-v1.0.2-release-readiness.md)中的发布后证据定位问题；未经用户明确批准不开始 `v1.1.0`。发布后的文档归档提交不得移动 `v1.0.2` 标签、重建不可变镜像或改变 `latest` 身份。
 - 官方仓库：`https://github.com/Xwordsman/nextbuf`
 - 当前工作名称：NextBuf
 
